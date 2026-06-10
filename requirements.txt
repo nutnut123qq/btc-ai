@@ -1,0 +1,11 @@
+fastapi==0.115.6
+uvicorn==0.34.0
+langchain==0.3.14
+langgraph==0.2.70
+langchain-ollama==1.0.1
+langchain-google-genai==4.2.1
+langchain-openai==0.3.35
+python-dotenv==1.0.1
+openai==1.59.3
+yfinance==0.2.51
+pydantic==2.10.5
