@@ -1,11 +1,15 @@
-fastapi==0.115.6
-uvicorn==0.34.0
-langchain==0.3.14
-langgraph==0.2.70
-langchain-ollama==1.0.1
-langchain-google-genai==4.2.1
-langchain-openai==0.3.35
-python-dotenv==1.0.1
-openai==1.59.3
-yfinance==0.2.51
-pydantic==2.10.5
+fastapi>=0.115.0
+uvicorn>=0.34.0
+langchain>=0.3.0
+langgraph>=0.2.0
+langchain-openai>=0.3.0
+python-dotenv>=1.0.0
+openai>=1.104.0
+yfinance>=0.2.0
+pydantic>=2.10.0
+
+# ML baseline / data utilities
+numpy>=1.26.0
+pandas>=2.0.0
+scikit-learn>=1.4.0
+psycopg2-binary>=2.9.0
