@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 
 from graph import build_ta_graph
+from prediction_service import list_available_models, predict_from_vector
 
 load_dotenv()
 
@@ -20,6 +21,15 @@ class AnalyzeRequest(BaseModel):
     symbol: str
     news_context: str = Field(default="", description="Retrieved news text from backend RAG")
     tech_context: str = Field(default="", description="Market/technical summary from backend (e.g. Binance)")
+
+
+class PredictRequest(BaseModel):
+    symbol: str = "BTCUSDT"
+    timeframe: str = "1h"
+    window_size: int = 5
+    horizon: str = "1h"
+    feature_vector: list[float]
+    model_name: str | None = None
 
 
 def _build_llm():
@@ -86,6 +96,31 @@ def _build_llm():
         status_code=500,
         detail=f"Unknown LLM_PROVIDER={provider!r}. Use 'ollama', 'gemini', or 'blackbox'.",
     )
+
+
+@app.post("/api/predict")
+async def predict(request: PredictRequest):
+    try:
+        result = predict_from_vector(
+            feature_vector=request.feature_vector,
+            symbol=request.symbol,
+            timeframe=request.timeframe,
+            window_size=request.window_size,
+            horizon=request.horizon,
+            model_name=request.model_name,
+        )
+        return result
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {e!s}")
+
+
+@app.get("/api/predict/models")
+async def get_available_models():
+    return {"models": list_available_models()}
 
 
 @app.post("/api/analyze")

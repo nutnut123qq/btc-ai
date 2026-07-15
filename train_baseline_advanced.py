@@ -18,6 +18,7 @@ from pathlib import Path
 import numpy as np
 import psycopg2
 import pandas as pd
+import joblib
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
@@ -56,6 +57,8 @@ SYMBOL = os.getenv("SYMBOL", "BTCUSDT")
 TIMEFRAME = os.getenv("TIMEFRAME", "1h")
 SPLIT_TIMESTAMP_MS = int(datetime(2025, 1, 1, tzinfo=timezone.utc).timestamp() * 1000)
 ENABLE_TUNING = os.getenv("ENABLE_TUNING", "0").lower() in ("1", "true", "yes")
+WINDOW_SIZES = [int(x) for x in os.getenv("WINDOW_SIZES", "5,10,15,20,25").split(",") if x.strip()]
+HORIZONS = [x.strip() for x in os.getenv("HORIZONS", "1h,4h,1d").split(",") if x.strip()]
 
 # Must match WindowDatasetService.FeatureNames in backend/Services/WindowDatasetService.cs
 # This list is used when FeatureDim indicates the new 35-feature vector.
@@ -80,6 +83,8 @@ FEATURE_NAMES_8 = [
 LABEL_NAMES = {-1: "Down", 0: "Sideways", 1: "Up"}
 
 REPORT_PATH = Path(__file__).with_name("baseline_advanced_report.md")
+MODELS_DIR = Path(__file__).with_name("models")
+MODELS_DIR.mkdir(exist_ok=True)
 
 
 # --- DB helpers --------------------------------------------------------------
@@ -337,6 +342,52 @@ def extract_importance(model, feature_names):
         return []
 
 
+# --- Model persistence -------------------------------------------------------
+
+def save_model_and_metadata(
+    symbol: str,
+    timeframe: str,
+    window_size: int,
+    horizon: str,
+    model_name: str,
+    model,
+    feature_names: list[str],
+    metrics: dict,
+    label_dist_train: dict,
+    label_dist_test: dict,
+    train_count: int,
+    test_count: int,
+) -> Path:
+    """Persist trained model + metadata to ai/models/."""
+    safe_model_name = model_name.replace("/", "_")
+    base_name = f"{symbol}_{timeframe}_ws{window_size}_h{horizon}_{safe_model_name}"
+    model_path = MODELS_DIR / f"{base_name}.joblib"
+    meta_path = MODELS_DIR / f"{base_name}.json"
+
+    joblib.dump(model, model_path)
+
+    metadata = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "window_size": window_size,
+        "horizon": horizon,
+        "model_name": model_name,
+        "model_file": model_path.name,
+        "feature_names": feature_names,
+        "feature_dim": len(feature_names),
+        "metrics": metrics,
+        "label_dist_train": {str(k): int(v) for k, v in label_dist_train.items()},
+        "label_dist_test": {str(k): int(v) for k, v in label_dist_test.items()},
+        "train_count": train_count,
+        "test_count": test_count,
+        "split_timestamp_ms": SPLIT_TIMESTAMP_MS,
+        "label_mapping": {"-1": "Down", "0": "Sideways", "1": "Up"},
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    meta_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    return model_path
+
+
 # --- Report ------------------------------------------------------------------
 
 def make_report(results_by_group):
@@ -402,7 +453,13 @@ def main():
     print("\n[1/3] Training & evaluating...")
     results_by_group = {}
 
-    for ws, horizon in sorted([(ws, h) for ws in [5, 10, 15, 20, 25] for h in ["1h", "4h", "1d"]]):
+    for ws, horizon in sorted([(ws, h) for ws in WINDOW_SIZES for h in HORIZONS]):
+        # Skip groups that already have a saved best model
+        existing = list(MODELS_DIR.glob(f"{SYMBOL}_{TIMEFRAME}_ws{ws}_h{horizon}_*.joblib"))
+        if existing:
+            print(f"\n  Skipping (ws={ws}, h={horizon}) - model already exists: {existing[0].name}")
+            continue
+
         print(f"\n  Loading (ws={ws}, h={horizon})...")
         d = fetch_group_data(SYMBOL, TIMEFRAME, ws, horizon)
         if d is None:
@@ -496,6 +553,25 @@ def main():
                         print(f"    {tuned_res['name']:18s} acc={tuned_res['accuracy']:.4f} f1={tuned_res['f1_weighted']:.4f} {tuned_res.get('best_params', {})}")
             except Exception as e:
                 print(f"    Tuning skipped: {e}")
+
+        # Persist best model
+        best_res = next((m for m in model_results if m["name"] == best_name), None)
+        if best_name and best_res:
+            try:
+                model_to_save = dict(models).get(best_name)
+                if model_to_save is not None:
+                    # Refit on full train data with original labels (or remapped for XGB)
+                    y_train_full, _ = maybe_remap_for_model(best_name, y_train)
+                    model_to_save.fit(X_train, y_train_full)
+                    model_path = save_model_and_metadata(
+                        SYMBOL, TIMEFRAME, ws, horizon, best_name, model_to_save,
+                        feature_names, best_res,
+                        Counter(y_train), Counter(y_test),
+                        len(y_train), len(y_test),
+                    )
+                    print(f"    Saved best model: {model_path}")
+            except Exception as e:
+                print(f"    Model save skipped: {e}")
 
         results_by_group[(ws, horizon)] = {
             "total": len(y),
