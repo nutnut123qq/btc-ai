@@ -1,0 +1,130 @@
+{
+  "config": {
+    "symbol": "BTCUSDT",
+    "timeframe": "4h",
+    "window_size": 5,
+    "horizon": "4h",
+    "fold_months": 6,
+    "min_train_months": 18,
+    "purge_bars": 2,
+    "confidence_threshold": 0.5,
+    "fee_bps": 10.0,
+    "slippage_bps": 5.0,
+    "out": null
+  },
+  "aggregate": {
+    "folds": 8,
+    "folds_profitable": 6,
+    "mean_fold_sharpe": 2.829,
+    "std_fold_sharpe": 4.12,
+    "total_trades": 4734,
+    "overall_win_rate": 0.5251,
+    "stitched_total_return_pct": 487.99
+  },
+  "folds": [
+    {
+      "fold": 0,
+      "test_start": "2022-02-01",
+      "test_end": "2022-08-01",
+      "n_train": 4362,
+      "n_test": 1086,
+      "acc": 0.6289,
+      "trades": 989,
+      "win_rate": 0.4499,
+      "total_return_pct": -76.03,
+      "avg_trade_pct": -0.1325,
+      "sharpe": -4.038
+    },
+    {
+      "fold": 1,
+      "test_start": "2022-08-01",
+      "test_end": "2023-02-01",
+      "n_train": 5448,
+      "n_test": 1104,
+      "acc": 0.558,
+      "trades": 592,
+      "win_rate": 0.4595,
+      "total_return_pct": -44.15,
+      "avg_trade_pct": -0.0909,
+      "sharpe": -3.474
+    },
+    {
+      "fold": 2,
+      "test_start": "2023-02-01",
+      "test_end": "2023-08-01",
+      "n_train": 6552,
+      "n_test": 1086,
+      "acc": 0.581,
+      "trades": 479,
+      "win_rate": 0.5157,
+      "total_return_pct": 61.66,
+      "avg_trade_pct": 0.107,
+      "sharpe": 4.326
+    },
+    {
+      "fold": 3,
+      "test_start": "2023-08-01",
+      "test_end": "2024-02-01",
+      "n_train": 7638,
+      "n_test": 1104,
+      "acc": 0.6132,
+      "trades": 408,
+      "win_rate": 0.5515,
+      "total_return_pct": 47.85,
+      "avg_trade_pct": 0.1002,
+      "sharpe": 5.03
+    },
+    {
+      "fold": 4,
+      "test_start": "2024-02-01",
+      "test_end": "2024-08-01",
+      "n_train": 8742,
+      "n_test": 1092,
+      "acc": 0.5852,
+      "trades": 664,
+      "win_rate": 0.5392,
+      "total_return_pct": 51.4,
+      "avg_trade_pct": 0.0702,
+      "sharpe": 2.652
+    },
+    {
+      "fold": 5,
+      "test_start": "2024-08-01",
+      "test_end": "2025-02-01",
+      "n_train": 9834,
+      "n_test": 1104,
+      "acc": 0.6386,
+      "trades": 664,
+      "win_rate": 0.5934,
+      "total_return_pct": 340.42,
+      "avg_trade_pct": 0.2312,
+      "sharpe": 8.718
+    },
+    {
+      "fold": 6,
+      "test_start": "2025-02-01",
+      "test_end": "2025-08-01",
+      "n_train": 10938,
+      "n_test": 1086,
+      "acc": 0.6206,
+      "trades": 494,
+      "win_rate": 0.583,
+      "total_return_pct": 76.68,
+      "avg_trade_pct": 0.1223,
+      "sharpe": 4.822
+    },
+    {
+      "fold": 7,
+      "test_start": "2025-08-01",
+      "test_end": "2026-02-01",
+      "n_train": 12024,
+      "n_test": 1104,
+      "acc": 0.6413,
+      "trades": 444,
+      "win_rate": 0.5788,
+      "total_return_pct": 55.96,
+      "avg_trade_pct": 0.106,
+      "sharpe": 4.598
+    }
+  ]
+}
