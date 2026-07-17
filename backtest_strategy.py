@@ -19,6 +19,14 @@ from pathlib import Path
 import joblib
 import numpy as np
 import psycopg2
+from psycopg2.extensions import AsIs, register_adapter
+
+# psycopg2 cannot adapt numpy scalars (raises `schema "np" does not exist`).
+register_adapter(np.float64, lambda v: AsIs(float(v)))
+register_adapter(np.float32, lambda v: AsIs(float(v)))
+register_adapter(np.int64, lambda v: AsIs(int(v)))
+register_adapter(np.int32, lambda v: AsIs(int(v)))
+register_adapter(np.int8, lambda v: AsIs(int(v)))
 
 
 class NumpyEncoder(json.JSONEncoder):
