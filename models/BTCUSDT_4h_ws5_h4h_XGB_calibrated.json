@@ -1,0 +1,22 @@
+{
+  "symbol": "BTCUSDT",
+  "timeframe": "4h",
+  "window_size": 5,
+  "horizon": "4h",
+  "model_name": "XGB_calibrated",
+  "base_model": "XGB_balanced (n_est=200, depth=6, lr=0.05)",
+  "calibration": "isotonic, cv=prefit",
+  "train_end": "2024-07-01",
+  "cal_range": [
+    "2024-07-08",
+    "2025-07-01"
+  ],
+  "recommended_threshold": 0.61,
+  "test_metrics": {
+    "trades": 667,
+    "win_rate": 0.5757,
+    "total_return_pct": 67.35,
+    "sharpe": 3.462
+  },
+  "note": "labels remapped {-1,0,1}->{0,1,2}; argmax(proba)-1 = label"
+}

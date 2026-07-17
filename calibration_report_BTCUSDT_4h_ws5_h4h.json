@@ -1,0 +1,72 @@
+{
+  "config": {
+    "symbol": "BTCUSDT",
+    "timeframe": "4h",
+    "window_size": 5,
+    "horizon": "4h",
+    "fee_bps": 10.0,
+    "slippage_bps": 5.0
+  },
+  "splits": {
+    "train_end": "2024-07-01",
+    "cal": [
+      "2024-07-08",
+      "2025-07-01"
+    ],
+    "test_start": "2025-07-08"
+  },
+  "ece": {
+    "raw": 0.0404,
+    "calibrated": 0.05
+  },
+  "cal_scan": {
+    "raw_best": {
+      "threshold": 0.52,
+      "trades": 1073,
+      "win_rate": 0.6142,
+      "total_return_pct": 977.5,
+      "avg_trade_pct": 0.2294,
+      "sharpe": 8.728
+    },
+    "calibrated_best": {
+      "threshold": 0.61,
+      "trades": 792,
+      "win_rate": 0.6503,
+      "total_return_pct": 913.93,
+      "avg_trade_pct": 0.301,
+      "sharpe": 11.062
+    }
+  },
+  "test": {
+    "A_all_trades_raw": {
+      "trades": 1374,
+      "win_rate": 0.5095,
+      "total_return_pct": 31.73,
+      "avg_trade_pct": 0.0252,
+      "sharpe": 1.167
+    },
+    "B_raw_best_thr": {
+      "threshold": 0.52,
+      "trades": 898,
+      "win_rate": 0.549,
+      "total_return_pct": 59.5,
+      "avg_trade_pct": 0.0578,
+      "sharpe": 2.51
+    },
+    "C_calibrated_best_thr": {
+      "threshold": 0.61,
+      "trades": 667,
+      "win_rate": 0.5757,
+      "total_return_pct": 67.35,
+      "avg_trade_pct": 0.0836,
+      "sharpe": 3.462
+    },
+    "D_raw_conf_0.5_baseline": {
+      "trades": 965,
+      "win_rate": 0.5451,
+      "total_return_pct": 54.61,
+      "avg_trade_pct": 0.0509,
+      "sharpe": 2.224
+    }
+  }
+}
