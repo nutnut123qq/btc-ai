@@ -1,17 +1,13 @@
 #!/usr/bin/env python3
 """
-G1: Paper trading — chạy champion config (calibrated XGB 4h ws5 h4h, thr 0.61)
+G1: Paper trading — chạy multi-timeframe configs (4h, 1h, 30m)
 trên dữ liệu live, ghi nhận mọi quyết định vào bảng PaperTrades.
 
-Semantics giống backtest: tại mỗi 4h bar đóng cửa, nếu signal (label != 0 và
+Semantics giống backtest: tại mỗi bar đóng cửa, nếu signal (label != 0 và
 calibrated conf >= threshold) -> mở vị thế tại close của bar đó, đóng tại close
-bar kế tiếp (4h sau). Phí 10bps + slippage 5bps mỗi side.
+bar kế tiếp. Phí 10bps + slippage 5bps mỗi side.
 
-Idempotent: mỗi window (WindowEndMs) chỉ ghi 1 lần; vị thế mở được đóng khi
-đến hạn bất kể script chạy lúc nào (lấy giá từ DB).
-
-Chạy định kỳ qua Windows Scheduled Task (mỗi giờ) — script tự kiểm tra có
-bar mới đóng cửa hay chưa.
+Idempotent: mỗi (Symbol, Timeframe, WindowEndMs) chỉ ghi 1 lần.
 """
 
 import json
@@ -25,18 +21,39 @@ import joblib
 import numpy as np
 import psycopg2
 
-DB = dict(host=os.getenv("DB_HOST", "localhost"), port=int(os.getenv("DB_PORT", "5432")),
-          database=os.getenv("DB_NAME", "bitcoin_analyst"),
-          user=os.getenv("DB_USER", "postgres"), password=os.getenv("DB_PASS", "123456"))
+DB = dict(
+    host=os.getenv("DB_HOST", "localhost"),
+    port=int(os.getenv("DB_PORT", "5432")),
+    database=os.getenv("DB_NAME", "bitcoin_analyst"),
+    user=os.getenv("DB_USER", "postgres"),
+    password=os.getenv("DB_PASS", "123456"),
+)
 
 SYMBOL = "BTCUSDT"
-TIMEFRAME = "4h"
-WINDOW_SIZE = 5
-TF_MS = 14_400_000
 FEE_BPS = 10.0
 SLIPPAGE_BPS = 5.0
-CONFIDENCE_THRESHOLD = 0.61
-MODEL_PATH = Path(__file__).parent / "models" / "BTCUSDT_4h_ws5_h4h_XGB_calibrated.joblib"
+MODELS_DIR = Path(__file__).parent / "models"
+
+TIMEFRAME_CONFIGS = {
+    "4h": {
+        "window_size": 5,
+        "tf_ms": 14_400_000,
+        "threshold": 0.61,
+        "model_file": "BTCUSDT_4h_ws5_h4h_XGB_calibrated.joblib",
+    },
+    "1h": {
+        "window_size": 5,
+        "tf_ms": 3_600_000,
+        "threshold": 0.58,
+        "model_file": "BTCUSDT_1h_ws5_h1h_XGB_balanced.joblib",
+    },
+    "30m": {
+        "window_size": 5,
+        "tf_ms": 1_800_000,
+        "threshold": 0.56,
+        "model_file": "BTCUSDT_30m_ws5_h1h_XGB_balanced.joblib",
+    },
+}
 
 FEATURE_COLS = [
     "CloseZscore", "ClosePctChange1", "ClosePctChange4", "ClosePctChange24",
@@ -69,8 +86,9 @@ CREATE TABLE IF NOT EXISTS "PaperTrades" (
     "CreatedAtUtc" timestamptz NOT NULL DEFAULT now(),
     "ClosedAtUtc" timestamptz
 );
-CREATE UNIQUE INDEX IF NOT EXISTS "IX_PaperTrades_Symbol_WindowEndMs"
-    ON "PaperTrades" ("Symbol", "WindowEndMs");
+DROP INDEX IF EXISTS "IX_PaperTrades_Symbol_WindowEndMs";
+CREATE UNIQUE INDEX IF NOT EXISTS "IX_PaperTrades_Symbol_Timeframe_WindowEndMs"
+    ON "PaperTrades" ("Symbol", "Timeframe", "WindowEndMs");
 """
 
 
@@ -92,52 +110,52 @@ def time_features(open_ms):
     ]
 
 
-def build_latest_vector(cur):
-    """Lấy ws bar MlFeatureStores mới nhất, kiểm tra liên tiếp, build vector ws*35."""
+def build_latest_vector(cur, timeframe, window_size, tf_ms):
+    """Lấy ws bar MlFeatureStores mới nhất cho timeframe, build vector ws*35."""
     cols = ", ".join(f'"{c}"' for c in FEATURE_COLS)
     cur.execute(
         f"""SELECT "OpenTimeMs", {cols} FROM "MlFeatureStores"
             WHERE "Symbol"=%s AND "Timeframe"=%s
             ORDER BY "OpenTimeMs" DESC LIMIT %s""",
-        (SYMBOL, TIMEFRAME, WINDOW_SIZE))
+        (SYMBOL, timeframe, window_size))
     rows = cur.fetchall()
-    if len(rows) < WINDOW_SIZE:
+    if len(rows) < window_size:
         return None
     rows = list(reversed(rows))  # oldest -> newest
     for i in range(1, len(rows)):
-        if rows[i][0] - rows[i - 1][0] != TF_MS:
-            print(f"  gap between bars {rows[i-1][0]} and {rows[i][0]}, skip")
+        if rows[i][0] - rows[i - 1][0] != tf_ms:
+            print(f"  [{timeframe}] gap between bars {rows[i-1][0]} and {rows[i][0]}, skip")
             return None
     vector = []
     for r in rows:
         vals = r[1:]
         if any(v is None for v in vals):
-            print(f"  null feature in bar {r[0]}, skip")
+            print(f"  [{timeframe}] null feature in bar {r[0]}, skip")
             return None
         vector.extend(float(v) for v in vals)
         vector.extend(time_features(r[0]))
     return rows[-1][0], np.array(vector, dtype=np.float32)
 
 
-def get_close(cur, open_ms):
+def get_close(cur, timeframe, open_ms):
     cur.execute(
         """SELECT "Close" FROM "Klines" WHERE "Symbol"=%s AND "Timeframe"=%s AND "OpenTimeMs"=%s""",
-        (SYMBOL, TIMEFRAME, open_ms))
+        (SYMBOL, timeframe, open_ms))
     row = cur.fetchone()
     return float(row[0]) if row else None
 
 
 def close_due_trades(conn, cur, now_ms):
-    cur.execute("""SELECT "Id", "Side", "EntryPrice", "ExitTimeMs" FROM "PaperTrades"
+    cur.execute("""SELECT "Id", "Timeframe", "Side", "EntryPrice", "ExitTimeMs" FROM "PaperTrades"
                    WHERE "Symbol"=%s AND "Status"='open' AND "ExitTimeMs" <= %s""",
                 (SYMBOL, now_ms))
     due = cur.fetchall()
     fee = FEE_BPS / 1e4
     slip = SLIPPAGE_BPS / 1e4
-    for tid, side, entry_price, exit_ms in due:
-        exit_price = get_close(cur, exit_ms)
+    for tid, tf, side, entry_price, exit_ms in due:
+        exit_price = get_close(cur, tf, exit_ms)
         if exit_price is None:
-            print(f"  trade {tid}: no kline at exit {exit_ms}, keep open")
+            print(f"  trade {tid} [{tf}]: no kline at exit {exit_ms}, keep open")
             continue
         if side == "long":
             gross = (exit_price * (1 - slip) - entry_price * (1 + slip)) / (entry_price * (1 + slip))
@@ -147,8 +165,67 @@ def close_due_trades(conn, cur, now_ms):
         cur.execute("""UPDATE "PaperTrades" SET "ExitPrice"=%s, "NetReturn"=%s,
                        "Status"='closed', "ClosedAtUtc"=now() WHERE "Id"=%s""",
                     (exit_price, net, tid))
-        print(f"  closed trade {tid} {side} entry={entry_price:.1f} exit={exit_price:.1f} net={net*100:+.3f}%")
+        print(f"  closed trade {tid} [{tf}] {side} entry={entry_price:.1f} exit={exit_price:.1f} net={net*100:+.3f}%")
     conn.commit()
+
+
+def process_timeframe(conn, cur, tf, cfg, now_ms):
+    window_size = cfg["window_size"]
+    tf_ms = cfg["tf_ms"]
+    threshold = cfg["threshold"]
+    model_path = MODELS_DIR / cfg["model_file"]
+
+    if not model_path.exists():
+        print(f"[{tf}] Model file {model_path.name} not found, skip")
+        return
+
+    res = build_latest_vector(cur, tf, window_size, tf_ms)
+    if res is None:
+        print(f"[{tf}] no usable window")
+        return
+    window_end_ms, vector = res
+    if window_end_ms + tf_ms > now_ms:
+        print(f"[{tf}] latest bar {window_end_ms} still open, skip")
+        return
+
+    cur.execute('SELECT 1 FROM "PaperTrades" WHERE "Symbol"=%s AND "Timeframe"=%s AND "WindowEndMs"=%s',
+                (SYMBOL, tf, window_end_ms))
+    if cur.fetchone():
+        print(f"[{tf}] window {window_end_ms} already processed")
+        return
+
+    model = joblib.load(model_path)
+    proba = model.predict_proba(vector.reshape(1, -1))[0]
+    label = int(np.argmax(proba)) - 1  # XGB remap {0,1,2} -> {-1,0,1}
+    conf = float(proba.max())
+    dt = datetime.fromtimestamp(window_end_ms / 1000, timezone.utc)
+    print(f"[{tf}] window {dt:%Y-%m-%d %H:%M}Z: label={label} conf={conf:.3f} "
+          f"(down={proba[0]:.3f} side={proba[1]:.3f} up={proba[2]:.3f})")
+
+    if label == 0:
+        print(f"  [{tf}] no signal (predicted sideways)")
+        return
+    if conf < threshold:
+        print(f"  [{tf}] no signal (conf={conf:.3f} < {threshold})")
+        return
+
+    entry_price = get_close(cur, tf, window_end_ms)
+    if entry_price is None:
+        print(f"  [{tf}] no kline at window end, skip")
+        return
+
+    side = "long" if label == 1 else "short"
+    exit_ms = window_end_ms + tf_ms
+    cur.execute(
+        """INSERT INTO "PaperTrades" ("Symbol","Timeframe","WindowEndMs","EntryTimeMs","ExitTimeMs",
+           "Side","Confidence","ProbDown","ProbSideways","ProbUp","EntryPrice","Status","ModelVersion")
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'open',%s)
+           ON CONFLICT ("Symbol","Timeframe","WindowEndMs") DO NOTHING""",
+        (SYMBOL, tf, window_end_ms, window_end_ms, exit_ms,
+         side, conf, float(proba[0]), float(proba[1]), float(proba[2]),
+         entry_price, cfg["model_file"]))
+    conn.commit()
+    print(f"  [{tf}] OPEN {side} @ {entry_price:.1f}, exit due {datetime.fromtimestamp(exit_ms/1000, timezone.utc):%Y-%m-%d %H:%M}Z")
 
 
 def main():
@@ -156,66 +233,14 @@ def main():
     conn = get_conn()
     cur = conn.cursor()
 
-    # 1. Đóng các vị thế đến hạn
     close_due_trades(conn, cur, now_ms)
 
-    # 2. Build vector từ bar mới nhất (chỉ xét bar đã đóng cửa)
-    res = build_latest_vector(cur)
-    if res is None:
-        print("no usable window")
-        conn.close()
-        return
-    window_end_ms, vector = res
-    if window_end_ms + TF_MS > now_ms:
-        print(f"latest bar {window_end_ms} still open, nothing to do")
-        conn.close()
-        return
+    for tf, cfg in TIMEFRAME_CONFIGS.items():
+        try:
+            process_timeframe(conn, cur, tf, cfg, now_ms)
+        except Exception as e:
+            print(f"[{tf}] Error in paper trader: {e}")
 
-    # 3. Đã xử lý window này chưa?
-    cur.execute('SELECT 1 FROM "PaperTrades" WHERE "Symbol"=%s AND "WindowEndMs"=%s',
-                (SYMBOL, window_end_ms))
-    if cur.fetchone():
-        print(f"window {window_end_ms} already processed")
-        conn.close()
-        return
-
-    # 4. Predict
-    model = joblib.load(MODEL_PATH)
-    proba = model.predict_proba(vector.reshape(1, -1))[0]
-    label = int(np.argmax(proba)) - 1  # XGB remap {0,1,2} -> {-1,0,1}
-    conf = float(proba.max())
-    dt = datetime.fromtimestamp(window_end_ms / 1000, timezone.utc)
-    print(f"window {dt:%Y-%m-%d %H:%M}Z: label={label} conf={conf:.3f} "
-          f"(down={proba[0]:.3f} side={proba[1]:.3f} up={proba[2]:.3f})")
-
-    # 5. Signal?
-    if label == 0:
-        print(f"  no signal (predicted sideways, conf={conf:.3f})")
-        conn.close()
-        return
-    if conf < CONFIDENCE_THRESHOLD:
-        print(f"  no signal (conf={conf:.3f} < {CONFIDENCE_THRESHOLD})")
-        conn.close()
-        return
-
-    entry_price = get_close(cur, window_end_ms)
-    if entry_price is None:
-        print("  no kline at window end, skip")
-        conn.close()
-        return
-
-    side = "long" if label == 1 else "short"
-    exit_ms = window_end_ms + TF_MS
-    cur.execute(
-        """INSERT INTO "PaperTrades" ("Symbol","Timeframe","WindowEndMs","EntryTimeMs","ExitTimeMs",
-           "Side","Confidence","ProbDown","ProbSideways","ProbUp","EntryPrice","Status","ModelVersion")
-           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'open',%s)
-           ON CONFLICT ("Symbol","WindowEndMs") DO NOTHING""",
-        (SYMBOL, TIMEFRAME, window_end_ms, window_end_ms, exit_ms,
-         side, conf, float(proba[0]), float(proba[1]), float(proba[2]),
-         entry_price, "XGB_calibrated"))
-    conn.commit()
-    print(f"  OPEN {side} @ {entry_price:.1f}, exit due {datetime.fromtimestamp(exit_ms/1000, timezone.utc):%Y-%m-%d %H:%M}Z")
     conn.close()
 
 
