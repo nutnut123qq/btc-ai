@@ -25,13 +25,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
-# --- Config ------------------------------------------------------------------
-
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "bitcoin_analyst")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "123456")
+from db_config import get_db_connection
 
 SYMBOL = "BTCUSDT"
 TIMEFRAME = "1h"
@@ -57,13 +51,7 @@ REPORT_PATH = Path(__file__).with_name("baseline_1h_report.md")
 # --- DB helpers --------------------------------------------------------------
 
 def get_connection():
-    return psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-    )
+    return get_db_connection()
 
 
 def fetch_data(symbol, timeframe):

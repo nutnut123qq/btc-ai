@@ -31,10 +31,9 @@ from sklearn.calibration import CalibratedClassifierCV
 
 sys.path.insert(0, str(Path(__file__).parent))
 from backtest_strategy import fetch_klines
+from db_config import get_db_params
 
-DB = dict(host=os.getenv("DB_HOST", "localhost"), port=int(os.getenv("DB_PORT", "5432")),
-          database=os.getenv("DB_NAME", "bitcoin_analyst"),
-          user=os.getenv("DB_USER", "postgres"), password=os.getenv("DB_PASS", "123456"))
+DB = get_db_params()
 
 LABEL_REMAP = {-1: 0, 0: 1, 1: 2}
 

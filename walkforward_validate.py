@@ -34,22 +34,14 @@ import xgboost as xgb
 
 sys.path.insert(0, str(Path(__file__).parent))
 from backtest_strategy import fetch_klines
-
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "bitcoin_analyst")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "123456")
+from db_config import get_db_connection
 
 LABEL_REMAP = {-1: 0, 0: 1, 1: 2}
 LABEL_INV = {0: -1, 1: 0, 2: 1}
 
 
 def get_connection():
-    return psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, database=DB_NAME,
-        user=DB_USER, password=DB_PASS,
-    )
+    return get_db_connection()
 
 
 def fetch_all_windows(symbol, timeframe, window_size, horizon):

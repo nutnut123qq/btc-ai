@@ -47,11 +47,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 # --- Config ------------------------------------------------------------------
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "bitcoin_analyst")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "123456")
+from db_config import get_db_connection
 
 SYMBOL = os.getenv("SYMBOL", "BTCUSDT")
 TIMEFRAME = os.getenv("TIMEFRAME", "1h")
@@ -90,10 +86,7 @@ MODELS_DIR.mkdir(exist_ok=True)
 # --- DB helpers --------------------------------------------------------------
 
 def get_connection():
-    return psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, database=DB_NAME,
-        user=DB_USER, password=DB_PASS,
-    )
+    return get_db_connection()
 
 
 # --- Feature names -----------------------------------------------------------

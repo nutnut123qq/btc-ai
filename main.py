@@ -1,7 +1,10 @@
+import json
 import os
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from langchain_core.messages import SystemMessage, HumanMessage
 
 from graph import build_ta_graph
 from prediction_service import list_available_models, predict_from_vector
@@ -142,7 +145,7 @@ async def analyze_crypto(request: AnalyzeRequest):
             "tech_context": request.tech_context or "",
         }
 
-        return graph.invoke(state)
+        return await graph.ainvoke(state)
 
     except Exception as e:
         raise HTTPException(
@@ -151,7 +154,166 @@ async def analyze_crypto(request: AnalyzeRequest):
         ) from e
 
 
+class ExplainRequest(BaseModel):
+    prompt: str = ""
+    market_context: dict = Field(default_factory=dict)
+
+
+@app.post("/api/explain")
+async def explain_strategy(request: ExplainRequest):
+    prompt = (request.prompt or "").strip()
+    ctx = request.market_context or {}
+
+    if not prompt and not ctx:
+        raise HTTPException(
+            status_code=400,
+            detail="Missing required 'prompt' or 'market_context' payload. Please provide query prompt or market context.",
+        )
+
+    if not prompt:
+        prompt = "Giải thích tổng quan dự báo BTC và các yếu tố kỹ thuật hiện tại."
+
+    # Extract key metadata for tagging
+    evidence_tags = []
+    if "masterEnsemblePrediction" in ctx:
+        evidence_tags.append("Master Ensemble")
+    if "archetype" in ctx or "markov" in ctx:
+        evidence_tags.append("Markov Transitions")
+    if "regime" in ctx:
+        evidence_tags.append("Market Regime")
+    if "confluence" in ctx:
+        evidence_tags.append("Multi-TF Confluence")
+    if "smc" in ctx or "volumeProfile" in ctx or "smartMoney" in ctx:
+        evidence_tags.append("VPVR & SMC")
+    if "sentiment" in ctx:
+        evidence_tags.append("Market Sentiment")
+    if not evidence_tags:
+        evidence_tags = ["Market Analysis", "Technical Strategy"]
+
+    try:
+        llm = _build_llm()
+        system_prompt = (
+            "Bạn là chuyên gia phân tích chiến lược AI Bitcoin (Explainable AI - XAI). "
+            "Nhiệm vụ của bạn là giải thích rõ ràng, mạch lạc các luận điểm kỹ thuật và dữ liệu thị trường "
+            "dựa trên ngữ cảnh cung cấp. Không bịa đặt số liệu ngoài context. Định dạng câu trả lời bằng Markdown tiếng Việt."
+        )
+        human_prompt = f"""Dữ liệu ngữ cảnh thị trường (Market Context):
+{json.dumps(ctx, ensure_ascii=False, indent=2) if ctx else "Không có context chi tiết"}
+
+Câu hỏi / Yêu cầu của người dùng:
+{prompt}
+
+Hãy phân tích và giải thích:
+1. Đánh giá xu hướng và độ tin cậy từ dữ liệu hiện có.
+2. Phân tích các bằng chứng kỹ thuật (mẫu nến, chế độ thị trường, hội tụ đa khung, cấu trúc thanh khoản SMC/VPVR nếu có).
+3. Rủi ro cần lưu ý và khuyến nghị hành động ngắn gọn."""
+
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        answer_text = response.content
+    except Exception as e:
+        answer_text = f"Không thể tạo giải thích từ LLM: {e!s}"
+
+    return {
+        "prompt": prompt,
+        "answer": answer_text,
+        "evidence_tags": evidence_tags,
+    }
+
+
+@app.post("/api/explain/stream")
+async def explain_strategy_stream(request: ExplainRequest):
+    prompt = (request.prompt or "").strip()
+    ctx = request.market_context or {}
+
+    if not prompt:
+        prompt = "Giải thích tổng quan dự báo BTC và các yếu tố kỹ thuật hiện tại."
+
+    evidence_tags = []
+    if "masterEnsemblePrediction" in ctx:
+        evidence_tags.append("Master Ensemble")
+    if "archetype" in ctx or "markov" in ctx:
+        evidence_tags.append("Markov Transitions")
+    if "regime" in ctx:
+        evidence_tags.append("Market Regime")
+    if "confluence" in ctx:
+        evidence_tags.append("Multi-TF Confluence")
+    if "smc" in ctx or "volumeProfile" in ctx or "smartMoney" in ctx:
+        evidence_tags.append("VPVR & SMC")
+    if "sentiment" in ctx:
+        evidence_tags.append("Market Sentiment")
+    if not evidence_tags:
+        evidence_tags = ["Market Analysis", "Technical Strategy"]
+
+    async def token_generator():
+        try:
+            llm = _build_llm()
+            system_prompt = (
+                "Bạn là chuyên gia phân tích chiến lược AI Bitcoin (Explainable AI - XAI). "
+                "Nhiệm vụ của bạn là giải thích rõ ràng, mạch lạc các luận điểm kỹ thuật và dữ liệu thị trường "
+                "dựa trên ngữ cảnh cung cấp. Không bịa đặt số liệu ngoài context. Định dạng câu trả lời bằng Markdown tiếng Việt."
+            )
+            human_prompt = f"""Dữ liệu ngữ cảnh thị trường (Market Context):
+{json.dumps(ctx, ensure_ascii=False, indent=2) if ctx else "Không có context chi tiết"}
+
+Câu hỏi / Yêu cầu của người dùng:
+{prompt}
+
+Hãy phân tích và giải thích:
+1. Đánh giá xu hướng và độ tin cậy từ dữ liệu hiện có.
+2. Phân tích các bằng chứng kỹ thuật (mẫu nến, chế độ thị trường, hội tụ đa khung, cấu trúc thanh khoản SMC/VPVR nếu có).
+3. Rủi ro cần lưu ý và khuyến nghị hành động ngắn gọn."""
+
+            async for chunk in llm.astream([SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]):
+                content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if content:
+                    payload = json.dumps({"token": content, "done": False}, ensure_ascii=False)
+                    yield f"data: {payload}\n\n"
+
+            payload = json.dumps({"token": "", "done": True, "evidence_tags": evidence_tags}, ensure_ascii=False)
+            yield f"data: {payload}\n\n"
+        except Exception as e:
+            err_payload = json.dumps({"token": f"\n\n[Lỗi kết nối LLM: {e!s}]", "done": True, "evidence_tags": evidence_tags}, ensure_ascii=False)
+            yield f"data: {err_payload}\n\n"
+
+    return StreamingResponse(token_generator(), media_type="text/event-stream")
+
+
+class RlPredictRequest(BaseModel):
+    state_features: list[float] = [0.5, 0.5, 0.5, 0.5, 0.5]
+
+
+class RlTrainRequest(BaseModel):
+    state_features: list[float]
+    action_name: str
+    reward: float
+    next_state_features: list[float]
+
+
+@app.post("/api/rl/predict")
+async def rl_predict(req: RlPredictRequest):
+    from rl_agent import global_rl_agent
+    action_name, confidence = global_rl_agent.get_action(req.state_features)
+    return {
+        "action": action_name,
+        "confidence": round(confidence, 3),
+        "status": "success"
+    }
+
+
+@app.post("/api/rl/train")
+async def rl_train(req: RlTrainRequest):
+    from rl_agent import global_rl_agent
+    global_rl_agent.update_q_value(req.state_features, req.action_name, req.reward, req.next_state_features)
+    return {
+        "message": "Q-value updated successfully",
+        "status": "success"
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
+

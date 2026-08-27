@@ -1,0 +1,27 @@
+{
+  "model_name": "BTCUSDT_4h_ws5_h1d_XGB_calibrated",
+  "symbol": "BTCUSDT",
+  "timeframe": "4h",
+  "window_size": 5,
+  "horizon": "1d",
+  "algorithm": "XGB",
+  "calibrated": true,
+  "calibration_method": "isotonic",
+  "optimal_threshold": 0.61,
+  "features_dim": 175,
+  "total_samples": 14113,
+  "train_samples": 9650,
+  "cal_samples": 2148,
+  "test_samples": 2231,
+  "metrics": {
+    "oos_accuracy": 0.576,
+    "oos_f1_weighted": 0.575,
+    "brier_score": 0.5388,
+    "expected_calibration_error": 0.0281,
+    "oos_win_rate": 0.5225,
+    "oos_trades_count": 689,
+    "oos_total_return_pct": 265.46,
+    "oos_sharpe": 1.826
+  },
+  "created_at": "2026-08-24T10:22:17.459305+00:00"
+}

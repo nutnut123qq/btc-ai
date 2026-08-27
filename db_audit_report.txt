@@ -1,0 +1,198 @@
+=============================================================================================================================
+                                         POSTGRESQL DATABASE STORAGE & VOLUME AUDIT                                          
+=============================================================================================================================
+Bảng (Table)                     | Dung Lượng   | Data / Index         | Tổng Số Dòng     | Mô Tả Dữ Liệu
+-----------------------------------------------------------------------------------------------------------------------------
+WindowClassificationDatasets     | 9805 MB      | 2252 MB / 459 MB     | 4,197,726 rows   | Dataset phân loại chuỗi nến cửa sổ (ML features)
+TechnicalIndicators              | 5071 MB      | 3887 MB / 1182 MB    | 13,422,863 rows  | Chỉ báo kỹ thuật (RSI, MACD, EMA, ATR, BB, VWAP...)
+Klines                           | 3946 MB      | 1827 MB / 2119 MB    | 13,424,573 rows  | Nến giá OHLCV lịch sử từ Binance
+PatternSequences                 | 1815 MB      | 1310 MB / 504 MB     | 6,025,087 rows   | Chuỗi mẫu nến liên tiếp
+MlFeatureStores                  | 1428 MB      | 473 MB / 955 MB      | 1,200,879 rows   | Vector đặc trưng phục vụ Machine Learning per-bar
+CandleVolumeStats                | 1280 MB      | 532 MB / 748 MB      | 1,285,976 rows   | Thống kê Volume Anomaly đa khung thời gian
+CandlePatterns                   | 1234 MB      | 489 MB / 745 MB      | 2,089,100 rows   | Các mẫu nến đã nhận diện (Hammer, Engulfing...)
+WindowVectors                    | 933 MB       | 497 MB / 436 MB      | 2,136,280 rows   | Vector đặc trưng của cửa sổ nến (Pattern Search)
+PriceTargets                     | 705 MB       | 235 MB / 470 MB      | 1,200,788 rows   | Target nhãn giá tương lai cho ML training
+FuturesMetrics                   | 290 MB       | 174 MB / 116 MB      | 1,595,136 rows   | Dữ liệu phái sinh (OI, L/S Ratios, Taker Ratio, Funding)
+ArchetypeOccurrences             | 240 MB       | 127 MB / 114 MB      | 1,214,729 rows   | Các lần xuất hiện của Archetype nến
+ArchetypeSequences               | 64 MB        | 33 MB / 31 MB        | 180,240 rows     | Chuỗi Archetype nến liên tiếp
+ArchetypeTransitions             | 20 MB        | 10 MB / 9432 kB      | 64,109 rows      | Ma trận chuyển trạng thái Archetype
+SmartMoneyStructures             | 18 MB        | 11 MB / 7048 kB      | 97,816 rows      | Cấu trúc thị trường Smart Money (BOS, CHoCH)
+CandleArchetypes                 | 16 MB        | 7192 kB / 576 kB     | 4,375 rows       | Định nghĩa các nhóm Archetype nến
+EnsemblePredictionRecords        | 9328 kB      | 8400 kB / 888 kB     | 16,560 rows      | Bản ghi dự đoán của mô hình Ensemble
+ArchetypeOutcomes                | 3368 kB      | 2336 kB / 1000 kB    | 12,039 rows      | Kết quả xác suất sau mỗi Archetype
+BacktestRuns                     | 1720 kB      | 8192 bytes / 32 kB   | 6 rows           | Kết quả các lượt chạy backtest chiến lược
+MarketRegimes                    | 1296 kB      | 760 kB / 496 kB      | 5,500 rows       | Phân loại chế độ thị trường (Bull, Bear, Sideways)
+NewsArticles                     | 1104 kB      | 704 kB / 368 kB      | 1,222 rows       | Tin tức thị trường RSS đã thu thập
+NewsChunks                       | 680 kB       | 528 kB / 120 kB      | 1,246 rows       | Đoạn văn bản tin tức kèm vector embedding
+BacktestTrades                   | 448 kB       | 264 kB / 144 kB      | 2,087 rows       | Chi tiết từng lệnh giao dịch trong backtest
+MarketMetrics                    | 200 kB       | 64 kB / 104 kB       | 635 rows         | Chỉ số phái sinh thu thập định kỳ
+AppAlerts                        | 144 kB       | 8192 bytes / 112 kB  | 30 rows          | Thông báo & cảnh báo hệ thống
+CandleSequenceSignals            | 96 kB        | 16 kB / 48 kB        | 73 rows          | Lịch sử tín hiệu kích hoạt quy tắc
+RegimeTransitions                | 88 kB        | 24 kB / 32 kB        | 211 rows         | Chuyển tiếp giữa các chế độ thị trường
+CandleSequenceRules              | 80 kB        | 16 kB / 32 kB        | 20 rows          | Quy tắc chuỗi nến phát hiện tự động
+PaperTrades                      | 72 kB        | 8192 bytes / 64 kB   | 22 rows          | Sổ lệnh & vị thế Paper Trading
+ModelPredictions                 | 56 kB        | 8192 bytes / 48 kB   | 2 rows           | Lịch sử dự đoán của các mô hình ML
+ConfluenceSnapshots              | 48 kB        | 8192 bytes / 32 kB   | 1 rows           | Ảnh chụp điểm hội tụ tín hiệu
+VolumeProfileSnapshots           | 48 kB        | 8192 bytes / 32 kB   | 2 rows           | Ảnh chụp phân phối Volume Profile
+PriceAlertSettings               | 32 kB        | 8192 bytes / 16 kB   | 1 rows           | Cài đặt ngưỡng cảnh báo giá người dùng
+SentimentSnapshots               | 24 kB        | 0 bytes / 16 kB      | 0 rows           | Ảnh chụp tâm lý thị trường
+__EFMigrationsHistory            | 24 kB        | 8192 bytes / 16 kB   | 26 rows          | Lịch sử EF Core Database Migrations
+-----------------------------------------------------------------------------------------------------------------------------
+TỔNG CỘNG TẤT CẢ CÁC BẢNG:       | 26 GB        | -                    | 48,179,360 rows | Database: bitcoin_analyst
+=============================================================================================================================
+
+=============================================================================================================================
+                                PHÂN TÍCH CHI TIẾT BẢNG KLINES (NƠI CHỨA TRIỆU DÒNG DỮ LIỆU)                                 
+=============================================================================================================================
+Symbol       | Khung (TF) | Số Lượng Dòng    | Từ Ngày (UTC)        | Đến Ngày (UTC)       | Ghi Chú
+-----------------------------------------------------------------------------------------------------------------------------
+BTCUSDT      | 1m         | 3,492,783 rows   | 2020-01-01 00:00     | 2026-08-24 04:09     | Khung 1 phút (chiếm đa số ~3.49M)
+BTCUSDT      | 5m         | 698,626 rows     | 2020-01-01 00:00     | 2026-08-24 09:35     | Khung 5 phút (~698K)
+BTCUSDT      | 15m        | 232,878 rows     | 2020-01-01 00:00     | 2026-08-24 09:30     | Khung 15 phút (~232K)
+BTCUSDT      | 30m        | 116,442 rows     | 2020-01-01 00:00     | 2026-08-24 09:30     | Khung 30 phút (~116K)
+BTCUSDT      | 1h         | 58,226 rows      | 2020-01-01 00:00     | 2026-08-24 09:00     | Khung 1 giờ (~58K)
+BTCUSDT      | 4h         | 14,564 rows      | 2020-01-01 00:00     | 2026-08-24 08:00     | Khung 4 giờ (~14K)
+BTCUSDT      | 1d         | 2,428 rows       | 2020-01-01 00:00     | 2026-08-24 00:00     | Khung 1 ngày (~2.4K)
+ETHUSDT      | 1m         | 3,493,030 rows   | 2020-01-01 00:00     | 2026-08-24 08:16     | Khung 1 phút (chiếm đa số ~3.49M)
+ETHUSDT      | 5m         | 698,609 rows     | 2020-01-01 00:00     | 2026-08-24 08:10     | Khung 5 phút (~698K)
+ETHUSDT      | 15m        | 232,872 rows     | 2020-01-01 00:00     | 2026-08-24 08:00     | Khung 15 phút (~232K)
+ETHUSDT      | 30m        | 116,439 rows     | 2020-01-01 00:00     | 2026-08-24 08:00     | Khung 30 phút (~116K)
+ETHUSDT      | 1h         | 58,225 rows      | 2020-01-01 00:00     | 2026-08-24 08:00     | Khung 1 giờ (~58K)
+ETHUSDT      | 4h         | 14,564 rows      | 2020-01-01 00:00     | 2026-08-24 08:00     | Khung 4 giờ (~14K)
+ETHUSDT      | 1d         | 2,428 rows       | 2020-01-01 00:00     | 2026-08-24 00:00     | Khung 1 ngày (~2.4K)
+SOLUSDT      | 1m         | 3,172,420 rows   | 2020-08-11 06:00     | 2026-08-24 07:43     | Khung 1 phút (chiếm đa số ~3.49M)
+SOLUSDT      | 5m         | 634,485 rows     | 2020-08-11 06:00     | 2026-08-24 07:35     | Khung 5 phút (~698K)
+SOLUSDT      | 15m        | 211,497 rows     | 2020-08-11 06:00     | 2026-08-24 07:30     | Khung 15 phút (~232K)
+SOLUSDT      | 30m        | 105,751 rows     | 2020-08-11 06:00     | 2026-08-24 07:30     | Khung 30 phút (~116K)
+SOLUSDT      | 1h         | 52,878 rows      | 2020-08-11 06:00     | 2026-08-24 07:00     | Khung 1 giờ (~58K)
+SOLUSDT      | 4h         | 13,224 rows      | 2020-08-11 08:00     | 2026-08-24 04:00     | Khung 4 giờ (~14K)
+SOLUSDT      | 1d         | 2,204 rows       | 2020-08-12 00:00     | 2026-08-24 00:00     | Khung 1 ngày (~2.4K)
+=============================================================================================================================
+
+=============================================================================================================================
+                           PHÂN TÍCH CHI TIẾT BẢNG TECHNICAL INDICATORS (TÍNH TOÁN THEO TỪNG NẾN)                            
+=============================================================================================================================
+Symbol       | Khung (TF) | Số Lượng Dòng    | Từ Ngày (UTC)        | Đến Ngày (UTC)       | Ghi Chú
+-----------------------------------------------------------------------------------------------------------------------------
+BTCUSDT      | 1m         | 3,492,783 rows   | 2020-01-01 00:00     | 2026-08-24 04:09     | Full chỉ báo (RSI, EMA, MACD, BB...)
+BTCUSDT      | 5m         | 696,916 rows     | 2020-01-01 00:00     | 2026-08-24 09:35     | Full chỉ báo (RSI, EMA, MACD, BB...)
+BTCUSDT      | 15m        | 232,878 rows     | 2020-01-01 00:00     | 2026-08-24 09:30     | Full chỉ báo (RSI, EMA, MACD, BB...)
+BTCUSDT      | 30m        | 116,442 rows     | 2020-01-01 00:00     | 2026-08-24 09:30     | Full chỉ báo (RSI, EMA, MACD, BB...)
+BTCUSDT      | 1h         | 58,226 rows      | 2020-01-01 00:00     | 2026-08-24 09:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+BTCUSDT      | 4h         | 14,564 rows      | 2020-01-01 00:00     | 2026-08-24 08:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+BTCUSDT      | 1d         | 2,428 rows       | 2020-01-01 00:00     | 2026-08-24 00:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+ETHUSDT      | 1m         | 3,493,030 rows   | 2020-01-01 00:00     | 2026-08-24 08:16     | Full chỉ báo (RSI, EMA, MACD, BB...)
+ETHUSDT      | 5m         | 698,609 rows     | 2020-01-01 00:00     | 2026-08-24 08:10     | Full chỉ báo (RSI, EMA, MACD, BB...)
+ETHUSDT      | 15m        | 232,872 rows     | 2020-01-01 00:00     | 2026-08-24 08:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+ETHUSDT      | 30m        | 116,439 rows     | 2020-01-01 00:00     | 2026-08-24 08:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+ETHUSDT      | 1h         | 58,225 rows      | 2020-01-01 00:00     | 2026-08-24 08:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+ETHUSDT      | 4h         | 14,564 rows      | 2020-01-01 00:00     | 2026-08-24 08:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+ETHUSDT      | 1d         | 2,428 rows       | 2020-01-01 00:00     | 2026-08-24 00:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+SOLUSDT      | 1m         | 3,172,420 rows   | 2020-08-11 06:00     | 2026-08-24 07:43     | Full chỉ báo (RSI, EMA, MACD, BB...)
+SOLUSDT      | 5m         | 634,485 rows     | 2020-08-11 06:00     | 2026-08-24 07:35     | Full chỉ báo (RSI, EMA, MACD, BB...)
+SOLUSDT      | 15m        | 211,497 rows     | 2020-08-11 06:00     | 2026-08-24 07:30     | Full chỉ báo (RSI, EMA, MACD, BB...)
+SOLUSDT      | 30m        | 105,751 rows     | 2020-08-11 06:00     | 2026-08-24 07:30     | Full chỉ báo (RSI, EMA, MACD, BB...)
+SOLUSDT      | 1h         | 52,878 rows      | 2020-08-11 06:00     | 2026-08-24 07:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+SOLUSDT      | 4h         | 13,224 rows      | 2020-08-11 08:00     | 2026-08-24 04:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+SOLUSDT      | 1d         | 2,204 rows       | 2020-08-12 00:00     | 2026-08-24 00:00     | Full chỉ báo (RSI, EMA, MACD, BB...)
+=============================================================================================================================
+
+=============================================================================================================================
+                                          PHÂN TÍCH CHI TIẾT BẢNG ML FEATURE STORES                                          
+=============================================================================================================================
+Symbol       | Khung (TF) | Số Lượng Dòng    | Từ Ngày (UTC)        | Đến Ngày (UTC)      
+-----------------------------------------------------------------------------------------------------------------------------
+BTCUSDT      | 5m         | 696,855 rows     | 2020-01-01 04:05     | 2026-08-24 08:35    
+BTCUSDT      | 15m        | 232,825 rows     | 2020-01-01 12:15     | 2026-08-24 08:30    
+BTCUSDT      | 30m        | 116,407 rows     | 2020-01-01 16:30     | 2026-08-24 08:30    
+BTCUSDT      | 1h         | 58,200 rows      | 2020-01-02 01:00     | 2026-08-24 08:00    
+BTCUSDT      | 4h         | 14,539 rows      | 2020-01-05 04:00     | 2026-08-24 08:00    
+BTCUSDT      | 1d         | 2,379 rows       | 2020-02-19 00:00     | 2026-08-24 00:00    
+ETHUSDT      | 1h         | 31,898 rows      | 2023-01-03 01:00     | 2026-08-24 04:00    
+ETHUSDT      | 4h         | 7,939 rows       | 2023-01-09 04:00     | 2026-08-24 04:00    
+SOLUSDT      | 1h         | 31,898 rows      | 2023-01-03 01:00     | 2026-08-24 04:00    
+SOLUSDT      | 4h         | 7,939 rows       | 2023-01-09 04:00     | 2026-08-24 04:00    
+=============================================================================================================================
+
+=============================================================================================================================
+                       PHÂN TÍCH CHI TIẾT BẢNG WINDOW CLASSIFICATION DATASETS (BẢNG LỚN NHẤT 7.35 GB)                        
+=============================================================================================================================
+Symbol       | Khung (TF) | WindowSize   | Số Lượng Dòng    | Ghi Chú
+-----------------------------------------------------------------------------------------------------------------------------
+BTCUSDT      | 15m        | 5            | 64,641 rows      | Feature vector flattened
+BTCUSDT      | 15m        | 10           | 64,614 rows      | Feature vector flattened
+BTCUSDT      | 15m        | 15           | 64,602 rows      | Feature vector flattened
+BTCUSDT      | 15m        | 20           | 64,569 rows      | Feature vector flattened
+BTCUSDT      | 15m        | 25           | 64,563 rows      | Feature vector flattened
+BTCUSDT      | 1d         | 5            | 2,329 rows       | Feature vector flattened
+BTCUSDT      | 1d         | 10           | 2,354 rows       | Feature vector flattened
+BTCUSDT      | 1d         | 15           | 2,319 rows       | Feature vector flattened
+BTCUSDT      | 1d         | 20           | 2,314 rows       | Feature vector flattened
+BTCUSDT      | 1d         | 25           | 2,309 rows       | Feature vector flattened
+BTCUSDT      | 1h         | 5            | 172,188 rows     | Feature vector flattened
+BTCUSDT      | 1h         | 10           | 171,948 rows     | Feature vector flattened
+BTCUSDT      | 1h         | 15           | 171,708 rows     | Feature vector flattened
+BTCUSDT      | 1h         | 20           | 171,468 rows     | Feature vector flattened
+BTCUSDT      | 1h         | 25           | 171,228 rows     | Feature vector flattened
+BTCUSDT      | 30m        | 5            | 340,323 rows     | Feature vector flattened
+BTCUSDT      | 30m        | 10           | 340,083 rows     | Feature vector flattened
+BTCUSDT      | 30m        | 15           | 333,485 rows     | Feature vector flattened
+BTCUSDT      | 30m        | 20           | 330,306 rows     | Feature vector flattened
+BTCUSDT      | 30m        | 25           | 330,306 rows     | Feature vector flattened
+BTCUSDT      | 4h         | 5            | 28,226 rows      | Feature vector flattened
+BTCUSDT      | 4h         | 10           | 28,206 rows      | Feature vector flattened
+BTCUSDT      | 4h         | 15           | 28,186 rows      | Feature vector flattened
+BTCUSDT      | 4h         | 20           | 28,166 rows      | Feature vector flattened
+BTCUSDT      | 4h         | 25           | 24,175 rows      | Feature vector flattened
+BTCUSDT      | 5m         | 5            | 60,465 rows      | Feature vector flattened
+BTCUSDT      | 5m         | 10           | 60,459 rows      | Feature vector flattened
+BTCUSDT      | 5m         | 15           | 60,453 rows      | Feature vector flattened
+BTCUSDT      | 5m         | 20           | 60,447 rows      | Feature vector flattened
+BTCUSDT      | 5m         | 25           | 60,438 rows      | Feature vector flattened
+ETHUSDT      | 1h         | 10           | 95,568 rows      | Feature vector flattened
+ETHUSDT      | 1h         | 15           | 95,538 rows      | Feature vector flattened
+ETHUSDT      | 1h         | 20           | 95,508 rows      | Feature vector flattened
+ETHUSDT      | 1h         | 25           | 95,478 rows      | Feature vector flattened
+ETHUSDT      | 4h         | 10           | 15,848 rows      | Feature vector flattened
+ETHUSDT      | 4h         | 15           | 15,838 rows      | Feature vector flattened
+ETHUSDT      | 4h         | 20           | 15,828 rows      | Feature vector flattened
+ETHUSDT      | 4h         | 25           | 15,818 rows      | Feature vector flattened
+SOLUSDT      | 1h         | 10           | 95,568 rows      | Feature vector flattened
+SOLUSDT      | 1h         | 15           | 95,538 rows      | Feature vector flattened
+SOLUSDT      | 1h         | 20           | 95,508 rows      | Feature vector flattened
+SOLUSDT      | 1h         | 25           | 95,478 rows      | Feature vector flattened
+SOLUSDT      | 4h         | 10           | 15,848 rows      | Feature vector flattened
+SOLUSDT      | 4h         | 15           | 15,838 rows      | Feature vector flattened
+SOLUSDT      | 4h         | 20           | 15,828 rows      | Feature vector flattened
+SOLUSDT      | 4h         | 25           | 15,818 rows      | Feature vector flattened
+=============================================================================================================================
+
+=============================================================================================================================
+                                           PHÂN TÍCH CHI TIẾT BẢNG FUTURES METRICS                                           
+=============================================================================================================================
+Symbol       | Số Lượng Dòng    | Từ Ngày (UTC)        | Đến Ngày (UTC)       | Chi Tiết Chỉ Số
+-----------------------------------------------------------------------------------------------------------------------------
+BTCUSDT      | 592,678 rows     | 2019-09-10 08:00     | 2026-08-24 09:35     | OI, L/S Ratios, Taker Volume, Funding Rate
+ETHUSDT      | 501,668 rows     | 2019-11-27 08:00     | 2026-08-24 08:00     | OI, L/S Ratios, Taker Volume, Funding Rate
+SOLUSDT      | 500,790 rows     | 2020-09-13 16:00     | 2026-08-24 08:00     | OI, L/S Ratios, Taker Volume, Funding Rate
+=============================================================================================================================
+
+=============================================================================================================================
+                                    PHÂN TÍCH CÁC BẢNG PATTERNS, SEQUENCES & MODELS KHÁC                                     
+=============================================================================================================================
+Bảng (Table)                     | Số Lượng Dòng    | Ghi Chú & Thống Kê Nổi Bật
+-----------------------------------------------------------------------------------------------------------------------------
+CandlePatterns                   |  2,089,100 rows    | Hammer, Engulfing, Morning Star, Shooting Star...
+CandleVolumeStats                |  1,285,976 rows    | Thống kê phân phối Volume Z-Score theo nến
+WindowVectors                    |  2,136,280 rows    | Dense embedding vector cho Pattern Search
+PatternSequences                 |  6,025,087 rows    | Chuỗi hình thành mẫu nến n-gram
+PriceTargets                     |  1,200,788 rows    | Nhãn phân loại Up/Down/Sideways cho training
+ArchetypeOccurrences             |  1,214,729 rows    | 
+ArchetypeSequences               |    180,240 rows    | 
+PaperTrades                      |         22 rows    | Trạng thái: closed:21, open:1
+ModelPredictions                 |          2 rows    | Models: XGB_balanced:2
+BacktestRuns                     |          6 rows    | Lịch sử backtest các chiến lược ML
+BacktestTrades                   |      2,087 rows    | 
+NewsArticles                     |      1,222 rows    | RSS Articles từ CoinDesk, Cointelegraph, Decrypt...
+NewsChunks                       |      1,246 rows    | Text chunks kèm 768-dim / 1536-dim vector embedding
+=============================================================================================================================

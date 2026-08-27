@@ -1,22 +1,27 @@
 {
+  "model_name": "BTCUSDT_4h_ws5_h4h_XGB_calibrated",
   "symbol": "BTCUSDT",
   "timeframe": "4h",
   "window_size": 5,
   "horizon": "4h",
-  "model_name": "XGB_calibrated",
-  "base_model": "XGB_balanced (n_est=200, depth=6, lr=0.05)",
-  "calibration": "isotonic, cv=prefit",
-  "train_end": "2024-07-01",
-  "cal_range": [
-    "2024-07-08",
-    "2025-07-01"
-  ],
-  "recommended_threshold": 0.61,
-  "test_metrics": {
-    "trades": 667,
-    "win_rate": 0.5757,
-    "total_return_pct": 67.35,
-    "sharpe": 3.462
+  "algorithm": "XGB",
+  "calibrated": true,
+  "calibration_method": "isotonic",
+  "optimal_threshold": 0.56,
+  "features_dim": 175,
+  "total_samples": 14113,
+  "train_samples": 9650,
+  "cal_samples": 2148,
+  "test_samples": 2231,
+  "metrics": {
+    "oos_accuracy": 0.6042,
+    "oos_f1_weighted": 0.5916,
+    "brier_score": 0.5091,
+    "expected_calibration_error": 0.0346,
+    "oos_win_rate": 0.5865,
+    "oos_trades_count": 728,
+    "oos_total_return_pct": 139.17,
+    "oos_sharpe": 5.416
   },
-  "note": "labels remapped {-1,0,1}->{0,1,2}; argmax(proba)-1 = label"
+  "created_at": "2026-08-24T10:22:03.318278+00:00"
 }

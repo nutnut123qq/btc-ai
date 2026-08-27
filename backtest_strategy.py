@@ -39,20 +39,14 @@ class NumpyEncoder(json.JSONEncoder):
             return obj.tolist()
         return super().default(obj)
 
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "bitcoin_analyst")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "123456")
+from db_config import get_db_connection
+from trading_config import FEE_BPS, SLIPPAGE_BPS, DEFAULT_SYMBOL
 
 LABEL_TO_SIDE = {1: "long", -1: "short", 0: "flat"}
 
 
 def get_connection():
-    return psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, database=DB_NAME,
-        user=DB_USER, password=DB_PASS,
-    )
+    return get_db_connection()
 
 
 def load_model(model_path: Path):
@@ -330,8 +324,8 @@ def parse_args():
     p.add_argument("--model", required=True, help="Path to .joblib model")
     p.add_argument("--start", required=True, help="Start date YYYY-MM-DD (UTC)")
     p.add_argument("--end", required=True, help="End date YYYY-MM-DD (UTC)")
-    p.add_argument("--fee-bps", type=float, default=10.0)
-    p.add_argument("--slippage-bps", type=float, default=5.0)
+    p.add_argument("--fee-bps", type=float, default=FEE_BPS)
+    p.add_argument("--slippage-bps", type=float, default=SLIPPAGE_BPS)
     p.add_argument("--confidence-threshold", type=float, default=0.0)
     p.add_argument("--side", choices=["long", "short"], default=None, help="Only trade one side")
     p.add_argument("--exit-horizon", choices=["1h", "4h", "1d"], default=None, help="Override holding period (default: model horizon)")

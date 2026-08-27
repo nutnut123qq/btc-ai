@@ -3,7 +3,7 @@ import os
 import re
 from typing import Any, TypedDict, List, Dict, Optional
 
-import requests
+import httpx
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
 
@@ -86,47 +86,54 @@ def _llm_failure_message(exc: BaseException) -> str:
     return raw
 
 
-def _retrieve_news_context(*, backend_base_url: str, query: str, top_k: int) -> str:
-    r = requests.get(
-        f"{backend_base_url}/api/rag/news-context",
-        params={"query": query, "topK": top_k},
-        timeout=30,
-    )
-    r.raise_for_status()
-    data = r.json()
-    return data.get("news_context", "") or ""
+async def _retrieve_news_context(*, backend_base_url: str, query: str, top_k: int) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                f"{backend_base_url}/api/rag/news-context",
+                params={"query": query, "topK": top_k},
+            )
+            r.raise_for_status()
+            data = r.json()
+            return data.get("news_context", "") or ""
+    except Exception:
+        return ""
 
 
-def _retrieve_tech_summary(*, backend_base_url: str, interval: str, limit: int) -> str:
-    r = requests.get(
-        f"{backend_base_url}/api/market/btc/tech-summary",
-        params={"interval": interval, "limit": limit},
-        timeout=30,
-    )
-    r.raise_for_status()
-    data = r.json()
-    return data.get("tech_context", "") or ""
+async def _retrieve_tech_summary(*, backend_base_url: str, interval: str, limit: int) -> str:
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(
+                f"{backend_base_url}/api/market/btc/tech-summary",
+                params={"interval": interval, "limit": limit},
+            )
+            r.raise_for_status()
+            data = r.json()
+            return data.get("tech_context", "") or ""
+    except Exception:
+        return ""
 
 
 def build_ta_graph(*, llm: Any, backend_base_url: str):
     """
-    Build a multi-node TA pipeline inspired by TradingAgents.
+    Build an async multi-node TA pipeline inspired by TradingAgents.
 
     Note: We keep the final output schema aligned with the UI contract.
     """
 
-    def news_analyst_node(state: TAState) -> Dict[str, Any]:
+    async def news_analyst_node(state: TAState) -> Dict[str, Any]:
         symbol = state["symbol"]
         query = f"{symbol} BTC cryptocurrency market news regulation ETF price"
 
         # Tool retrieval (News)
-        news_context: str
-        try:
-            news_context = _retrieve_news_context(
-                backend_base_url=backend_base_url, query=query, top_k=8
-            )
-        except Exception:
-            news_context = state.get("news_context", "") or ""
+        news_context = state.get("news_context", "") or ""
+        if not news_context:
+            try:
+                news_context = await _retrieve_news_context(
+                    backend_base_url=backend_base_url, query=query, top_k=8
+                )
+            except Exception:
+                news_context = ""
 
         # Agent reasoning (text only; JSON produced at RiskJudgeNode)
         system_prompt = (
@@ -140,7 +147,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Cuối cùng ghi ngắn gọn: Bull case và Bear case (mỗi dòng 1-2 câu)."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             news_agent_text = response.content
@@ -151,18 +158,19 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "news_agent_text": news_agent_text,
         }
 
-    def tech_analyst_node(state: TAState) -> Dict[str, Any]:
+    async def tech_analyst_node(state: TAState) -> Dict[str, Any]:
         interval = "1h"
         limit = 48
 
         # Tool retrieval (Tech)
-        tech_context: str
-        try:
-            tech_context = _retrieve_tech_summary(
-                backend_base_url=backend_base_url, interval=interval, limit=limit
-            )
-        except Exception:
-            tech_context = state.get("tech_context", "") or ""
+        tech_context = state.get("tech_context", "") or ""
+        if not tech_context:
+            try:
+                tech_context = await _retrieve_tech_summary(
+                    backend_base_url=backend_base_url, interval=interval, limit=limit
+                )
+            except Exception:
+                tech_context = ""
 
         system_prompt = (
             "Bạn là Tech Analyst (crypto/BTC). "
@@ -176,7 +184,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Cuối cùng ghi ngắn gọn: Bull case và Bear case (mỗi dòng 1-2 câu)."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             tech_agent_text = response.content
@@ -187,7 +195,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "tech_agent_text": tech_agent_text,
         }
 
-    def bull_researcher_node(state: TAState) -> Dict[str, Any]:
+    async def bull_researcher_node(state: TAState) -> Dict[str, Any]:
         system_prompt = (
             "Bạn là Bull Researcher. "
             "Dựa vào news_agent_text và tech_agent_text, "
@@ -200,7 +208,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Trả về chuỗi lập luận bull (2-5 gạch đầu dòng) + 1 kết luận tóm tắt."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             bull_text = response.content
@@ -208,7 +216,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             bull_text = f"(Bull Researcher LLM unavailable: {_llm_failure_message(e)})"
         return {"bull_arguments_text": bull_text}
 
-    def bear_researcher_node(state: TAState) -> Dict[str, Any]:
+    async def bear_researcher_node(state: TAState) -> Dict[str, Any]:
         system_prompt = (
             "Bạn là Bear Researcher. "
             "Dựa vào news_agent_text và tech_agent_text, "
@@ -221,7 +229,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Trả về chuỗi lập luận bear (2-5 gạch đầu dòng) + 1 kết luận tóm tắt."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             bear_text = response.content
@@ -229,7 +237,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             bear_text = f"(Bear Researcher LLM unavailable: {_llm_failure_message(e)})"
         return {"bear_arguments_text": bear_text}
 
-    def research_manager_node(state: TAState) -> Dict[str, Any]:
+    async def research_manager_node(state: TAState) -> Dict[str, Any]:
         system_prompt = (
             "Bạn là Research Manager. "
             "Tổng hợp bull_arguments_text và bear_arguments_text. "
@@ -242,7 +250,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Viết 1 đoạn tổng hợp + 3 bullet: điều kiện ủng hộ bull, điều kiện ủng hộ bear, và điểm mơ hồ."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             manager_text = response.content
@@ -250,7 +258,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             manager_text = f"(Research Manager LLM unavailable: {_llm_failure_message(e)})"
         return {"research_manager_text": manager_text}
 
-    def trader_node(state: TAState) -> Dict[str, Any]:
+    async def trader_node(state: TAState) -> Dict[str, Any]:
         system_prompt = (
             "Bạn là Trader. "
             "Dựa vào research_manager_text, news_agent_text và tech_agent_text, "
@@ -264,7 +272,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "(4) reasoning 3-6 câu."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             trader_text = response.content
@@ -272,7 +280,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             trader_text = f"(Trader LLM unavailable: {_llm_failure_message(e)})"
         return {"trader_text": trader_text}
 
-    def aggressive_debator_node(state: TAState) -> Dict[str, Any]:
+    async def aggressive_debator_node(state: TAState) -> Dict[str, Any]:
         system_prompt = (
             "Bạn là Aggressive Debator (về rủi ro). "
             "Dựa vào news_context/tech_context và các phân tích trước, "
@@ -286,7 +294,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Trả về 3-6 bullet risk triggers (mỗi bullet nêu trigger + vì sao nguy hiểm)."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             text = response.content
@@ -294,10 +302,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             text = f"(Aggressive Debator LLM unavailable: {_llm_failure_message(e)})"
         return {"aggressive_debator_text": text}
 
-    def neutral_debator_node(state: TAState) -> Dict[str, Any]:
+    async def neutral_debator_node(state: TAState) -> Dict[str, Any]:
         system_prompt = (
             "Bạn là Neutral Debator (về rủi ro). "
-            "Đánh giá cân bằng rủi ro vs cơ hội, "
+            "Đánh giá cân bằng rủi pro vs cơ hội, "
             "liệt kê những điều kiện có thể khiến dự báo sai. "
             "Không bịa."
         )
@@ -307,7 +315,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Trả về 3-6 bullet risk uncertainty (trigger/điều kiện + mức độ tác động)."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             text = response.content
@@ -315,7 +323,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             text = f"(Neutral Debator LLM unavailable: {_llm_failure_message(e)})"
         return {"neutral_debator_text": text}
 
-    def conservative_debator_node(state: TAState) -> Dict[str, Any]:
+    async def conservative_debator_node(state: TAState) -> Dict[str, Any]:
         system_prompt = (
             "Bạn là Conservative Debator (về rủi ro). "
             "Hãy nêu các kịch bản rủi ro theo hướng xấu nhất hợp lý dựa trên context, "
@@ -328,7 +336,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Trả về 2-5 kịch bản xấu (worst-case scenarios) + mỗi kịch bản kèm 1-2 biện pháp theo dõi/giảm thiểu."
         )
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
             text = response.content
@@ -336,7 +344,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             text = f"(Conservative Debator LLM unavailable: {_llm_failure_message(e)})"
         return {"conservative_debator_text": text}
 
-    def risk_judge_node(state: TAState) -> Dict[str, Any]:
+    async def risk_judge_node(state: TAState) -> Dict[str, Any]:
         symbol = state["symbol"]
         news_context = state.get("news_context", "") or ""
         tech_context = state.get("tech_context", "") or ""
@@ -377,7 +385,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
         )
 
         try:
-            response = llm.invoke(
+            response = await llm.ainvoke(
                 [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
             )
         except Exception as e:

@@ -1,0 +1,150 @@
+{
+  "engine_a_4h": {
+    "total_trades": 1020,
+    "winning_trades": 617,
+    "losing_trades": 403,
+    "win_rate_pct": 60.49,
+    "profit_factor": 1.39,
+    "sharpe_ratio": 5.35,
+    "sortino_ratio": 6.98,
+    "max_drawdown_pct": 25.18,
+    "net_return_pct": 274.55,
+    "buy_and_hold_return_pct": -31.88,
+    "trade_frequency_per_day": 1.73,
+    "duration_days": 589.2,
+    "model_name": "XGB_calibrated",
+    "timeframe": "4h",
+    "horizon": "4h",
+    "threshold": 0.61,
+    "prob_distribution": {
+      "count": 3359,
+      "mean": 0.632,
+      "std": 0.155,
+      "min": 0.348,
+      "p25": 0.513,
+      "median": 0.623,
+      "p75": 0.741,
+      "p90": 0.862,
+      "p99": 0.974,
+      "max": 1.0
+    },
+    "brier_score": 0.1969644038599082,
+    "log_loss": 0.5752498338409981,
+    "regime_breakdown": {
+      "Chop / Sideways": {
+        "trades_count": 432,
+        "win_rate_pct": 62.96,
+        "profit_factor": 1.75,
+        "cumulative_net_return_pct": 130.68
+      },
+      "Bull Trend": {
+        "trades_count": 235,
+        "win_rate_pct": 63.83,
+        "profit_factor": 1.63,
+        "cumulative_net_return_pct": 52.03
+      },
+      "Bear Trend": {
+        "trades_count": 353,
+        "win_rate_pct": 55.24,
+        "profit_factor": 1.06,
+        "cumulative_net_return_pct": 6.8
+      }
+    }
+  },
+  "engine_a_1h": {
+    "total_trades": 3744,
+    "winning_trades": 1844,
+    "losing_trades": 1900,
+    "win_rate_pct": 49.25,
+    "profit_factor": 0.96,
+    "sharpe_ratio": -0.66,
+    "sortino_ratio": -0.86,
+    "max_drawdown_pct": 44.77,
+    "net_return_pct": -33.14,
+    "buy_and_hold_return_pct": -32.38,
+    "trade_frequency_per_day": 6.35,
+    "duration_days": 589.2,
+    "model_name": "XGB_balanced",
+    "timeframe": "1h",
+    "horizon": "1h",
+    "threshold": 0.58,
+    "prob_distribution": {
+      "count": 13643,
+      "mean": 0.625,
+      "std": 0.158,
+      "min": 0.337,
+      "p25": 0.492,
+      "median": 0.599,
+      "p75": 0.75,
+      "p90": 0.862,
+      "p99": 0.96,
+      "max": 0.993
+    },
+    "brier_score": 0.18361782871715077,
+    "log_loss": 0.5405148389565547,
+    "regime_breakdown": {
+      "Bull Trend": {
+        "trades_count": 866,
+        "win_rate_pct": 47.23,
+        "profit_factor": 0.95,
+        "cumulative_net_return_pct": -8.98
+      },
+      "Chop / Sideways": {
+        "trades_count": 1780,
+        "win_rate_pct": 49.89,
+        "profit_factor": 1.05,
+        "cumulative_net_return_pct": 13.59
+      },
+      "Bear Trend": {
+        "trades_count": 1098,
+        "win_rate_pct": 49.82,
+        "profit_factor": 0.85,
+        "cumulative_net_return_pct": -35.33
+      }
+    }
+  },
+  "engine_b_ensemble": {
+    "total_trades": 5283,
+    "winning_trades": 1084,
+    "losing_trades": 4199,
+    "win_rate_pct": 20.52,
+    "profit_factor": 0.21,
+    "sharpe_ratio": -26.9,
+    "sortino_ratio": -37.24,
+    "max_drawdown_pct": 100.0,
+    "net_return_pct": -100.0,
+    "buy_and_hold_return_pct": -32.38,
+    "trade_frequency_per_day": 8.97,
+    "duration_days": 589.2,
+    "model_name": "5-Layer Master Ensemble (WAVE 5)",
+    "timeframe": "1h",
+    "horizon": "1h",
+    "threshold": 0.58,
+    "prob_distribution": {
+      "count": 13643,
+      "mean": 0.516,
+      "std": 0.147,
+      "min": 0.36,
+      "p25": 0.36,
+      "median": 0.442,
+      "p75": 0.641,
+      "p90": 0.778,
+      "p99": 0.778,
+      "max": 0.778
+    },
+    "regime_breakdown": {
+      "Bull Trend": {
+        "trades_count": 2576,
+        "win_rate_pct": 18.67,
+        "profit_factor": 0.16,
+        "cumulative_net_return_pct": -99.97
+      },
+      "Bear Trend": {
+        "trades_count": 2707,
+        "win_rate_pct": 22.28,
+        "profit_factor": 0.24,
+        "cumulative_net_return_pct": -99.97
+      }
+    }
+  }
+}

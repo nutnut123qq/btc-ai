@@ -1,7 +1,7 @@
-import psycopg2
 from datetime import datetime, timezone
+from db_config import get_db_connection
 
-conn = psycopg2.connect(host='localhost', port=5432, database='bitcoin_analyst', user='postgres', password='123456')
+conn = get_db_connection()
 cur = conn.cursor()
 
 def fmt_ms(ms):

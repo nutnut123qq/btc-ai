@@ -1,0 +1,111 @@
+{
+  "timestamp_utc": "2026-08-24T07:23:59.842467+00:00",
+  "before": {
+    "BTCUSDT": {
+      "symbol": "BTCUSDT",
+      "threshold": 0.61,
+      "tp_mult": 1.5,
+      "sl_mult": 1.0,
+      "total_trades": 287,
+      "win_rate_pct": 59.93031358885017,
+      "profit_factor": 1.593358812126616,
+      "sharpe_ratio": 3.261157904972989,
+      "max_drawdown_pct": -10.438635145252311,
+      "cumulative_net_return_pct": 138.38680896115852,
+      "buy_hold_return_pct": -28.866655570225603,
+      "blocked_by_confluence": 0
+    },
+    "ETHUSDT": {
+      "symbol": "ETHUSDT",
+      "threshold": 0.4,
+      "tp_mult": 1.5,
+      "sl_mult": 1.0,
+      "total_trades": 213,
+      "win_rate_pct": 41.31455399061033,
+      "profit_factor": 0.6499060163297743,
+      "sharpe_ratio": -2.6144339024356023,
+      "max_drawdown_pct": -71.14315777136973,
+      "cumulative_net_return_pct": -68.07842248636047,
+      "buy_hold_return_pct": -3.8862447390158588,
+      "blocked_by_confluence": 0
+    },
+    "SOLUSDT": {
+      "symbol": "SOLUSDT",
+      "threshold": 0.5,
+      "tp_mult": 1.5,
+      "sl_mult": 1.0,
+      "total_trades": 117,
+      "win_rate_pct": 38.46153846153847,
+      "profit_factor": 0.7045951025123004,
+      "sharpe_ratio": -1.6176229307839038,
+      "max_drawdown_pct": -51.74181591707618,
+      "cumulative_net_return_pct": -47.32335055241943,
+      "buy_hold_return_pct": -36.68480085969507,
+      "blocked_by_confluence": 0
+    },
+    "portfolio": {
+      "initial_capital": 10000.0,
+      "final_capital": 8559.06713749765,
+      "return_pct": -14.409328625023498,
+      "max_drawdown_pct": -16.275742421823605,
+      "win_rate_pct": 49.43273905996758,
+      "total_trades": 617,
+      "wins": 305,
+      "losses": 312
+    }
+  },
+  "after": {
+    "BTCUSDT": {
+      "symbol": "BTCUSDT",
+      "threshold": 0.61,
+      "tp_mult": 1.5,
+      "sl_mult": 1.0,
+      "total_trades": 287,
+      "win_rate_pct": 59.93031358885017,
+      "profit_factor": 1.593358812126616,
+      "sharpe_ratio": 3.261157904972989,
+      "max_drawdown_pct": -10.438635145252311,
+      "cumulative_net_return_pct": 138.38680896115852,
+      "buy_hold_return_pct": -28.866655570225603,
+      "blocked_by_confluence": 0
+    },
+    "ETHUSDT": {
+      "symbol": "ETHUSDT",
+      "threshold": 0.58,
+      "tp_mult": 1.8,
+      "sl_mult": 1.2,
+      "total_trades": 1,
+      "win_rate_pct": 0.0,
+      "profit_factor": 0.0,
+      "sharpe_ratio": -29845.33372761361,
+      "max_drawdown_pct": 0.0,
+      "cumulative_net_return_pct": -3.1715125935924737,
+      "buy_hold_return_pct": -3.8862447390158588,
+      "blocked_by_confluence": 13
+    },
+    "SOLUSDT": {
+      "symbol": "SOLUSDT",
+      "threshold": 0.55,
+      "tp_mult": 2.2,
+      "sl_mult": 1.5,
+      "total_trades": 5,
+      "win_rate_pct": 40.0,
+      "profit_factor": 0.32195255037217896,
+      "sharpe_ratio": -1.063347199994311,
+      "max_drawdown_pct": -5.870058656926299,
+      "cumulative_net_return_pct": -8.037181701275763,
+      "buy_hold_return_pct": -36.68480085969507,
+      "blocked_by_confluence": 30
+    },
+    "portfolio": {
+      "initial_capital": 10000.0,
+      "final_capital": 11697.465905635981,
+      "return_pct": 16.974659056359815,
+      "max_drawdown_pct": -3.0125311594057167,
+      "win_rate_pct": 59.38566552901023,
+      "total_trades": 293,
+      "wins": 174,
+      "losses": 119
+    }
+  }
+}

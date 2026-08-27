@@ -18,12 +18,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
 
 import lightgbm as lgb
-
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "bitcoin_analyst")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "123456")
+from db_config import get_db_connection
 
 SYMBOL = "BTCUSDT"
 TIMEFRAME = "1h"
@@ -46,7 +41,7 @@ FEATURE_NAMES = [
 
 
 def fetch():
-    conn = psycopg2.connect(host=DB_HOST, port=DB_PORT, database=DB_NAME, user=DB_USER, password=DB_PASS)
+    conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
         '''

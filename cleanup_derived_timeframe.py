@@ -25,13 +25,7 @@ import sys
 import time
 import argparse
 
-import psycopg2
-
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "bitcoin_analyst")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "123456")
+from db_config import get_db_connection
 
 # Order: downstream-derived first, upstream last.
 DELETE_QUERIES = [
@@ -69,13 +63,7 @@ def main():
     symbol = args.symbol
     timeframe = args.timeframe
 
-    conn = psycopg2.connect(
-        host=DB_HOST,
-        port=DB_PORT,
-        database=DB_NAME,
-        user=DB_USER,
-        password=DB_PASS,
-    )
+    conn = get_db_connection()
     conn.autocommit = False
     cur = conn.cursor()
 

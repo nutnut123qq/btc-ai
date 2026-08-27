@@ -1,0 +1,50 @@
+{
+  "symbol": "SOLUSDT",
+  "timeframe": "4h",
+  "window_size": 5,
+  "horizon": "4h",
+  "model_name": "XGB_v20260825",
+  "version": "v20260825",
+  "base_model": "XGBoost (n_estimators=200, depth=6, lr=0.04)",
+  "calibration": "isotonic (cv=5)",
+  "feature_dim": 175,
+  "created_at_utc": "2026-08-25T04:51:36.160559+00:00",
+  "train_window_start": "2024-10-23T18:14:24+00:00",
+  "train_window_end": "2026-04-24T16:19:12+00:00",
+  "val_window_start": "2026-04-24T16:19:12+00:00",
+  "val_window_end": "2026-07-25T00:00:00+00:00",
+  "test_window_start": "2026-07-25T00:00:00+00:00",
+  "test_window_end": "2026-08-24T00:00:00+00:00",
+  "sample_counts": {
+    "train": 3288,
+    "val": 547,
+    "test": 181
+  },
+  "optimal_threshold": 0.5,
+  "validation_metrics": {
+    "brier_score": 0.2995,
+    "log_loss": 0.5662,
+    "accuracy": 0.9726,
+    "f1_macro": 0.9718,
+    "f1_weighted": 0.9725
+  },
+  "oos_metrics": {
+    "brier_score": 0.5328,
+    "log_loss": 0.9066,
+    "accuracy": 0.6077,
+    "f1_macro": 0.4018,
+    "f1_weighted": 0.5423
+  },
+  "before_metrics": {
+    "brier_score": 0.5141,
+    "log_loss": 0.8626,
+    "accuracy": 0.5967,
+    "f1_macro": 0.4588,
+    "f1_weighted": 0.5744
+  },
+  "retrain_reasons": [
+    "Concept drift detected: Brier 0.5141 > 0.25",
+    "Force retrain flag enabled"
+  ],
+  "note": "labels remapped {-1,0,1}->{0,1,2}; argmax(proba)-1 = direction"
+}

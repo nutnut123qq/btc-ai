@@ -9,9 +9,12 @@ __pycache__/
 *$py.class
 *.so
 
-# Environment variables
+# Environment variables & secrets
 .env
-.env.local
+.env.*
+*.key
+*.pem
+*.local.json
 
 # IDE
 .idea/
@@ -23,3 +26,8 @@ __pycache__/
 Thumbs.db
 *.log
 *.bak
+
+# Temporary / Local packages & live dumps
+pgvector_pg17.zip
+pgvector_extracted/
+live_snapshots/

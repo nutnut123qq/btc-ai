@@ -1,0 +1,735 @@
+{
+  "timestamp_utc": "2026-08-24T06:48:08.334025+00:00",
+  "champions": {
+    "BTCUSDT": {
+      "symbol": "BTCUSDT",
+      "threshold": 0.61,
+      "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+      "days_count": 412,
+      "total_trades": 287,
+      "trade_freq_per_day": 0.6963202587949858,
+      "win_rate_pct": 59.93031358885017,
+      "profit_factor": 1.593358812126616,
+      "sharpe_ratio": 3.261157904972989,
+      "sortino_ratio": 7.723355627293386,
+      "max_drawdown_pct": -10.438635145252311,
+      "cumulative_net_return_pct": 138.38680896115852,
+      "buy_hold_return_pct": -28.866655570225603,
+      "alpha_pct": 167.2534645313841,
+      "brier_score": 0.49583332748913705,
+      "log_loss": 0.8197315848932238,
+      "regime_stats": {
+        "Bull": {
+          "trades": 65,
+          "win_rate": 60.0,
+          "profit_factor": 1.4680807094986728,
+          "net_return": 13.645150660834737
+        },
+        "Bear": {
+          "trades": 122,
+          "win_rate": 60.65573770491803,
+          "profit_factor": 1.6141100106473258,
+          "net_return": 54.30380245545374
+        },
+        "Sideways": {
+          "trades": 100,
+          "win_rate": 59.0,
+          "profit_factor": 1.6335279109236278,
+          "net_return": 35.94232181074683
+        }
+      }
+    },
+    "ETHUSDT": {
+      "symbol": "ETHUSDT",
+      "threshold": 0.4,
+      "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+      "days_count": 412,
+      "total_trades": 213,
+      "trade_freq_per_day": 0.5167812373635261,
+      "win_rate_pct": 41.31455399061033,
+      "profit_factor": 0.6499060163297743,
+      "sharpe_ratio": -2.6144339024356023,
+      "sortino_ratio": -6.974283494126461,
+      "max_drawdown_pct": -71.14315777136973,
+      "cumulative_net_return_pct": -68.07842248636047,
+      "buy_hold_return_pct": -3.8862447390158588,
+      "alpha_pct": -64.1921777473446,
+      "brier_score": 0.6533028611516436,
+      "log_loss": 1.0793747744491866,
+      "regime_stats": {
+        "Bull": {
+          "trades": 53,
+          "win_rate": 49.056603773584904,
+          "profit_factor": 1.12870170795197,
+          "net_return": 5.626149684769355
+        },
+        "Bear": {
+          "trades": 103,
+          "win_rate": 39.80582524271845,
+          "profit_factor": 0.5670817155143211,
+          "net_return": -55.59278405172784
+        },
+        "Sideways": {
+          "trades": 57,
+          "win_rate": 36.84210526315789,
+          "profit_factor": 0.5039475477845144,
+          "net_return": -31.945107893779003
+        }
+      }
+    },
+    "SOLUSDT": {
+      "symbol": "SOLUSDT",
+      "threshold": 0.5,
+      "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+      "days_count": 412,
+      "total_trades": 117,
+      "trade_freq_per_day": 0.2838657501010918,
+      "win_rate_pct": 38.46153846153847,
+      "profit_factor": 0.7045951025123004,
+      "sharpe_ratio": -1.6176229307839038,
+      "sortino_ratio": -4.282374845757967,
+      "max_drawdown_pct": -51.74181591707618,
+      "cumulative_net_return_pct": -47.32335055241943,
+      "buy_hold_return_pct": -36.68480085969507,
+      "alpha_pct": -10.638549692724354,
+      "brier_score": 0.6622900140671788,
+      "log_loss": 1.0921399561761327,
+      "regime_stats": {
+        "Bull": {
+          "trades": 27,
+          "win_rate": 37.03703703703704,
+          "profit_factor": 0.7044108849181504,
+          "net_return": -12.235511292756518
+        },
+        "Bear": {
+          "trades": 61,
+          "win_rate": 39.34426229508197,
+          "profit_factor": 0.7004709694585949,
+          "net_return": -32.06767334155908
+        },
+        "Sideways": {
+          "trades": 29,
+          "win_rate": 37.93103448275862,
+          "profit_factor": 0.7166582941457732,
+          "net_return": -11.646689423591038
+        }
+      }
+    }
+  },
+  "threshold_scans": {
+    "ETHUSDT": {
+      "0.35": {
+        "symbol": "ETHUSDT",
+        "threshold": 0.35,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 505,
+        "trade_freq_per_day": 1.225232511120097,
+        "win_rate_pct": 40.396039603960396,
+        "profit_factor": 0.7108791741280288,
+        "sharpe_ratio": -3.244847233765032,
+        "sortino_ratio": -8.969308641300776,
+        "max_drawdown_pct": -87.2453259811285,
+        "cumulative_net_return_pct": -86.29185969374517,
+        "buy_hold_return_pct": -3.8862447390158588,
+        "alpha_pct": -82.4056149547293,
+        "brier_score": 0.6533028611516436,
+        "log_loss": 1.0793747744491866,
+        "regime_stats": {
+          "Bull": {
+            "trades": 138,
+            "win_rate": 34.05797101449276,
+            "profit_factor": 0.5958987596565222,
+            "net_return": -52.50705083440259
+          },
+          "Bear": {
+            "trades": 201,
+            "win_rate": 41.29353233830846,
+            "profit_factor": 0.724566151840444,
+            "net_return": -57.28721898097211
+          },
+          "Sideways": {
+            "trades": 166,
+            "win_rate": 44.57831325301205,
+            "profit_factor": 0.8024794332521705,
+            "net_return": -32.42414442817281
+          }
+        }
+      },
+      "0.4": {
+        "symbol": "ETHUSDT",
+        "threshold": 0.4,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 213,
+        "trade_freq_per_day": 0.5167812373635261,
+        "win_rate_pct": 41.31455399061033,
+        "profit_factor": 0.6499060163297743,
+        "sharpe_ratio": -2.6144339024356023,
+        "sortino_ratio": -6.974283494126461,
+        "max_drawdown_pct": -71.14315777136973,
+        "cumulative_net_return_pct": -68.07842248636047,
+        "buy_hold_return_pct": -3.8862447390158588,
+        "alpha_pct": -64.1921777473446,
+        "brier_score": 0.6533028611516436,
+        "log_loss": 1.0793747744491866,
+        "regime_stats": {
+          "Bull": {
+            "trades": 53,
+            "win_rate": 49.056603773584904,
+            "profit_factor": 1.12870170795197,
+            "net_return": 5.626149684769355
+          },
+          "Bear": {
+            "trades": 103,
+            "win_rate": 39.80582524271845,
+            "profit_factor": 0.5670817155143211,
+            "net_return": -55.59278405172784
+          },
+          "Sideways": {
+            "trades": 57,
+            "win_rate": 36.84210526315789,
+            "profit_factor": 0.5039475477845144,
+            "net_return": -31.945107893779003
+          }
+        }
+      },
+      "0.45": {
+        "symbol": "ETHUSDT",
+        "threshold": 0.45,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 78,
+        "trade_freq_per_day": 0.18924383340072784,
+        "win_rate_pct": 42.30769230769231,
+        "profit_factor": 0.7683281153823197,
+        "sharpe_ratio": -0.9324021905303935,
+        "sortino_ratio": -2.35087038835487,
+        "max_drawdown_pct": -31.55251777440312,
+        "cumulative_net_return_pct": -26.78589666482437,
+        "buy_hold_return_pct": -3.8862447390158588,
+        "alpha_pct": -22.899651925808513,
+        "brier_score": 0.6533028611516436,
+        "log_loss": 1.0793747744491866,
+        "regime_stats": {
+          "Bull": {
+            "trades": 17,
+            "win_rate": 35.294117647058826,
+            "profit_factor": 0.7750485076404887,
+            "net_return": -4.868316234869452
+          },
+          "Bear": {
+            "trades": 46,
+            "win_rate": 41.30434782608695,
+            "profit_factor": 0.718949602334456,
+            "net_return": -23.661713137449613
+          },
+          "Sideways": {
+            "trades": 15,
+            "win_rate": 53.333333333333336,
+            "profit_factor": 1.088822906590564,
+            "net_return": 0.8154643496535163
+          }
+        }
+      },
+      "0.5": {
+        "symbol": "ETHUSDT",
+        "threshold": 0.5,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 37,
+        "trade_freq_per_day": 0.08976951071572987,
+        "win_rate_pct": 48.64864864864865,
+        "profit_factor": 0.9797664521800254,
+        "sharpe_ratio": -0.048852416013248814,
+        "sortino_ratio": -0.12841057764744226,
+        "max_drawdown_pct": -14.570279195636951,
+        "cumulative_net_return_pct": -3.196918742177368,
+        "buy_hold_return_pct": -3.8862447390158588,
+        "alpha_pct": 0.6893259968384906,
+        "brier_score": 0.6533028611516436,
+        "log_loss": 1.0793747744491866,
+        "regime_stats": {
+          "Bull": {
+            "trades": 5,
+            "win_rate": 60.0,
+            "profit_factor": 2.4013458603895534,
+            "net_return": 4.086573543958649
+          },
+          "Bear": {
+            "trades": 25,
+            "win_rate": 44.0,
+            "profit_factor": 0.7909484209391283,
+            "net_return": -11.125748409457536
+          },
+          "Sideways": {
+            "trades": 7,
+            "win_rate": 57.14285714285714,
+            "profit_factor": 2.4159528969210093,
+            "net_return": 4.645007277063562
+          }
+        }
+      },
+      "0.55": {
+        "symbol": "ETHUSDT",
+        "threshold": 0.55,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 15,
+        "trade_freq_per_day": 0.03639304488475536,
+        "win_rate_pct": 60.0,
+        "profit_factor": 1.3741213206575957,
+        "sharpe_ratio": 0.4820807937325982,
+        "sortino_ratio": 2.0692027886649322,
+        "max_drawdown_pct": -9.673929675891843,
+        "cumulative_net_return_pct": 7.322779526542522,
+        "buy_hold_return_pct": -3.8862447390158588,
+        "alpha_pct": 11.20902426555838,
+        "brier_score": 0.6533028611516436,
+        "log_loss": 1.0793747744491866,
+        "regime_stats": {
+          "Bull": {
+            "trades": 1,
+            "win_rate": 100.0,
+            "profit_factor": 52.80903995984014,
+            "net_return": 0.005280903995985575
+          },
+          "Bear": {
+            "trades": 12,
+            "win_rate": 50.0,
+            "profit_factor": 1.163694164965674,
+            "net_return": 2.426254475885248
+          },
+          "Sideways": {
+            "trades": 2,
+            "win_rate": 100.0,
+            "profit_factor": 47259.37179852843,
+            "net_return": 4.775003988983628
+          }
+        }
+      },
+      "0.6": {
+        "symbol": "ETHUSDT",
+        "threshold": 0.6,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 9,
+        "trade_freq_per_day": 0.021835826930853213,
+        "win_rate_pct": 66.66666666666666,
+        "profit_factor": 2.2150679597571594,
+        "sharpe_ratio": 0.9327730147597608,
+        "sortino_ratio": 5.185719049941861,
+        "max_drawdown_pct": -4.7091558975747,
+        "cumulative_net_return_pct": 13.455320572337026,
+        "buy_hold_return_pct": -3.8862447390158588,
+        "alpha_pct": 17.341565311352884,
+        "brier_score": 0.6533028611516436,
+        "log_loss": 1.0793747744491866,
+        "regime_stats": {
+          "Bull": {
+            "trades": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "net_return": 0.0
+          },
+          "Bear": {
+            "trades": 8,
+            "win_rate": 62.5,
+            "profit_factor": 2.077886322377704,
+            "net_return": 11.734381845621012
+          },
+          "Sideways": {
+            "trades": 1,
+            "win_rate": 100.0,
+            "profit_factor": 15402.05170771668,
+            "net_return": 1.540205170771669
+          }
+        }
+      }
+    },
+    "SOLUSDT": {
+      "0.45": {
+        "symbol": "SOLUSDT",
+        "threshold": 0.45,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 393,
+        "trade_freq_per_day": 0.9534977759805904,
+        "win_rate_pct": 38.67684478371501,
+        "profit_factor": 0.7046871007655895,
+        "sharpe_ratio": -2.9777074400748256,
+        "sortino_ratio": -8.123149736941798,
+        "max_drawdown_pct": -89.12824886730587,
+        "cumulative_net_return_pct": -84.93547597955306,
+        "buy_hold_return_pct": -36.68480085969507,
+        "alpha_pct": -48.25067511985799,
+        "brier_score": 0.6622900140671788,
+        "log_loss": 1.0921399561761327,
+        "regime_stats": {
+          "Bull": {
+            "trades": 96,
+            "win_rate": 43.75,
+            "profit_factor": 0.8839523373053033,
+            "net_return": -15.22206451312037
+          },
+          "Bear": {
+            "trades": 160,
+            "win_rate": 39.375,
+            "profit_factor": 0.7441989737718613,
+            "net_return": -53.68360619105796
+          },
+          "Sideways": {
+            "trades": 137,
+            "win_rate": 34.306569343065696,
+            "profit_factor": 0.5495325002748018,
+            "net_return": -61.63476701662907
+          }
+        }
+      },
+      "0.5": {
+        "symbol": "SOLUSDT",
+        "threshold": 0.5,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 117,
+        "trade_freq_per_day": 0.2838657501010918,
+        "win_rate_pct": 38.46153846153847,
+        "profit_factor": 0.7045951025123004,
+        "sharpe_ratio": -1.6176229307839038,
+        "sortino_ratio": -4.282374845757967,
+        "max_drawdown_pct": -51.74181591707618,
+        "cumulative_net_return_pct": -47.32335055241943,
+        "buy_hold_return_pct": -36.68480085969507,
+        "alpha_pct": -10.638549692724354,
+        "brier_score": 0.6622900140671788,
+        "log_loss": 1.0921399561761327,
+        "regime_stats": {
+          "Bull": {
+            "trades": 27,
+            "win_rate": 37.03703703703704,
+            "profit_factor": 0.7044108849181504,
+            "net_return": -12.235511292756518
+          },
+          "Bear": {
+            "trades": 61,
+            "win_rate": 39.34426229508197,
+            "profit_factor": 0.7004709694585949,
+            "net_return": -32.06767334155908
+          },
+          "Sideways": {
+            "trades": 29,
+            "win_rate": 37.93103448275862,
+            "profit_factor": 0.7166582941457732,
+            "net_return": -11.646689423591038
+          }
+        }
+      },
+      "0.55": {
+        "symbol": "SOLUSDT",
+        "threshold": 0.55,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 28,
+        "trade_freq_per_day": 0.06793368378487666,
+        "win_rate_pct": 35.714285714285715,
+        "profit_factor": 0.39118988402137744,
+        "sharpe_ratio": -2.1396627150498406,
+        "sortino_ratio": -5.210765469234007,
+        "max_drawdown_pct": -39.84788348056651,
+        "cumulative_net_return_pct": -32.75673641199606,
+        "buy_hold_return_pct": -36.68480085969507,
+        "alpha_pct": 3.9280644476990147,
+        "brier_score": 0.6622900140671788,
+        "log_loss": 1.0921399561761327,
+        "regime_stats": {
+          "Bull": {
+            "trades": 5,
+            "win_rate": 20.0,
+            "profit_factor": 0.18028565441028677,
+            "net_return": -9.496697717992786
+          },
+          "Bear": {
+            "trades": 19,
+            "win_rate": 31.57894736842105,
+            "profit_factor": 0.34202660539757457,
+            "net_return": -28.038171193901952
+          },
+          "Sideways": {
+            "trades": 4,
+            "win_rate": 75.0,
+            "profit_factor": 2.2806579363374726,
+            "net_return": 3.2481230969868324
+          }
+        }
+      },
+      "0.6": {
+        "symbol": "SOLUSDT",
+        "threshold": 0.6,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 8,
+        "trade_freq_per_day": 0.01940962393853619,
+        "win_rate_pct": 25.0,
+        "profit_factor": 0.36288414917578,
+        "sharpe_ratio": -1.2790085014746293,
+        "sortino_ratio": -2.9606400336889127,
+        "max_drawdown_pct": -18.03684924627399,
+        "cumulative_net_return_pct": -12.144303837438496,
+        "buy_hold_return_pct": -36.68480085969507,
+        "alpha_pct": 24.540497022256577,
+        "brier_score": 0.6622900140671788,
+        "log_loss": 1.0921399561761327,
+        "regime_stats": {
+          "Bull": {
+            "trades": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "net_return": 0.0
+          },
+          "Bear": {
+            "trades": 6,
+            "win_rate": 16.666666666666664,
+            "profit_factor": 0.27827899653784094,
+            "net_return": -11.905241618625261
+          },
+          "Sideways": {
+            "trades": 2,
+            "win_rate": 50.0,
+            "profit_factor": 0.9184055494191214,
+            "net_return": -0.2713694017734025
+          }
+        }
+      },
+      "0.65": {
+        "symbol": "SOLUSDT",
+        "threshold": 0.65,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 1,
+        "trade_freq_per_day": 0.002426202992317024,
+        "win_rate_pct": 0.0,
+        "profit_factor": 0.0,
+        "sharpe_ratio": -24258.7245593868,
+        "sortino_ratio": -Infinity,
+        "max_drawdown_pct": 0.0,
+        "cumulative_net_return_pct": -2.5778519063233807,
+        "buy_hold_return_pct": -36.68480085969507,
+        "alpha_pct": 34.10694895337169,
+        "brier_score": 0.6622900140671788,
+        "log_loss": 1.0921399561761327,
+        "regime_stats": {
+          "Bull": {
+            "trades": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "net_return": 0.0
+          },
+          "Bear": {
+            "trades": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "net_return": 0.0
+          },
+          "Sideways": {
+            "trades": 1,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "net_return": -2.5778519063233807
+          }
+        }
+      }
+    },
+    "BTCUSDT": {
+      "0.55": {
+        "symbol": "BTCUSDT",
+        "threshold": 0.55,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 348,
+        "trade_freq_per_day": 0.8443186413263243,
+        "win_rate_pct": 58.90804597701149,
+        "profit_factor": 1.5528676092577935,
+        "sharpe_ratio": 3.397070482997868,
+        "sortino_ratio": 8.413751425816093,
+        "max_drawdown_pct": -12.837143983249158,
+        "cumulative_net_return_pct": 174.56121743164766,
+        "buy_hold_return_pct": -28.866655570225603,
+        "alpha_pct": 203.42787300187325,
+        "brier_score": 0.49583332748913705,
+        "log_loss": 0.8197315848932238,
+        "regime_stats": {
+          "Bull": {
+            "trades": 79,
+            "win_rate": 59.49367088607595,
+            "profit_factor": 1.4088685094207174,
+            "net_return": 15.498438014045135
+          },
+          "Bear": {
+            "trades": 151,
+            "win_rate": 59.60264900662252,
+            "profit_factor": 1.671702817013131,
+            "net_return": 78.38194939593389
+          },
+          "Sideways": {
+            "trades": 118,
+            "win_rate": 57.6271186440678,
+            "profit_factor": 1.4686707259552731,
+            "net_return": 33.2637945735021
+          }
+        }
+      },
+      "0.6": {
+        "symbol": "BTCUSDT",
+        "threshold": 0.6,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 297,
+        "trade_freq_per_day": 0.7205822887181561,
+        "win_rate_pct": 58.58585858585859,
+        "profit_factor": 1.48707656734483,
+        "sharpe_ratio": 2.837747458477071,
+        "sortino_ratio": 6.768625235915823,
+        "max_drawdown_pct": -10.438635145252267,
+        "cumulative_net_return_pct": 115.61964489315528,
+        "buy_hold_return_pct": -28.866655570225603,
+        "alpha_pct": 144.48630046338087,
+        "brier_score": 0.49583332748913705,
+        "log_loss": 0.8197315848932238,
+        "regime_stats": {
+          "Bull": {
+            "trades": 70,
+            "win_rate": 57.14285714285714,
+            "profit_factor": 1.2526798257654703,
+            "net_return": 8.633951165329279
+          },
+          "Bear": {
+            "trades": 124,
+            "win_rate": 59.67741935483871,
+            "profit_factor": 1.5847681558749922,
+            "net_return": 52.973202113430176
+          },
+          "Sideways": {
+            "trades": 103,
+            "win_rate": 58.252427184466015,
+            "profit_factor": 1.5006262373611385,
+            "net_return": 29.750007939199197
+          }
+        }
+      },
+      "0.61": {
+        "symbol": "BTCUSDT",
+        "threshold": 0.61,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 287,
+        "trade_freq_per_day": 0.6963202587949858,
+        "win_rate_pct": 59.93031358885017,
+        "profit_factor": 1.593358812126616,
+        "sharpe_ratio": 3.261157904972989,
+        "sortino_ratio": 7.723355627293386,
+        "max_drawdown_pct": -10.438635145252311,
+        "cumulative_net_return_pct": 138.38680896115852,
+        "buy_hold_return_pct": -28.866655570225603,
+        "alpha_pct": 167.2534645313841,
+        "brier_score": 0.49583332748913705,
+        "log_loss": 0.8197315848932238,
+        "regime_stats": {
+          "Bull": {
+            "trades": 65,
+            "win_rate": 60.0,
+            "profit_factor": 1.4680807094986728,
+            "net_return": 13.645150660834737
+          },
+          "Bear": {
+            "trades": 122,
+            "win_rate": 60.65573770491803,
+            "profit_factor": 1.6141100106473258,
+            "net_return": 54.30380245545374
+          },
+          "Sideways": {
+            "trades": 100,
+            "win_rate": 59.0,
+            "profit_factor": 1.6335279109236278,
+            "net_return": 35.94232181074683
+          }
+        }
+      },
+      "0.65": {
+        "symbol": "BTCUSDT",
+        "threshold": 0.65,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 257,
+        "trade_freq_per_day": 0.6235341690254751,
+        "win_rate_pct": 63.035019455252915,
+        "profit_factor": 1.7597637288892145,
+        "sharpe_ratio": 3.810666930440874,
+        "sortino_ratio": 8.69816968412982,
+        "max_drawdown_pct": -10.438635145252322,
+        "cumulative_net_return_pct": 161.33602701209506,
+        "buy_hold_return_pct": -28.866655570225603,
+        "alpha_pct": 190.20268258232068,
+        "brier_score": 0.49583332748913705,
+        "log_loss": 0.8197315848932238,
+        "regime_stats": {
+          "Bull": {
+            "trades": 59,
+            "win_rate": 66.10169491525424,
+            "profit_factor": 1.9527056220881165,
+            "net_return": 22.590867132829672
+          },
+          "Bear": {
+            "trades": 111,
+            "win_rate": 60.36036036036037,
+            "profit_factor": 1.570362761291682,
+            "net_return": 45.42879845964236
+          },
+          "Sideways": {
+            "trades": 87,
+            "win_rate": 64.36781609195403,
+            "profit_factor": 1.9798073171545099,
+            "net_return": 46.58541181300298
+          }
+        }
+      },
+      "0.7": {
+        "symbol": "BTCUSDT",
+        "threshold": 0.7,
+        "days_scope_str": "2025-07-08 to 2026-08-24 (412d)",
+        "days_count": 412,
+        "total_trades": 220,
+        "trade_freq_per_day": 0.5337646583097452,
+        "win_rate_pct": 65.45454545454545,
+        "profit_factor": 2.0035896950103367,
+        "sharpe_ratio": 4.360186595103334,
+        "sortino_ratio": 9.48059443407277,
+        "max_drawdown_pct": -10.630423229103881,
+        "cumulative_net_return_pct": 173.69919728204528,
+        "buy_hold_return_pct": -28.866655570225603,
+        "alpha_pct": 202.5658528522709,
+        "brier_score": 0.49583332748913705,
+        "log_loss": 0.8197315848932238,
+        "regime_stats": {
+          "Bull": {
+            "trades": 50,
+            "win_rate": 70.0,
+            "profit_factor": 2.595528141826166,
+            "net_return": 25.953136011605604
+          },
+          "Bear": {
+            "trades": 99,
+            "win_rate": 64.64646464646465,
+            "profit_factor": 1.8826656980897565,
+            "net_return": 62.02862023018352
+          },
+          "Sideways": {
+            "trades": 71,
+            "win_rate": 63.38028169014085,
+            "profit_factor": 1.9453495497761624,
+            "net_return": 34.11359518737469
+          }
+        }
+      }
+    }
+  }
+}

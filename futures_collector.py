@@ -34,36 +34,12 @@ import urllib.request
 import zipfile
 from datetime import date, datetime, timedelta, timezone
 
-import psycopg2
-
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = int(os.getenv("DB_PORT", "5432"))
-DB_NAME = os.getenv("DB_NAME", "bitcoin_analyst")
-DB_USER = os.getenv("DB_USER", "postgres")
-DB_PASS = os.getenv("DB_PASS", "123456")
+from db_config import get_db_connection, get_db_params
 
 FAPI = "https://fapi.binance.com"
 DUMP = "https://data.binance.vision/data/futures/um/daily/metrics"
 
-CREATE_TABLE_SQL = """
-CREATE TABLE IF NOT EXISTS "FuturesMetrics" (
-    "Id" bigserial PRIMARY KEY,
-    "Symbol" varchar(32) NOT NULL,
-    "OpenTimeMs" bigint NOT NULL,
-    "OpenInterest" double precision,
-    "OpenInterestValue" double precision,
-    "TopTraderLsCountRatio" double precision,
-    "TopTraderLsSumRatio" double precision,
-    "GlobalLsRatio" double precision,
-    "TakerBuySellVolRatio" double precision,
-    "FundingRate" double precision,
-    "MarkPrice" double precision,
-    "CreatedAtUtc" timestamptz NOT NULL DEFAULT now()
-);
-CREATE UNIQUE INDEX IF NOT EXISTS "IX_FuturesMetrics_Symbol_OpenTimeMs"
-    ON "FuturesMetrics" ("Symbol", "OpenTimeMs");
-"""
-
+# Schema is managed by EF Core migration (UnifyFuturesAndPaperTradingSchema).
 # Mỗi nguồn ghi một tập cột; COALESCE để merge nhiều nguồn vào cùng 1 row (5m grid)
 UPSERT_SQL = """
 INSERT INTO "FuturesMetrics" ("Symbol", "OpenTimeMs", {cols})
@@ -79,14 +55,12 @@ def _f(v):
 
 
 def get_connection():
-    return psycopg2.connect(
-        host=DB_HOST, port=DB_PORT, database=DB_NAME,
-        user=DB_USER, password=DB_PASS,
-    )
+    return get_db_connection()
 
 
 def ensure_table(cur):
-    cur.execute(CREATE_TABLE_SQL)
+    """Table is provisioned and managed via EF Core Migrations."""
+    pass
 
 
 def http_get_json(url, retries=4, timeout=30):
@@ -290,30 +264,39 @@ def backfill_dump(symbol, from_d, to_d):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("mode", choices=["poll", "loop", "backfill-funding", "backfill-dump"])
-    p.add_argument("--symbol", default="BTCUSDT")
+    p.add_argument("--symbol", "--symbols", dest="symbols", default="BTCUSDT,ETHUSDT,SOLUSDT")
     p.add_argument("--interval", type=int, default=1800, help="loop interval seconds")
     p.add_argument("--from", dest="from_date", default="2021-01-01")
     p.add_argument("--to", dest="to_date", default=None)
     args = p.parse_args()
 
+    symbol_list = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+
     if args.mode == "poll":
-        poll_once(args.symbol)
+        for sym in symbol_list:
+            print(f"\n--- Polling futures for {sym} ---", flush=True)
+            poll_once(sym)
     elif args.mode == "loop":
-        print(f"Polling loop every {args.interval}s for {args.symbol}", flush=True)
+        print(f"Polling loop every {args.interval}s for {', '.join(symbol_list)}", flush=True)
         while True:
             try:
-                print(f"[{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S}Z] poll", flush=True)
-                poll_once(args.symbol)
+                print(f"\n[{datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S}Z] poll cycle", flush=True)
+                for sym in symbol_list:
+                    poll_once(sym)
             except Exception as e:
                 print(f"  poll error: {e}", flush=True)
             time.sleep(args.interval)
     elif args.mode == "backfill-funding":
-        backfill_funding(args.symbol)
+        for sym in symbol_list:
+            print(f"\n--- Backfilling funding for {sym} ---", flush=True)
+            backfill_funding(sym)
     elif args.mode == "backfill-dump":
         from_d = date.fromisoformat(args.from_date)
         to_d = date.fromisoformat(args.to_date) if args.to_date else (
             datetime.now(timezone.utc).date() - timedelta(days=1))
-        backfill_dump(args.symbol, from_d, to_d)
+        for sym in symbol_list:
+            print(f"\n--- Backfilling dumps for {sym} ---", flush=True)
+            backfill_dump(sym, from_d, to_d)
 
 
 if __name__ == "__main__":

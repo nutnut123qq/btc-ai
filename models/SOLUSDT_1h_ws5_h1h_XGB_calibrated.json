@@ -1,0 +1,27 @@
+{
+  "model_name": "SOLUSDT_1h_ws5_h1h_XGB_calibrated",
+  "symbol": "SOLUSDT",
+  "timeframe": "1h",
+  "window_size": 5,
+  "horizon": "1h",
+  "algorithm": "XGB",
+  "calibrated": true,
+  "calibration_method": "isotonic",
+  "optimal_threshold": 0.51,
+  "features_dim": 175,
+  "total_samples": 52873,
+  "train_samples": 34050,
+  "cal_samples": 8592,
+  "test_samples": 9895,
+  "metrics": {
+    "oos_accuracy": 0.5452,
+    "oos_f1_weighted": 0.5463,
+    "brier_score": 0.5555,
+    "expected_calibration_error": 0.0161,
+    "oos_win_rate": 0.5668,
+    "oos_trades_count": 2747,
+    "oos_total_return_pct": 12769.51,
+    "oos_sharpe": 20.225
+  },
+  "created_at": "2026-08-24T10:28:28.195472+00:00"
+}

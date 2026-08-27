@@ -1,0 +1,27 @@
+{
+  "model_name": "ETHUSDT_1h_ws10_h1h_XGB_calibrated",
+  "symbol": "ETHUSDT",
+  "timeframe": "1h",
+  "window_size": 10,
+  "horizon": "1h",
+  "algorithm": "XGB",
+  "calibrated": true,
+  "calibration_method": "isotonic",
+  "optimal_threshold": 0.49,
+  "features_dim": 350,
+  "total_samples": 58215,
+  "train_samples": 39391,
+  "cal_samples": 8592,
+  "test_samples": 9896,
+  "metrics": {
+    "oos_accuracy": 0.5878,
+    "oos_f1_weighted": 0.5739,
+    "brier_score": 0.5201,
+    "expected_calibration_error": 0.026,
+    "oos_win_rate": 0.5661,
+    "oos_trades_count": 1574,
+    "oos_total_return_pct": 1324.73,
+    "oos_sharpe": 18.849
+  },
+  "created_at": "2026-08-24T10:26:50.853469+00:00"
+}

@@ -24,14 +24,9 @@ import numpy as np
 import psycopg2
 import xgboost as xgb
 from sklearn.calibration import CalibratedClassifierCV
+from db_config import get_db_params
 
-DB = dict(
-    host=os.getenv("DB_HOST", "localhost"),
-    port=int(os.getenv("DB_PORT", "5432")),
-    database=os.getenv("DB_NAME", "bitcoin_analyst"),
-    user=os.getenv("DB_USER", "postgres"),
-    password=os.getenv("DB_PASS", "123456"),
-)
+DB = get_db_params()
 
 LABEL_REMAP = {-1: 0, 0: 1, 1: 2}
 MODELS_DIR = Path(__file__).parent / "models"
