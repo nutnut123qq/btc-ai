@@ -98,10 +98,24 @@ def fetch_klines(symbol, timeframe, start_ms, end_ms):
     return rows
 
 
-def simulate_trades(rows, klines, horizon_ms, fee_bps=10.0, slippage_bps=5.0, confidence_threshold=0.0, side_filter=None):
+def simulate_trades(
+    rows,
+    klines,
+    horizon_ms,
+    model=None,
+    meta=None,
+    fee_bps=10.0,
+    slippage_bps=5.0,
+    confidence_threshold=0.0,
+    side_filter=None,
+):
     """Simulate long/short entries based on predicted label."""
     if not rows or not klines:
         return []
+
+    # Fallback to global model/meta if not passed
+    m = model if model is not None else globals().get("model")
+    mt = meta if meta is not None else globals().get("meta", {})
 
     close_by_time = {int(r[0]): float(r[4]) for r in klines}
     times = sorted(close_by_time.keys())
@@ -115,7 +129,7 @@ def simulate_trades(rows, klines, horizon_ms, fee_bps=10.0, slippage_bps=5.0, co
         X = np.array(vec, dtype=np.float32).reshape(1, -1)
 
         # Model prediction
-        pred = model_predict(model, X, meta)
+        pred = model_predict(m, X, mt)
         if confidence_threshold > 0 and pred["confidence"] < confidence_threshold:
             continue
 
@@ -370,7 +384,17 @@ if __name__ == "__main__":
     klines = fetch_klines(symbol, timeframe, start_ms, end_ms + horizon_ms)
     print(f"Loaded {len(klines)} klines")
 
-    trades = simulate_trades(rows, klines, horizon_ms, args.fee_bps, args.slippage_bps, args.confidence_threshold, args.side)
+    trades = simulate_trades(
+        rows,
+        klines,
+        horizon_ms,
+        model=model,
+        meta=meta,
+        fee_bps=args.fee_bps,
+        slippage_bps=args.slippage_bps,
+        confidence_threshold=args.confidence_threshold,
+        side_filter=args.side,
+    )
     print(f"Simulated {len(trades)} trades")
 
     metrics = compute_metrics(trades, klines)

@@ -247,8 +247,9 @@ def run_engine_b_simulation(
     horizon_ms: int,
     start_ms: int,
     confidence_threshold: float = 0.58,
+    model_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Simulates trades for Engine B (5-Layer Master Ensemble)."""
+    """Simulates trades for Engine B (Point-in-Time Multi-Layer Ensemble)."""
     windows = fetch_oos_windows(DEFAULT_SYMBOL, timeframe, window_size, horizon, start_ms)
     if not windows:
         return {"error": f"No OOS window data for Ensemble {timeframe}"}
@@ -256,45 +257,69 @@ def run_engine_b_simulation(
     kline_map = fetch_klines_map(DEFAULT_SYMBOL, timeframe, start_ms)
     sorted_kline_times = sorted(kline_map.keys())
 
+    # Optional model loading for ML layer
+    ml_model = None
+    if model_path and model_path.exists():
+        try:
+            ml_model = joblib.load(model_path)
+        except Exception:
+            ml_model = None
+
     fee_rate = FEE_BPS / 10000.0
     slippage_rate = SLIPPAGE_BPS / 10000.0
 
     trades = []
     probabilities = []
 
-    for window_end_ms, vec, true_label, target_ret in windows:
+    for window_end_ms, vec, _true_label, _target_ret in windows:
         if not vec:
             continue
 
         regime = classify_market_regime(sorted_kline_times, kline_map, window_end_ms)
         is_trending = regime in ("Bull Trend", "Bear Trend")
 
-        # Layer 1: Confluence (MTF) - 0.40
-        l1_up = 0.82 if regime == "Bull Trend" else 0.15 if regime == "Bear Trend" else 0.40
-        l1_down = 0.82 if regime == "Bear Trend" else 0.15 if regime == "Bull Trend" else 0.40
+        # Layer 1: Confluence (MTF) - Derived strictly from point-in-time regime
+        l1_up = 0.70 if regime == "Bull Trend" else 0.20 if regime == "Bear Trend" else 0.35
+        l1_down = 0.70 if regime == "Bear Trend" else 0.20 if regime == "Bull Trend" else 0.35
 
-        # Layer 2: Markov Transitions - 0.25
-        l2_up = 0.75 if true_label == 1 else 0.20
-        l2_down = 0.75 if true_label == -1 else 0.20
+        # Layer 2: Point-in-Time Momentum / Transition (from past bars strictly, ZERO true_label lookahead)
+        idx = None
+        for i, t in enumerate(sorted_kline_times):
+            if t == window_end_ms:
+                idx = i
+                break
+        if idx is not None and idx >= 5:
+            past_closes = [kline_map[sorted_kline_times[j]]["close"] for j in range(idx - 4, idx + 1)]
+            past_ret = (past_closes[-1] - past_closes[0]) / past_closes[0]
+            l2_up = 0.65 if past_ret > 0.005 else 0.25 if past_ret < -0.005 else 0.40
+            l2_down = 0.65 if past_ret < -0.005 else 0.25 if past_ret > 0.005 else 0.40
+        else:
+            l2_up = 0.33
+            l2_down = 0.33
 
-        # Layer 3: Market Regime ADX - 0.15
-        l3_up = 0.85 if regime == "Bull Trend" else 0.15
-        l3_down = 0.85 if regime == "Bear Trend" else 0.15
+        # Layer 3: Market Regime ADX
+        l3_up = 0.75 if regime == "Bull Trend" else 0.20
+        l3_down = 0.75 if regime == "Bear Trend" else 0.20
 
-        # Layer 4: SMC / VPVR Key Levels - 0.10
-        l4_up = 0.70 if is_trending else 0.45
-        l4_down = 0.70 if is_trending else 0.45
+        # Layer 4: SMC / Key Levels
+        l4_up = 0.60 if is_trending else 0.40
+        l4_down = 0.60 if is_trending else 0.40
 
-        # Layer 5: ML Sentiment - 0.10
-        l5_up = 0.65 if regime == "Bull Trend" else 0.35
-        l5_down = 0.65 if regime == "Bear Trend" else 0.35
+        # Layer 5: ML Model Inference (if model loaded) or neutral baseline
+        if ml_model is not None and hasattr(ml_model, "predict_proba"):
+            X = np.array(vec, dtype=np.float32).reshape(1, -1)
+            proba = ml_model.predict_proba(X)[0]
+            l5_down, _l5_side, l5_up = float(proba[0]), float(proba[1]), float(proba[2])
+        else:
+            l5_up = 0.60 if regime == "Bull Trend" else 0.40
+            l5_down = 0.60 if regime == "Bear Trend" else 0.40
 
         # Dynamic Layer Weights
-        w_conf = 0.40 if is_trending else 0.25
-        w_markov = 0.25 if is_trending else 0.15
+        w_conf = 0.35 if is_trending else 0.25
+        w_markov = 0.20 if is_trending else 0.15
         w_regime = 0.15 if is_trending else 0.10
-        w_smc = 0.10 if is_trending else 0.40
-        w_ml = 0.10
+        w_smc = 0.10 if is_trending else 0.30
+        w_ml = 0.20
 
         w_total = w_conf + w_markov + w_regime + w_smc + w_ml
         agg_up = (w_conf * l1_up + w_markov * l2_up + w_regime * l3_up + w_smc * l4_up + w_ml * l5_up) / w_total
@@ -350,7 +375,7 @@ def run_engine_b_simulation(
             "gross_return": gross_return,
             "net_return": net_return,
             "regime": regime,
-            "true_label": true_label,
+            "true_label": _true_label,
         })
 
     metrics = calculate_quant_metrics(trades, sorted_kline_times, kline_map, start_ms)
@@ -495,8 +520,14 @@ def analyze_regime_breakdown(trades: List[Dict[str, Any]]) -> Dict[str, Dict[str
     return breakdown
 
 
+def _fmt_pct(val: Optional[float]) -> str:
+    if val is None:
+        return "N/A"
+    return f"+{val:.2f}%" if val > 0 else f"{val:.2f}%"
+
+
 def generate_markdown_report(results: Dict[str, Any]) -> str:
-    """Generates a professional Markdown audit report."""
+    """Generates an honest, dynamically computed Markdown audit report."""
     md = []
     md.append("# Bitcoin AI Analyst — Out-of-Sample (OOS) Blind Performance Audit\n")
     md.append(f"**Execution Timestamp:** {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S UTC}\n")
@@ -504,12 +535,17 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append(f"**Transaction Costs Enforced:** Fee = `{FEE_BPS} bps/side`, Slippage = `{SLIPPAGE_BPS} bps/side` (Roundtrip = `{TOTAL_ROUNDTRIP_COST_PCT*100:.2f}%`)\n\n")
 
     md.append("## 1. Executive Summary & Benchmark Comparison\n\n")
-    md.append("| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (Master Ensemble) | Benchmark (Buy & Hold) |\n")
+    md.append("| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (Point-in-Time Ensemble) | Benchmark (Buy & Hold) |\n")
     md.append("|---|---|---|---|---|\n")
 
     res_4h = results.get("engine_a_4h", {})
     res_1h = results.get("engine_a_1h", {})
     res_ens = results.get("engine_b_ensemble", {})
+
+    ret_4h = res_4h.get("net_return_pct")
+    ret_1h = res_1h.get("net_return_pct")
+    ret_ens = res_ens.get("net_return_pct")
+    ret_bh = res_4h.get("buy_and_hold_return_pct")
 
     md.append(f"| **Total Trades** | {res_4h.get('total_trades', 0)} | {res_1h.get('total_trades', 0)} | {res_ens.get('total_trades', 0)} | N/A |\n")
     md.append(f"| **Win Rate (Post-Fee)** | **{res_4h.get('win_rate_pct', 0)}%** | {res_1h.get('win_rate_pct', 0)}% | **{res_ens.get('win_rate_pct', 0)}%** | N/A |\n")
@@ -517,7 +553,7 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append(f"| **Sharpe Ratio (Ann.)** | **{res_4h.get('sharpe_ratio', 0)}** | {res_1h.get('sharpe_ratio', 0)} | **{res_ens.get('sharpe_ratio', 0)}** | — |\n")
     md.append(f"| **Sortino Ratio (Ann.)** | **{res_4h.get('sortino_ratio', 0)}** | {res_1h.get('sortino_ratio', 0)} | **{res_ens.get('sortino_ratio', 0)}** | — |\n")
     md.append(f"| **Max Drawdown (MDD)** | **{res_4h.get('max_drawdown_pct', 0)}%** | {res_1h.get('max_drawdown_pct', 0)}% | **{res_ens.get('max_drawdown_pct', 0)}%** | — |\n")
-    md.append(f"| **Net Return (%)** | **+{res_4h.get('net_return_pct', 0)}%** | +{res_1h.get('net_return_pct', 0)}% | **+{res_ens.get('net_return_pct', 0)}%** | **{res_4h.get('buy_and_hold_return_pct', 0)}%** |\n")
+    md.append(f"| **Net Return (%)** | **{_fmt_pct(ret_4h)}** | {_fmt_pct(ret_1h)} | **{_fmt_pct(ret_ens)}** | **{_fmt_pct(ret_bh)}** |\n")
     md.append(f"| **Trade Freq (trades/day)** | {res_4h.get('trade_frequency_per_day', 0)} | {res_1h.get('trade_frequency_per_day', 0)} | {res_ens.get('trade_frequency_per_day', 0)} | — |\n\n")
 
     md.append("## 2. Confidence Calibration & Probability Distribution\n\n")
@@ -525,32 +561,51 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append("| Model | Mean Conf | Median | 25th % | 75th % | 90th % | 99th % | Brier Score | Log-Loss |\n")
     md.append("|---|---|---|---|---|---|---|---|---|\n")
 
-    for k, title in [("engine_a_4h", "XGB 4h Calibrated"), ("engine_a_1h", "XGB 1h Balanced"), ("engine_b_ensemble", "Master Ensemble")]:
+    for k, title in [("engine_a_4h", "XGB 4h Calibrated"), ("engine_a_1h", "XGB 1h Balanced"), ("engine_b_ensemble", "Point-in-Time Ensemble")]:
         r = results.get(k, {})
         d = r.get("prob_distribution", {})
         brier = f"{r.get('brier_score'):.4f}" if r.get("brier_score") is not None else "N/A"
         ll = f"{r.get('log_loss'):.4f}" if r.get("log_loss") is not None else "N/A"
         md.append(f"| **{title}** | {d.get('mean', 0)} | {d.get('median', 0)} | {d.get('p25', 0)} | {d.get('p75', 0)} | {d.get('p90', 0)} | {d.get('p99', 0)} | `{brier}` | `{ll}` |\n")
 
-    md.append("\n> **Observation on Calibration**: The models exhibit healthy probability calibration without overconfidence (99th percentile <= 0.85), proving that threshold scanning (conf >= 0.61) acts as an effective noise filter.\n\n")
-
-    md.append("## 3. Adversarial Market Regime Breakdown\n\n")
+    md.append("\n## 3. Adversarial Market Regime Breakdown\n\n")
     md.append("Performance segmented by underlying market regime:\n\n")
 
-    for k, title in [("engine_a_4h", "Engine A (Champion XGB 4h)"), ("engine_b_ensemble", "Engine B (Master Ensemble)")]:
+    for k, title in [("engine_a_4h", "Engine A (Champion XGB 4h)"), ("engine_b_ensemble", "Engine B (Point-in-Time Ensemble)")]:
         r = results.get(k, {})
         rb = r.get("regime_breakdown", {})
         md.append(f"### {title}\n\n")
         md.append("| Market Regime | Trade Count | Win Rate (%) | Profit Factor | Cumulative Net Return (%) |\n")
         md.append("|---|---|---|---|---|\n")
         for reg, s in rb.items():
-            md.append(f"| **{reg}** | {s.get('trades_count', 0)} | {s.get('win_rate_pct', 0)}% | {s.get('profit_factor', 0)} | +{s.get('cumulative_net_return_pct', 0)}% |\n")
+            cum_r = s.get('cumulative_net_return_pct')
+            md.append(f"| **{reg}** | {s.get('trades_count', 0)} | {s.get('win_rate_pct', 0)}% | {s.get('profit_factor', 0)} | {_fmt_pct(cum_r)} |\n")
         md.append("\n")
 
-    md.append("## 4. Quantitative Findings & Conclusions\n\n")
-    md.append("1. **Statistically Significant Edge**: Both Engine A and Engine B achieve Win Rates > 60% and Profit Factors > 1.80 on strictly unseen 2025 data, after factoring in 30 bps roundtrip costs.\n")
-    md.append("2. **Downside Resilience**: Max Drawdowns remained under 12%, while Buy-and-Hold suffered higher cyclical drawdowns.\n")
-    md.append("3. **Vulnerability Identified**: The primary source of false signals occurs during **Chop / Sideways** regimes when volatility contracts below ATR(14) normal range.\n")
+    md.append("## 4. Quantitative Findings & Derived Conclusions\n\n")
+    # Dynamically evaluate findings based strictly on actual metrics
+    findings = []
+    
+    # Engine A 4h evaluation
+    if res_4h.get("profit_factor", 0) > 1.2 and res_4h.get("win_rate_pct", 0) > 52.0:
+        findings.append(f"1. **Engine A (4h XGB Calibrated)**: Demonstrated positive edge post-fees with Win Rate = `{res_4h.get('win_rate_pct')}%`, Profit Factor = `{res_4h.get('profit_factor')}`, and Net Return = `{_fmt_pct(ret_4h)}`.")
+    else:
+        findings.append(f"1. **Engine A (4h XGB Calibrated)**: Achieved Win Rate = `{res_4h.get('win_rate_pct', 0)}%` and Profit Factor = `{res_4h.get('profit_factor', 0)}`; requires conservative threshold gating to control drawdowns.")
+
+    # Engine A 1h evaluation
+    if res_1h.get("net_return_pct", 0) < 0:
+        findings.append(f"2. **Engine A (1h XGB Balanced)**: Underperformed on 1h OOS data with Net Return = `{_fmt_pct(ret_1h)}` (Max Drawdown = `{res_1h.get('max_drawdown_pct', 0)}%`), confirming that 1h signals suffer from elevated transaction drag (30 bps roundtrip).")
+    else:
+        findings.append(f"2. **Engine A (1h XGB Balanced)**: Net Return = `{_fmt_pct(ret_1h)}`, Win Rate = `{res_1h.get('win_rate_pct', 0)}%`.")
+
+    # Engine B evaluation
+    if res_ens.get("profit_factor", 0) > 1.1 and res_ens.get("net_return_pct", 0) > 0:
+        findings.append(f"3. **Engine B (Point-in-Time Ensemble)**: Achieved profitable point-in-time performance with Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct')}%` without forward leakage.")
+    else:
+        findings.append(f"3. **Engine B (Point-in-Time Ensemble)**: Point-in-time simulation without lookahead yielded Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct', 0)}%`. Pure multi-layer voting without regime filter requires further calibration before live allocation.")
+
+    findings.append(f"4. **Benchmark Comparison**: Buy & Hold OOS Return was `{_fmt_pct(ret_bh)}`.")
+    md.append("\n".join(findings) + "\n")
     return "".join(md)
 
 
@@ -570,7 +625,7 @@ def main():
     thr_4h = TIMEFRAME_THRESHOLDS.get("4h", 0.61)
     res_4h = run_engine_a_simulation(model_4h, "4h", 5, "4h", 14_400_000, start_ms, thr_4h)
     results["engine_a_4h"] = res_4h
-    print(f"  Trades: {res_4h.get('total_trades')} | Win Rate: {res_4h.get('win_rate_pct')}% | Profit Factor: {res_4h.get('profit_factor')} | Net Return: +{res_4h.get('net_return_pct')}% | MDD: {res_4h.get('max_drawdown_pct')}%")
+    print(f"  Trades: {res_4h.get('total_trades')} | Win Rate: {res_4h.get('win_rate_pct')}% | Profit Factor: {res_4h.get('profit_factor')} | Net Return: {_fmt_pct(res_4h.get('net_return_pct'))} | MDD: {res_4h.get('max_drawdown_pct')}%")
 
     # 2. Engine A: Balanced 1h Model
     print("\n--- Running Engine A: Balanced Model (BTCUSDT 1h ws=5 h=1h XGB Balanced) ---")
@@ -578,13 +633,13 @@ def main():
     thr_1h = TIMEFRAME_THRESHOLDS.get("1h", 0.58)
     res_1h = run_engine_a_simulation(model_1h, "1h", 5, "1h", 3_600_000, start_ms, thr_1h)
     results["engine_a_1h"] = res_1h
-    print(f"  Trades: {res_1h.get('total_trades')} | Win Rate: {res_1h.get('win_rate_pct')}% | Profit Factor: {res_1h.get('profit_factor')} | Net Return: +{res_1h.get('net_return_pct')}% | MDD: {res_1h.get('max_drawdown_pct')}%")
+    print(f"  Trades: {res_1h.get('total_trades')} | Win Rate: {res_1h.get('win_rate_pct')}% | Profit Factor: {res_1h.get('profit_factor')} | Net Return: {_fmt_pct(res_1h.get('net_return_pct'))} | MDD: {res_1h.get('max_drawdown_pct')}%")
 
-    # 3. Engine B: 5-Layer Master Ensemble
-    print("\n--- Running Engine B: 5-Layer Master Ensemble (BTCUSDT 1h ws=5 h=1h) ---")
-    res_ens = run_engine_b_simulation("1h", 5, "1h", 3_600_000, start_ms, 0.58)
+    # 3. Engine B: Point-in-Time Multi-Layer Ensemble
+    print("\n--- Running Engine B: Point-in-Time Multi-Layer Ensemble (BTCUSDT 1h ws=5 h=1h) ---")
+    res_ens = run_engine_b_simulation("1h", 5, "1h", 3_600_000, start_ms, 0.58, model_path=model_1h)
     results["engine_b_ensemble"] = res_ens
-    print(f"  Trades: {res_ens.get('total_trades')} | Win Rate: {res_ens.get('win_rate_pct')}% | Profit Factor: {res_ens.get('profit_factor')} | Net Return: +{res_ens.get('net_return_pct')}% | MDD: {res_ens.get('max_drawdown_pct')}%")
+    print(f"  Trades: {res_ens.get('total_trades')} | Win Rate: {res_ens.get('win_rate_pct')}% | Profit Factor: {res_ens.get('profit_factor')} | Net Return: {_fmt_pct(res_ens.get('net_return_pct'))} | MDD: {res_ens.get('max_drawdown_pct')}%")
 
     # 4. Generate & Save Reports
     OUTPUT_REPORT_JSON.write_text(json.dumps(results, indent=2), encoding="utf-8")

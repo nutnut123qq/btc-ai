@@ -1,3 +1,6 @@
+# [INVALIDATED - HISTORICAL REPORT AUDITED FOR SYNTHETIC SAMPLING]
+> **WARNING**: This historical Monte Carlo report was generated using synthetic lognormal trade sampling due to low paper trade sample size (< 30) and contained hardcoded qualitative assessment labels. Do NOT use for capital allocation.
+
 # Monte Carlo Robustness & Risk of Ruin Report (Jesse AI Benchmark)
 
 **Generated:** 1000 Simulation Runs | **Trades per Run:** 250

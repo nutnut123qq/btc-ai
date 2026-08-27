@@ -63,12 +63,13 @@ def retrain_and_calibrate(symbol="BTCUSDT", timeframe="4h", ws=5, horizon="4h"):
     n = len(X)
     n_train = int(n * 0.6)
     n_cal = int(n * 0.8)
+    purge = ws + 5  # Purge overlapping windows and forward label horizons
 
     X_train, y_train = X[:n_train], y[:n_train]
-    X_cal, y_cal = X[n_train:n_cal], y[n_train:n_cal]
-    X_test, y_test = X[n_cal:], y[n_cal:]
+    X_cal, y_cal = X[n_train + purge : n_cal], y[n_train + purge : n_cal]
+    X_test, y_test = X[n_cal + purge :], y[n_cal + purge :]
 
-    print(f"Samples: Train={len(X_train)}, Calibrate={len(X_cal)}, Test={len(X_test)}")
+    print(f"Samples: Train={len(X_train)}, Calibrate={len(X_cal)}, Test={len(X_test)} (Purge={purge} bars)")
 
     base_xgb = xgb.XGBClassifier(
         n_estimators=150,

@@ -17,15 +17,7 @@ import numpy as np
 import psycopg2
 from sklearn.metrics import log_loss
 
-warnings.filterwarnings("ignore")
-
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 5432,
-    'database': 'bitcoin_analyst',
-    'user': 'postgres',
-    'password': '123456'
-}
+from db_config import get_db_params, get_db_connection
 
 MODELS_DIR = Path(__file__).parent / "models"
 
@@ -56,7 +48,7 @@ def time_features(open_ms: int) -> list:
     ]
 
 def load_data(symbol: str, timeframe: str = "4h", ws: int = 5, tf_ms: int = 14400000):
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = get_db_connection()
     cur = conn.cursor()
     
     cols = ", ".join(f'"{c}"' for c in FEATURE_COLS)

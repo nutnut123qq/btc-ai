@@ -24,7 +24,7 @@ REPORT_FILE = Path(__file__).parent / "monte_carlo_report.md"
 
 
 def load_trade_returns() -> List[float]:
-    """Loads historical trade percentage returns from PaperTrades table."""
+    """Loads historical trade percentage returns from PaperTrades or BacktestTrades."""
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -35,20 +35,29 @@ def load_trade_returns() -> List[float]:
         ORDER BY "ExitTimeMs"
     """)
     rows = cur.fetchall()
-    conn.close()
 
     returns = [float(r[0]) for r in rows if r[0] is not None]
 
-    # If database has limited live paper trades (< 30), augment with empirical calibrated backtest trade distribution
+    # If PaperTrades is empty or small, query historical BacktestTrades table
     if len(returns) < 30:
-        np.random.seed(42)
-        # Synthetic empirical distribution based on champion 60.5% Win Rate & 1.65 Profit Factor
-        n_synthetic = 200
-        p_win = 0.605
-        win_returns = np.random.lognormal(mean=-3.2, sigma=0.4, size=int(n_synthetic * p_win))  # ~ +3.5% to +6.5%
-        loss_returns = -np.random.lognormal(mean=-3.6, sigma=0.3, size=n_synthetic - len(win_returns)) # ~ -2.5% to -3.8%
-        empirical_returns = list(np.concatenate([win_returns, loss_returns]))
-        returns.extend(empirical_returns)
+        cur.execute("""
+            SELECT "NetReturnPct" / 100.0
+            FROM "BacktestTrades"
+            WHERE "NetReturnPct" IS NOT NULL
+            ORDER BY "EntryTimeMs"
+        """)
+        bt_rows = cur.fetchall()
+        bt_returns = [float(r[0]) for r in bt_rows if r[0] is not None]
+        if bt_returns:
+            returns.extend(bt_returns)
+
+    conn.close()
+
+    if len(returns) < 10:
+        raise ValueError(
+            f"Insufficient historical trade data: found only {len(returns)} trades in database. "
+            "At least 10 audited trades are required for a valid Monte Carlo simulation."
+        )
 
     return returns
 
@@ -156,9 +165,29 @@ def run_monte_carlo_simulation(
 
 
 def generate_markdown_report(metrics: Dict[str, Any], out_file: Path):
+    score = metrics['robustness_score']
+    score_assessment = "XUẤT SẮC" if score >= 85 else "ĐẠT CHUẨN" if score >= 70 else "CẦN CẢI THIỆN"
+    
+    ror = metrics['risk_of_ruin_pct']
+    ror_assessment = "SIÊU AN TOÀN" if ror <= 1.0 else "CHẤP NHẬN ĐƯỢC" if ror <= 5.0 else "RỦI RO CAO"
+    
+    mdd = metrics['mdd_median_pct']
+    mdd_assessment = "KIỂM SOÁT TỐT" if mdd <= 15.0 else "TRUNG BÌNH" if mdd <= 25.0 else "RỦI RO CAO"
+    
+    mdd95 = metrics['mdd_95_pct']
+    mdd95_assessment = "VƯỢT TRỘI" if mdd95 <= 25.0 else "ĐẠT CHUẨN" if mdd95 <= 35.0 else "CẦN THẬN TRỌNG"
+    
+    mdd99 = metrics['mdd_99_pct']
+    mdd99_assessment = "ĐẠT CHUẨN" if mdd99 <= 35.0 else "VƯỢT NGƯỠNG"
+    
+    ret = metrics['annual_return_median_pct']
+    ret_assessment = "SINH LỜI CAO" if ret >= 30.0 else "SINH LỜI DƯƠNG" if ret > 0 else "SINH LỜI ÂM"
+
+    fmt_ret = f"+{ret:.2f}%" if ret > 0 else f"{ret:.2f}%"
+
     report_content = f"""# Monte Carlo Robustness & Risk of Ruin Report (Jesse AI Benchmark)
 
-**Generated:** {metrics['n_simulations']} Simulation Runs | **Trades per Run:** {metrics['trades_per_sim']}
+**Generated:** {metrics['n_simulations']} Simulation Runs | **Trades per Run:** {metrics['trades_per_sim']} | **Sample Pool:** {metrics.get('trade_sample_pool', 0)}
 
 ---
 
@@ -166,12 +195,12 @@ def generate_markdown_report(metrics: Dict[str, Any], out_file: Path):
 
 | Key Metric | Result | Target Benchmark | Assessment |
 |---|---|---|---|
-| **Strategy Robustness Score** | **{metrics['robustness_score']:.1f} / 100** | $\\ge 85.0$ | **XUẤT SẮC (TIÊM CẬN ĐỈNH)** |
-| **Risk of Ruin (Drawdown $\\ge 40\\%$)** | **{metrics['risk_of_ruin_pct']:.2f}%** | $\\le 1.0\\%$ | **SIÊU AN TOÀN** |
-| **Median Max Drawdown** | **{metrics['mdd_median_pct']:.2f}%** | $\\le 15.0\\%$ | **KIỂM SOÁT TỐT** |
-| **95% VaR Max Drawdown** | **{metrics['mdd_95_pct']:.2f}%** | $\\le 25.0\\%$ | **VƯỢT TRỘI** |
-| **99% VaR Max Drawdown** | **{metrics['mdd_99_pct']:.2f}%** | $\\le 35.0\\%$ | **ĐẠT CHUẨN** |
-| **Median Expected Annual Return** | **+{metrics['annual_return_median_pct']:.2f}%** | $\\ge +30.0\\%$ | **SINH LỜI CAO** |
+| **Strategy Robustness Score** | **{score:.1f} / 100** | $\\ge 85.0$ | **{score_assessment}** |
+| **Risk of Ruin (Drawdown $\\ge 40\\%$)** | **{ror:.2f}%** | $\\le 1.0\\%$ | **{ror_assessment}** |
+| **Median Max Drawdown** | **{mdd:.2f}%** | $\\le 15.0\\%$ | **{mdd_assessment}** |
+| **95% VaR Max Drawdown** | **{mdd95:.2f}%** | $\\le 25.0\\%$ | **{mdd95_assessment}** |
+| **99% VaR Max Drawdown** | **{mdd99:.2f}%** | $\\le 35.0\\%$ | **{mdd99_assessment}** |
+| **Median Expected Annual Return** | **{fmt_ret}** | $\\ge +30.0\\%$ | **{ret_assessment}** |
 
 ---
 
@@ -181,11 +210,11 @@ def generate_markdown_report(metrics: Dict[str, Any], out_file: Path):
 ========================================================================================
  PERCENTILE       | TERMINAL EQUITY (USDT) | NET GAIN (USDT) | ROI (%)
 ----------------------------------------------------------------------------------------
- 95th Percentile  | ${metrics['equity_p95']:,.2f}          | +${metrics['equity_p95']-INITIAL_BALANCE_USDT:,.2f}    | +{((metrics['equity_p95']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:.1f}%
- 75th Percentile  | ${metrics['equity_p75']:,.2f}          | +${metrics['equity_p75']-INITIAL_BALANCE_USDT:,.2f}    | +{((metrics['equity_p75']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:.1f}%
- 50th (Median)    | ${metrics['equity_p50_median']:,.2f}          | +${metrics['equity_p50_median']-INITIAL_BALANCE_USDT:,.2f}    | +{((metrics['equity_p50_median']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:.1f}%
- 25th Percentile  | ${metrics['equity_p25']:,.2f}          | +${metrics['equity_p25']-INITIAL_BALANCE_USDT:,.2f}    | +{((metrics['equity_p25']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:.1f}%
- 5th Percentile   | ${metrics['equity_p5']:,.2f}          | ${metrics['equity_p5']-INITIAL_BALANCE_USDT:,.2f}    | {((metrics['equity_p5']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:.1f}%
+ 95th Percentile  | ${metrics['equity_p95']:,.2f}          | +${metrics['equity_p95']-INITIAL_BALANCE_USDT:,.2f}    | {((metrics['equity_p95']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:+.1f}%
+ 75th Percentile  | ${metrics['equity_p75']:,.2f}          | +${metrics['equity_p75']-INITIAL_BALANCE_USDT:,.2f}    | {((metrics['equity_p75']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:+.1f}%
+ 50th (Median)    | ${metrics['equity_p50_median']:,.2f}          | +${metrics['equity_p50_median']-INITIAL_BALANCE_USDT:,.2f}    | {((metrics['equity_p50_median']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:+.1f}%
+ 25th Percentile  | ${metrics['equity_p25']:,.2f}          | ${metrics['equity_p25']-INITIAL_BALANCE_USDT:+,.2f}    | {((metrics['equity_p25']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:+.1f}%
+ 5th Percentile   | ${metrics['equity_p5']:,.2f}          | ${metrics['equity_p5']-INITIAL_BALANCE_USDT:+,.2f}    | {((metrics['equity_p5']-INITIAL_BALANCE_USDT)/INITIAL_BALANCE_USDT)*100:+.1f}%
 ========================================================================================
 ```
 

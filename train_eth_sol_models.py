@@ -145,20 +145,24 @@ def train_and_calibrate(symbol: str):
     times, X, y, returns, close_dict = extract_dataset(symbol, timeframe="4h", ws=5)
     print(f"Total extracted sliding windows: {len(X)} (FeatureDim={X.shape[1]})")
     
-    # Split timestamps
-    train_cal_end_ms = ms("2025-07-01T00:00:00")
+    # Temporal Split timestamps with 7-day purge/embargo
+    train_end_ms = ms("2024-07-01T00:00:00")
+    cal_start_ms = ms("2024-07-08T00:00:00")
+    cal_end_ms = ms("2025-07-01T00:00:00")
     test_start_ms = ms("2025-07-08T00:00:00")
     
-    train_mask = times < train_cal_end_ms
+    train_mask = times < train_end_ms
+    cal_mask = (times >= cal_start_ms) & (times < cal_end_ms)
     test_mask = times >= test_start_ms
     
     X_train, y_train = X[train_mask], y[train_mask]
+    X_cal, y_cal = X[cal_mask], y[cal_mask]
     X_test, y_test = X[test_mask], y[test_mask]
     times_test, rets_test = times[test_mask], returns[test_mask]
     
-    print(f"Dataset Split: In-Sample (Train+Cal)={len(X_train)} | Out-Of-Sample (Test)={len(X_test)}")
+    print(f"Dataset Split: Train={len(X_train)} | Cal={len(X_cal)} | OOS Test={len(X_test)}")
     
-    # Base XGBoost
+    # Base XGBoost fit strictly on training set
     base_xgb = xgb.XGBClassifier(
         n_estimators=200,
         max_depth=6,
@@ -168,10 +172,11 @@ def train_and_calibrate(symbol: str):
         random_state=42,
         eval_metric="mlogloss"
     )
+    base_xgb.fit(X_train, y_train)
     
-    # 5-fold CV Isotonic Calibration on In-Sample data
-    calibrated_clf = CalibratedClassifierCV(estimator=base_xgb, method="isotonic", cv=5)
-    calibrated_clf.fit(X_train, y_train)
+    # Prefit Isotonic Calibration strictly on temporal holdout Calibration set
+    calibrated_clf = CalibratedClassifierCV(estimator=base_xgb, method="isotonic", cv="prefit")
+    calibrated_clf.fit(X_cal, y_cal)
     
     # Out-of-Sample (OOS) Test Evaluation
     test_probas = calibrated_clf.predict_proba(X_test)

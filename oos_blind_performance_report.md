@@ -1,3 +1,6 @@
+# [INVALIDATED - HISTORICAL REPORT AUDITED FOR LEAKAGE]
+> **WARNING**: This historical audit report was produced by a prior version of `run_blind_oos_audit.py` that contained look-ahead leakage in Engine B (Markov Layer 2 reading `true_label`) and hardcoded conclusions in Section 4. Do NOT use these historical numbers for capital allocation or trading decisions. See `OVERNIGHT_ENGINEERING_REPORT.md` for the remediated audit.
+
 # Bitcoin AI Analyst — Out-of-Sample (OOS) Blind Performance Audit
 **Execution Timestamp:** 2026-08-19 07:40:03 UTC
 **Out-Of-Sample Start Date:** `2025-01-01 00:00:00 UTC`
