@@ -5,7 +5,7 @@ Phase 5: Historical Out-Of-Sample (OOS) Blind Replay & Performance Audit
 Performs strict point-in-time blind simulation on unseen post-2025 data.
 Evaluates:
   - Engine A: ML Champion Model (XGB Calibrated 4h & Balanced 1h)
-  - Engine B: 5-Layer Master Ensemble
+  - Engine B: 5-Candle Momentum / Multi-Layer Rule Blend
 Applies real-world transaction costs (10 bps fee + 5 bps slippage per side).
 Computes quant metrics, calibration quality, and adversarial regime breakdown.
 """
@@ -249,7 +249,7 @@ def run_engine_b_simulation(
     confidence_threshold: float = 0.58,
     model_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
-    """Simulates trades for Engine B (Point-in-Time Multi-Layer Ensemble)."""
+    """Simulates trades for Engine B (5-Candle Momentum / Multi-Layer Rule Blend)."""
     windows = fetch_oos_windows(DEFAULT_SYMBOL, timeframe, window_size, horizon, start_ms)
     if not windows:
         return {"error": f"No OOS window data for Ensemble {timeframe}"}
@@ -282,7 +282,7 @@ def run_engine_b_simulation(
         l1_up = 0.70 if regime == "Bull Trend" else 0.20 if regime == "Bear Trend" else 0.35
         l1_down = 0.70 if regime == "Bear Trend" else 0.20 if regime == "Bull Trend" else 0.35
 
-        # Layer 2: Point-in-Time Momentum / Transition (from past bars strictly, ZERO true_label lookahead)
+        # Layer 2: 5-Candle Momentum / Multi-Layer Rule Blend (from past bars strictly, ZERO true_label lookahead)
         idx = None
         for i, t in enumerate(sorted_kline_times):
             if t == window_end_ms:
@@ -291,11 +291,11 @@ def run_engine_b_simulation(
         if idx is not None and idx >= 5:
             past_closes = [kline_map[sorted_kline_times[j]]["close"] for j in range(idx - 4, idx + 1)]
             past_ret = (past_closes[-1] - past_closes[0]) / past_closes[0]
-            l2_up = 0.65 if past_ret > 0.005 else 0.25 if past_ret < -0.005 else 0.40
-            l2_down = 0.65 if past_ret < -0.005 else 0.25 if past_ret > 0.005 else 0.40
+            l2_momentum_up = 0.65 if past_ret > 0.005 else 0.25 if past_ret < -0.005 else 0.40
+            l2_momentum_down = 0.65 if past_ret < -0.005 else 0.25 if past_ret > 0.005 else 0.40
         else:
-            l2_up = 0.33
-            l2_down = 0.33
+            l2_momentum_up = 0.33
+            l2_momentum_down = 0.33
 
         # Layer 3: Market Regime ADX
         l3_up = 0.75 if regime == "Bull Trend" else 0.20
@@ -316,14 +316,14 @@ def run_engine_b_simulation(
 
         # Dynamic Layer Weights
         w_conf = 0.35 if is_trending else 0.25
-        w_markov = 0.20 if is_trending else 0.15
+        w_momentum = 0.20 if is_trending else 0.15
         w_regime = 0.15 if is_trending else 0.10
         w_smc = 0.10 if is_trending else 0.30
         w_ml = 0.20
 
-        w_total = w_conf + w_markov + w_regime + w_smc + w_ml
-        agg_up = (w_conf * l1_up + w_markov * l2_up + w_regime * l3_up + w_smc * l4_up + w_ml * l5_up) / w_total
-        agg_down = (w_conf * l1_down + w_markov * l2_down + w_regime * l3_down + w_smc * l4_down + w_ml * l5_down) / w_total
+        w_total = w_conf + w_momentum + w_regime + w_smc + w_ml
+        agg_up = (w_conf * l1_up + w_momentum * l2_momentum_up + w_regime * l3_up + w_smc * l4_up + w_ml * l5_up) / w_total
+        agg_down = (w_conf * l1_down + w_momentum * l2_momentum_down + w_regime * l3_down + w_smc * l4_down + w_ml * l5_down) / w_total
         agg_side = max(0.05, 1.0 - agg_up - agg_down)
 
         if agg_up >= agg_down and agg_up >= agg_side:
@@ -379,7 +379,7 @@ def run_engine_b_simulation(
         })
 
     metrics = calculate_quant_metrics(trades, sorted_kline_times, kline_map, start_ms)
-    metrics["model_name"] = "5-Layer Master Ensemble (WAVE 5)"
+    metrics["model_name"] = "5-Candle Momentum / Multi-Layer Rule Blend (Engine B)"
     metrics["timeframe"] = timeframe
     metrics["horizon"] = horizon
     metrics["threshold"] = confidence_threshold
@@ -535,7 +535,7 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append(f"**Transaction Costs Enforced:** Fee = `{FEE_BPS} bps/side`, Slippage = `{SLIPPAGE_BPS} bps/side` (Roundtrip = `{TOTAL_ROUNDTRIP_COST_PCT*100:.2f}%`)\n\n")
 
     md.append("## 1. Executive Summary & Benchmark Comparison\n\n")
-    md.append("| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (Point-in-Time Ensemble) | Benchmark (Buy & Hold) |\n")
+    md.append("| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (5-Candle Momentum / Multi-Layer Rule Blend) | Benchmark (Buy & Hold) |\n")
     md.append("|---|---|---|---|---|\n")
 
     res_4h = results.get("engine_a_4h", {})
@@ -561,7 +561,7 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append("| Model | Mean Conf | Median | 25th % | 75th % | 90th % | 99th % | Brier Score | Log-Loss |\n")
     md.append("|---|---|---|---|---|---|---|---|---|\n")
 
-    for k, title in [("engine_a_4h", "XGB 4h Calibrated"), ("engine_a_1h", "XGB 1h Balanced"), ("engine_b_ensemble", "Point-in-Time Ensemble")]:
+    for k, title in [("engine_a_4h", "XGB 4h Calibrated"), ("engine_a_1h", "XGB 1h Balanced"), ("engine_b_ensemble", "5-Candle Momentum / Multi-Layer Rule Blend")]:
         r = results.get(k, {})
         d = r.get("prob_distribution", {})
         brier = f"{r.get('brier_score'):.4f}" if r.get("brier_score") is not None else "N/A"
@@ -571,7 +571,7 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append("\n## 3. Adversarial Market Regime Breakdown\n\n")
     md.append("Performance segmented by underlying market regime:\n\n")
 
-    for k, title in [("engine_a_4h", "Engine A (Champion XGB 4h)"), ("engine_b_ensemble", "Engine B (Point-in-Time Ensemble)")]:
+    for k, title in [("engine_a_4h", "Engine A (Champion XGB 4h)"), ("engine_b_ensemble", "Engine B (5-Candle Momentum / Multi-Layer Rule Blend)")]:
         r = results.get(k, {})
         rb = r.get("regime_breakdown", {})
         md.append(f"### {title}\n\n")
@@ -600,9 +600,9 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
 
     # Engine B evaluation
     if res_ens.get("profit_factor", 0) > 1.1 and res_ens.get("net_return_pct", 0) > 0:
-        findings.append(f"3. **Engine B (Point-in-Time Ensemble)**: Achieved profitable point-in-time performance with Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct')}%` without forward leakage.")
+        findings.append(f"3. **Engine B (5-Candle Momentum / Multi-Layer Rule Blend)**: Achieved profitable point-in-time performance with Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct')}%` without forward leakage.")
     else:
-        findings.append(f"3. **Engine B (Point-in-Time Ensemble)**: Point-in-time simulation without lookahead yielded Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct', 0)}%`. Pure multi-layer voting without regime filter requires further calibration before live allocation.")
+        findings.append(f"3. **Engine B (5-Candle Momentum / Multi-Layer Rule Blend)**: Point-in-time simulation without lookahead yielded Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct', 0)}%`. Pure multi-layer voting without regime filter requires further calibration before live allocation.")
 
     findings.append(f"4. **Benchmark Comparison**: Buy & Hold OOS Return was `{_fmt_pct(ret_bh)}`.")
     md.append("\n".join(findings) + "\n")
@@ -636,7 +636,7 @@ def main():
     print(f"  Trades: {res_1h.get('total_trades')} | Win Rate: {res_1h.get('win_rate_pct')}% | Profit Factor: {res_1h.get('profit_factor')} | Net Return: {_fmt_pct(res_1h.get('net_return_pct'))} | MDD: {res_1h.get('max_drawdown_pct')}%")
 
     # 3. Engine B: Point-in-Time Multi-Layer Ensemble
-    print("\n--- Running Engine B: Point-in-Time Multi-Layer Ensemble (BTCUSDT 1h ws=5 h=1h) ---")
+    print("\n--- Running Engine B: 5-Candle Momentum / Multi-Layer Rule Blend (BTCUSDT 1h ws=5 h=1h) ---")
     res_ens = run_engine_b_simulation("1h", 5, "1h", 3_600_000, start_ms, 0.58, model_path=model_1h)
     results["engine_b_ensemble"] = res_ens
     print(f"  Trades: {res_ens.get('total_trades')} | Win Rate: {res_ens.get('win_rate_pct')}% | Profit Factor: {res_ens.get('profit_factor')} | Net Return: {_fmt_pct(res_ens.get('net_return_pct'))} | MDD: {res_ens.get('max_drawdown_pct')}%")

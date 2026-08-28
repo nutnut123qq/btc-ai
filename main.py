@@ -175,10 +175,10 @@ async def explain_strategy(request: ExplainRequest):
 
     # Extract key metadata for tagging
     evidence_tags = []
-    if "masterEnsemblePrediction" in ctx:
-        evidence_tags.append("Master Ensemble")
-    if "archetype" in ctx or "markov" in ctx:
-        evidence_tags.append("Markov Transitions")
+    if "masterEnsemblePrediction" in ctx or "multiLayerEnsemble" in ctx:
+        evidence_tags.append("Multi-Layer Ensemble")
+    if "archetype" in ctx or "momentum" in ctx or "markov" in ctx:
+        evidence_tags.append("Price Momentum")
     if "regime" in ctx:
         evidence_tags.append("Market Regime")
     if "confluence" in ctx:
@@ -231,10 +231,10 @@ async def explain_strategy_stream(request: ExplainRequest):
         prompt = "Giải thích tổng quan dự báo BTC và các yếu tố kỹ thuật hiện tại."
 
     evidence_tags = []
-    if "masterEnsemblePrediction" in ctx:
-        evidence_tags.append("Master Ensemble")
-    if "archetype" in ctx or "markov" in ctx:
-        evidence_tags.append("Markov Transitions")
+    if "masterEnsemblePrediction" in ctx or "multiLayerEnsemble" in ctx:
+        evidence_tags.append("Multi-Layer Ensemble")
+    if "archetype" in ctx or "momentum" in ctx or "markov" in ctx:
+        evidence_tags.append("Price Momentum")
     if "regime" in ctx:
         evidence_tags.append("Market Regime")
     if "confluence" in ctx:
