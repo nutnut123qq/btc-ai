@@ -1,28 +1,29 @@
 # Bitcoin AI Analyst — Out-of-Sample (OOS) Blind Performance Audit
 
-**Execution Timestamp:** 2026-08-28 00:00:00 UTC  
-**Out-Of-Sample Start Date:** `2025-01-01 00:00:00 UTC`  
+**Execution Timestamp:** 2026-08-28 00:00:00 UTC
+**Out-Of-Sample Start Date:** `2025-01-01 00:00:00 UTC`
 **Transaction Costs Enforced:** Fee = `10.0 bps/side`, Slippage = `5.0 bps/side` (Roundtrip = `0.30%`)
 
 ---
 
 ## 1. Engine B Architecture & Semantics Disclosure
 
-**Engine B Architecture Description**:
-Engine B is implemented as a **Point-in-Time Multi-Layer Rule Blend** combining 5 distinct analytical components weighted dynamically by prevailing market regime:
-1. **Layer 1: Multi-TF Confluence Layer**: Derived strictly from historical moving average trend orientation (Bull / Bear / Chop).
-2. **Layer 2: 5-Candle Momentum Layer**: Evaluates 5-bar historical rate-of-change `(close_t - close_{t-4}) / close_{t-4}` strictly up to `window_end_ms`. This is a deterministic price momentum rule and contains **no Markov chain transition matrix** or state sequence mining.
-3. **Layer 3: Market Regime ADX Layer**: Trend strength weighting based on historical SMA20/SMA50 spread and return direction.
-4. **Layer 4: SMC & Liquidity Structure Layer**: Weighting based on support/resistance and order flow heuristics.
-5. **Layer 5: Machine Learning Signal Layer**: Out-of-sample inference from trained direction classifier (or neutral baseline).
+**Engine B implementation description**:
+Engine B is a weighted rule blend containing five scores:
 
-All 5 layers are evaluated point-in-time at `window_end_ms` with zero access to future prices, true forward labels, or forward returns.
+1. A primary same-timeframe regime score from the latest close, SMA20, SMA50, and 20-bar return.
+2. A five-bar price-momentum score ending at `window_end_ms`.
+3. A second directional weight derived from the same regime classification as score 1; it does not calculate ADX.
+4. A symmetric constant selected by whether that regime is trending or sideways; it does not calculate price levels or order flow.
+5. Class probabilities from the supplied model, or a regime-dependent fallback when no model is loaded.
+
+This is not a multi-timeframe model, Markov chain, ADX calculation, market-structure model, or liquidity model. The Engine B decision seam ignores dataset labels and target returns, and regression tests verify that permuting or inverting both leaves its decisions unchanged. That test does not independently prove that every upstream feature in the stored vector was constructed point-in-time.
 
 ---
 
 ## 2. Executive Summary & Benchmark Comparison
 
-| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (5-Candle Momentum / Multi-Layer Rule Blend) | Benchmark (Buy & Hold) |
+| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (Same-Timeframe Regime / 5-Bar Momentum Rule Blend) | Benchmark (Buy & Hold) |
 |---|---|---|---|---|
 | **Total Trades** | 1020 | 3744 | 5283 | N/A |
 | **Win Rate (Post-Fee)** | **60.49%** | 49.25% | **20.52%** | N/A |
@@ -57,7 +58,7 @@ Statistical validation of model confidence scores across all unseen test windows
 | **Bull Trend** | 235 | 63.83% | 1.63 | +52.03% |
 | **Bear Trend** | 353 | 55.24% | 1.06 | +6.80% |
 
-### Engine B (5-Candle Momentum / Multi-Layer Rule Blend)
+### Engine B (Same-Timeframe Regime / 5-Bar Momentum Rule Blend)
 
 | Market Regime | Trade Count | Win Rate (%) | Profit Factor | Cumulative Net Return (%) |
 |---|---|---|---|---|
@@ -68,7 +69,7 @@ Statistical validation of model confidence scores across all unseen test windows
 
 ## 5. Quantitative Findings & Truthful Audit Conclusions
 
-1. **Engine A (4h Calibrated XGB)**: Demonstrated verified out-of-sample edge post-transaction costs with Win Rate = `60.49%` and Profit Factor = `1.39`.
+1. **Engine A (4h Calibrated XGB)**: This replay reported Win Rate = `60.49%` and Profit Factor = `1.39` after its configured transaction costs.
 2. **Engine A (1h Balanced XGB)**: Suffered from severe transaction friction drag (30 bps roundtrip fee + slippage) leading to negative net return on high-frequency 1h bars.
-3. **Engine B (5-Candle Momentum / Multi-Layer Rule Blend)**: When evaluated strictly point-in-time without future lookahead leakage, uncalibrated rule-based voting over-trades and suffers from fee decay. Further parameter optimization and regime gating are required prior to any live capital deployment.
-4. **Data Integrity & Leak Prevention**: All models and simulators are verified to execute point-in-time decisions solely on observable historical data up to `window_end_ms`.
+3. **Engine B (Same-Timeframe Regime / 5-Bar Momentum Rule Blend)**: This replay over-trades and suffers from fee decay. Its result does not support live capital deployment.
+4. **Data-integrity scope**: Production-linked permutation tests cover `backtest_strategy.simulate_trades` and Engine B's extracted decision seam. They establish invariance to dataset labels and target returns in those paths, but do not certify every upstream dataset-building or model-training step.

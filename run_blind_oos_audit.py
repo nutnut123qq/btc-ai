@@ -5,7 +5,7 @@ Phase 5: Historical Out-Of-Sample (OOS) Blind Replay & Performance Audit
 Performs strict point-in-time blind simulation on unseen post-2025 data.
 Evaluates:
   - Engine A: ML Champion Model (XGB Calibrated 4h & Balanced 1h)
-  - Engine B: 5-Candle Momentum / Multi-Layer Rule Blend
+  - Engine B: Same-Timeframe Regime / 5-Bar Momentum Rule Blend
 Applies real-world transaction costs (10 bps fee + 5 bps slippage per side).
 Computes quant metrics, calibration quality, and adversarial regime breakdown.
 """
@@ -240,55 +240,40 @@ def run_engine_a_simulation(
     return metrics
 
 
-def run_engine_b_simulation(
-    timeframe: str,
-    window_size: int,
-    horizon: str,
+def simulate_engine_b_windows(
+    windows: List[Tuple[int, List[float], int, Optional[float]]],
+    kline_map: Dict[int, Dict[str, float]],
     horizon_ms: int,
-    start_ms: int,
-    confidence_threshold: float = 0.58,
-    model_path: Optional[Path] = None,
-) -> Dict[str, Any]:
-    """Simulates trades for Engine B (5-Candle Momentum / Multi-Layer Rule Blend)."""
-    windows = fetch_oos_windows(DEFAULT_SYMBOL, timeframe, window_size, horizon, start_ms)
-    if not windows:
-        return {"error": f"No OOS window data for Ensemble {timeframe}"}
+    confidence_threshold: float,
+    ml_model: Optional[Any] = None,
+) -> Tuple[List[Dict[str, Any]], List[float], List[int]]:
+    """Run Engine B on supplied point-in-time inputs.
 
-    kline_map = fetch_klines_map(DEFAULT_SYMBOL, timeframe, start_ms)
+    Labels and target returns are present in the dataset rows for later scoring, but
+    this decision path deliberately discards them. Keeping this production seam
+    separate makes that invariant directly testable without a database.
+    """
     sorted_kline_times = sorted(kline_map.keys())
-
-    # Optional model loading for ML layer
-    ml_model = None
-    if model_path and model_path.exists():
-        try:
-            ml_model = joblib.load(model_path)
-        except Exception:
-            ml_model = None
-
+    index_by_time = {timestamp: index for index, timestamp in enumerate(sorted_kline_times)}
     fee_rate = FEE_BPS / 10000.0
     slippage_rate = SLIPPAGE_BPS / 10000.0
-
     trades = []
     probabilities = []
 
-    for window_end_ms, vec, _true_label, _target_ret in windows:
+    for window_end_ms, vec, *_outcomes in windows:
         if not vec:
             continue
 
         regime = classify_market_regime(sorted_kline_times, kline_map, window_end_ms)
         is_trending = regime in ("Bull Trend", "Bear Trend")
 
-        # Layer 1: Confluence (MTF) - Derived strictly from point-in-time regime
+        # Primary same-timeframe regime direction score.
         l1_up = 0.70 if regime == "Bull Trend" else 0.20 if regime == "Bear Trend" else 0.35
         l1_down = 0.70 if regime == "Bear Trend" else 0.20 if regime == "Bull Trend" else 0.35
 
-        # Layer 2: 5-Candle Momentum / Multi-Layer Rule Blend (from past bars strictly, ZERO true_label lookahead)
-        idx = None
-        for i, t in enumerate(sorted_kline_times):
-            if t == window_end_ms:
-                idx = i
-                break
-        if idx is not None and idx >= 5:
+        # Five-bar momentum score using prices available at window_end_ms.
+        idx = index_by_time.get(window_end_ms)
+        if idx is not None and idx >= 4:
             past_closes = [kline_map[sorted_kline_times[j]]["close"] for j in range(idx - 4, idx + 1)]
             past_ret = (past_closes[-1] - past_closes[0]) / past_closes[0]
             l2_momentum_up = 0.65 if past_ret > 0.005 else 0.25 if past_ret < -0.005 else 0.40
@@ -297,15 +282,15 @@ def run_engine_b_simulation(
             l2_momentum_up = 0.33
             l2_momentum_down = 0.33
 
-        # Layer 3: Market Regime ADX
+        # Secondary weight from the same SMA/return regime classifier (not ADX).
         l3_up = 0.75 if regime == "Bull Trend" else 0.20
         l3_down = 0.75 if regime == "Bear Trend" else 0.20
 
-        # Layer 4: SMC / Key Levels
+        # Symmetric trending/chop constant (not support/resistance or order flow).
         l4_up = 0.60 if is_trending else 0.40
         l4_down = 0.60 if is_trending else 0.40
 
-        # Layer 5: ML Model Inference (if model loaded) or neutral baseline
+        # Model probability when available; otherwise a regime-dependent fallback.
         if ml_model is not None and hasattr(ml_model, "predict_proba"):
             X = np.array(vec, dtype=np.float32).reshape(1, -1)
             proba = ml_model.predict_proba(X)[0]
@@ -314,28 +299,36 @@ def run_engine_b_simulation(
             l5_up = 0.60 if regime == "Bull Trend" else 0.40
             l5_down = 0.60 if regime == "Bear Trend" else 0.40
 
-        # Dynamic Layer Weights
-        w_conf = 0.35 if is_trending else 0.25
+        w_primary_regime = 0.35 if is_trending else 0.25
         w_momentum = 0.20 if is_trending else 0.15
-        w_regime = 0.15 if is_trending else 0.10
-        w_smc = 0.10 if is_trending else 0.30
+        w_secondary_regime = 0.15 if is_trending else 0.10
+        w_market_state = 0.10 if is_trending else 0.30
         w_ml = 0.20
 
-        w_total = w_conf + w_momentum + w_regime + w_smc + w_ml
-        agg_up = (w_conf * l1_up + w_momentum * l2_momentum_up + w_regime * l3_up + w_smc * l4_up + w_ml * l5_up) / w_total
-        agg_down = (w_conf * l1_down + w_momentum * l2_momentum_down + w_regime * l3_down + w_smc * l4_down + w_ml * l5_down) / w_total
+        w_total = w_primary_regime + w_momentum + w_secondary_regime + w_market_state + w_ml
+        agg_up = (
+            w_primary_regime * l1_up
+            + w_momentum * l2_momentum_up
+            + w_secondary_regime * l3_up
+            + w_market_state * l4_up
+            + w_ml * l5_up
+        ) / w_total
+        agg_down = (
+            w_primary_regime * l1_down
+            + w_momentum * l2_momentum_down
+            + w_secondary_regime * l3_down
+            + w_market_state * l4_down
+            + w_ml * l5_down
+        ) / w_total
         agg_side = max(0.05, 1.0 - agg_up - agg_down)
 
         if agg_up >= agg_down and agg_up >= agg_side:
-            direction = "Bullish"
             conf = agg_up
             label = 1
         elif agg_down >= agg_up and agg_down >= agg_side:
-            direction = "Bearish"
             conf = agg_down
             label = -1
         else:
-            direction = "Sideways"
             conf = agg_side
             label = 0
 
@@ -375,11 +368,43 @@ def run_engine_b_simulation(
             "gross_return": gross_return,
             "net_return": net_return,
             "regime": regime,
-            "true_label": _true_label,
         })
 
+    return trades, probabilities, sorted_kline_times
+
+
+def run_engine_b_simulation(
+    timeframe: str,
+    window_size: int,
+    horizon: str,
+    horizon_ms: int,
+    start_ms: int,
+    confidence_threshold: float = 0.58,
+    model_path: Optional[Path] = None,
+) -> Dict[str, Any]:
+    """Simulates Engine B's same-timeframe regime/momentum rule blend."""
+    windows = fetch_oos_windows(DEFAULT_SYMBOL, timeframe, window_size, horizon, start_ms)
+    if not windows:
+        return {"error": f"No OOS window data for Engine B {timeframe}"}
+
+    kline_map = fetch_klines_map(DEFAULT_SYMBOL, timeframe, start_ms)
+
+    ml_model = None
+    if model_path and model_path.exists():
+        try:
+            ml_model = joblib.load(model_path)
+        except Exception:
+            ml_model = None
+
+    trades, probabilities, sorted_kline_times = simulate_engine_b_windows(
+        windows,
+        kline_map,
+        horizon_ms,
+        confidence_threshold,
+        ml_model,
+    )
     metrics = calculate_quant_metrics(trades, sorted_kline_times, kline_map, start_ms)
-    metrics["model_name"] = "5-Candle Momentum / Multi-Layer Rule Blend (Engine B)"
+    metrics["model_name"] = "Same-Timeframe Regime / 5-Bar Momentum Rule Blend (Engine B)"
     metrics["timeframe"] = timeframe
     metrics["horizon"] = horizon
     metrics["threshold"] = confidence_threshold
@@ -534,8 +559,19 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append(f"**Out-Of-Sample Start Date:** `2025-01-01 00:00:00 UTC`\n")
     md.append(f"**Transaction Costs Enforced:** Fee = `{FEE_BPS} bps/side`, Slippage = `{SLIPPAGE_BPS} bps/side` (Roundtrip = `{TOTAL_ROUNDTRIP_COST_PCT*100:.2f}%`)\n\n")
 
-    md.append("## 1. Executive Summary & Benchmark Comparison\n\n")
-    md.append("| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (5-Candle Momentum / Multi-Layer Rule Blend) | Benchmark (Buy & Hold) |\n")
+    md.append("## 1. Engine B Architecture & Semantics Disclosure\n\n")
+    md.append(
+        "Engine B combines two scores from the same SMA/return regime classifier, "
+        "a five-bar momentum score, a symmetric trending/chop constant, and model "
+        "probabilities (or a regime-dependent fallback). It does not calculate "
+        "multi-timeframe confluence, ADX, market structure, liquidity, or order flow. "
+        "Its production decision seam ignores dataset labels and target returns. "
+        "Permutation tests cover that seam but do not independently certify upstream "
+        "feature construction.\n\n"
+    )
+
+    md.append("## 2. Executive Summary & Benchmark Comparison\n\n")
+    md.append("| Metric | Engine A (Champion XGB 4h) | Engine A (Balanced XGB 1h) | Engine B (Same-Timeframe Regime / 5-Bar Momentum Rule Blend) | Benchmark (Buy & Hold) |\n")
     md.append("|---|---|---|---|---|\n")
 
     res_4h = results.get("engine_a_4h", {})
@@ -556,22 +592,22 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append(f"| **Net Return (%)** | **{_fmt_pct(ret_4h)}** | {_fmt_pct(ret_1h)} | **{_fmt_pct(ret_ens)}** | **{_fmt_pct(ret_bh)}** |\n")
     md.append(f"| **Trade Freq (trades/day)** | {res_4h.get('trade_frequency_per_day', 0)} | {res_1h.get('trade_frequency_per_day', 0)} | {res_ens.get('trade_frequency_per_day', 0)} | — |\n\n")
 
-    md.append("## 2. Confidence Calibration & Probability Distribution\n\n")
+    md.append("## 3. Confidence Calibration & Probability Distribution\n\n")
     md.append("Statistical validation of model confidence scores across all unseen test windows:\n\n")
     md.append("| Model | Mean Conf | Median | 25th % | 75th % | 90th % | 99th % | Brier Score | Log-Loss |\n")
     md.append("|---|---|---|---|---|---|---|---|---|\n")
 
-    for k, title in [("engine_a_4h", "XGB 4h Calibrated"), ("engine_a_1h", "XGB 1h Balanced"), ("engine_b_ensemble", "5-Candle Momentum / Multi-Layer Rule Blend")]:
+    for k, title in [("engine_a_4h", "XGB 4h Calibrated"), ("engine_a_1h", "XGB 1h Balanced"), ("engine_b_ensemble", "Same-Timeframe Regime / 5-Bar Momentum Rule Blend")]:
         r = results.get(k, {})
         d = r.get("prob_distribution", {})
         brier = f"{r.get('brier_score'):.4f}" if r.get("brier_score") is not None else "N/A"
         ll = f"{r.get('log_loss'):.4f}" if r.get("log_loss") is not None else "N/A"
         md.append(f"| **{title}** | {d.get('mean', 0)} | {d.get('median', 0)} | {d.get('p25', 0)} | {d.get('p75', 0)} | {d.get('p90', 0)} | {d.get('p99', 0)} | `{brier}` | `{ll}` |\n")
 
-    md.append("\n## 3. Adversarial Market Regime Breakdown\n\n")
+    md.append("\n## 4. Market Regime Breakdown\n\n")
     md.append("Performance segmented by underlying market regime:\n\n")
 
-    for k, title in [("engine_a_4h", "Engine A (Champion XGB 4h)"), ("engine_b_ensemble", "Engine B (5-Candle Momentum / Multi-Layer Rule Blend)")]:
+    for k, title in [("engine_a_4h", "Engine A (Champion XGB 4h)"), ("engine_b_ensemble", "Engine B (Same-Timeframe Regime / 5-Bar Momentum Rule Blend)")]:
         r = results.get(k, {})
         rb = r.get("regime_breakdown", {})
         md.append(f"### {title}\n\n")
@@ -582,10 +618,10 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
             md.append(f"| **{reg}** | {s.get('trades_count', 0)} | {s.get('win_rate_pct', 0)}% | {s.get('profit_factor', 0)} | {_fmt_pct(cum_r)} |\n")
         md.append("\n")
 
-    md.append("## 4. Quantitative Findings & Derived Conclusions\n\n")
+    md.append("## 5. Quantitative Findings & Derived Conclusions\n\n")
     # Dynamically evaluate findings based strictly on actual metrics
     findings = []
-    
+
     # Engine A 4h evaluation
     if res_4h.get("profit_factor", 0) > 1.2 and res_4h.get("win_rate_pct", 0) > 52.0:
         findings.append(f"1. **Engine A (4h XGB Calibrated)**: Demonstrated positive edge post-fees with Win Rate = `{res_4h.get('win_rate_pct')}%`, Profit Factor = `{res_4h.get('profit_factor')}`, and Net Return = `{_fmt_pct(ret_4h)}`.")
@@ -600,9 +636,9 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
 
     # Engine B evaluation
     if res_ens.get("profit_factor", 0) > 1.1 and res_ens.get("net_return_pct", 0) > 0:
-        findings.append(f"3. **Engine B (5-Candle Momentum / Multi-Layer Rule Blend)**: Achieved profitable point-in-time performance with Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct')}%` without forward leakage.")
+        findings.append(f"3. **Engine B (Same-Timeframe Regime / 5-Bar Momentum Rule Blend)**: This replay reported Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct')}%`.")
     else:
-        findings.append(f"3. **Engine B (5-Candle Momentum / Multi-Layer Rule Blend)**: Point-in-time simulation without lookahead yielded Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct', 0)}%`. Pure multi-layer voting without regime filter requires further calibration before live allocation.")
+        findings.append(f"3. **Engine B (Same-Timeframe Regime / 5-Bar Momentum Rule Blend)**: This replay reported Net Return = `{_fmt_pct(ret_ens)}` and Win Rate = `{res_ens.get('win_rate_pct', 0)}%`. The result does not support live allocation.")
 
     findings.append(f"4. **Benchmark Comparison**: Buy & Hold OOS Return was `{_fmt_pct(ret_bh)}`.")
     md.append("\n".join(findings) + "\n")
@@ -636,7 +672,7 @@ def main():
     print(f"  Trades: {res_1h.get('total_trades')} | Win Rate: {res_1h.get('win_rate_pct')}% | Profit Factor: {res_1h.get('profit_factor')} | Net Return: {_fmt_pct(res_1h.get('net_return_pct'))} | MDD: {res_1h.get('max_drawdown_pct')}%")
 
     # 3. Engine B: Point-in-Time Multi-Layer Ensemble
-    print("\n--- Running Engine B: 5-Candle Momentum / Multi-Layer Rule Blend (BTCUSDT 1h ws=5 h=1h) ---")
+    print("\n--- Running Engine B: Same-Timeframe Regime / 5-Bar Momentum Rule Blend (BTCUSDT 1h ws=5 h=1h) ---")
     res_ens = run_engine_b_simulation("1h", 5, "1h", 3_600_000, start_ms, 0.58, model_path=model_1h)
     results["engine_b_ensemble"] = res_ens
     print(f"  Trades: {res_ens.get('total_trades')} | Win Rate: {res_ens.get('win_rate_pct')}% | Profit Factor: {res_ens.get('profit_factor')} | Net Return: {_fmt_pct(res_ens.get('net_return_pct'))} | MDD: {res_ens.get('max_drawdown_pct')}%")

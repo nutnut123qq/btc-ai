@@ -2,8 +2,9 @@ import inspect
 import unittest
 import numpy as np
 
-from prediction_service import predict_from_vector, list_available_models
-from backtest_strategy import simulate_trades, model_predict
+from prediction_service import predict_from_vector
+from backtest_strategy import simulate_trades
+from run_blind_oos_audit import simulate_engine_b_windows
 
 
 class MockPredictor:
@@ -22,8 +23,8 @@ class TestLeakPreventionAndPermutationInvariance(unittest.TestCase):
     Genuine production-linked regression tests verifying:
     1. Production prediction_service.predict_from_vector signature and inference do not accept or depend on true_label.
     2. Production backtest_strategy.simulate_trades trade decisions are 100% invariant to true_label / forward return permutations.
-    3. Engine B 5-candle momentum layer strictly uses past historical bars with zero forward lookahead.
-    4. Adversarial verification: deliberate leakage into the decision path causes permutation tests to fail.
+    3. Production Engine B decisions are invariant to labels and target returns.
+    4. The Engine B comparison oracle rejects a deliberate label-derived mutation.
     """
 
     def setUp(self):
@@ -68,9 +69,9 @@ class TestLeakPreventionAndPermutationInvariance(unittest.TestCase):
         result1 = predict_from_vector(
             feature_vector=feature_vec,
             symbol="BTCUSDT",
-            timeframe="1h",
+            timeframe="4h",
             window_size=5,
-            horizon="1h",
+            horizon="4h",
         )
         self.assertIn("label", result1)
         self.assertIn("confidence", result1)
@@ -79,17 +80,12 @@ class TestLeakPreventionAndPermutationInvariance(unittest.TestCase):
         self.assertIn("prob_up", result1)
         self.assertIn(result1["label"], [-1, 0, 1])
 
-        # Verify that external ground truth metadata (e.g. true label or target return)
-        # cannot alter or influence the production inference result
-        metadata_bullish = {"true_label": 1, "target_return": 0.05}
-        metadata_bearish = {"true_label": -1, "target_return": -0.05}
-
         result2 = predict_from_vector(
             feature_vector=feature_vec,
             symbol="BTCUSDT",
-            timeframe="1h",
+            timeframe="4h",
             window_size=5,
-            horizon="1h",
+            horizon="4h",
         )
         self.assertEqual(result1["label"], result2["label"])
         self.assertEqual(result1["confidence"], result2["confidence"])
@@ -156,70 +152,102 @@ class TestLeakPreventionAndPermutationInvariance(unittest.TestCase):
             self.assertAlmostEqual(t_orig["gross_return"], t_inv["gross_return"], places=6)
             self.assertAlmostEqual(t_orig["net_return"], t_inv["net_return"], places=6)
 
-    def test_engine_b_momentum_point_in_time_invariance(self):
-        """
-        Verify that Engine B 5-candle momentum layer depends strictly on historical prices
-        and is unaffected by future prices or labels.
-        """
-        past_closes_bullish = [100.0, 101.0, 101.5, 102.0, 103.0]
-        past_closes_bearish = [100.0, 99.0, 98.5, 97.0, 96.0]
-        past_closes_neutral = [100.0, 100.1, 99.9, 100.0, 100.2]
-
-        def compute_l2_momentum(past_closes: list[float]) -> tuple[float, float]:
-            past_ret = (past_closes[-1] - past_closes[0]) / past_closes[0]
-            l2_up = 0.65 if past_ret > 0.005 else 0.25 if past_ret < -0.005 else 0.40
-            l2_down = 0.65 if past_ret < -0.005 else 0.25 if past_ret > 0.005 else 0.40
-            return l2_up, l2_down
-
-        bull_up, bull_down = compute_l2_momentum(past_closes_bullish)
-        self.assertEqual((bull_up, bull_down), (0.65, 0.25))
-
-        bear_up, bear_down = compute_l2_momentum(past_closes_bearish)
-        self.assertEqual((bear_up, bear_down), (0.25, 0.65))
-
-        flat_up, flat_down = compute_l2_momentum(past_closes_neutral)
-        self.assertEqual((flat_up, flat_down), (0.40, 0.40))
-
-    def test_adversarial_leakage_detection(self):
-        """
-        Adversarial test: Proves that if true_label were intentionally introduced into
-        the decision path, the permutation invariance check correctly detects the violation and fails.
-        """
-        rows_orig = [
-            (t, v, l, r)
-            for t, v, l, r in zip(self.times, self.vecs, self.true_labels_orig, self.target_returns_orig)
-        ]
-        # Invert true labels
-        rows_inv = [
-            (t, v, -1 * l, -1.0 * r)
-            for t, v, l, r in zip(self.times, self.vecs, self.true_labels_orig, self.target_returns_orig)
+    def _engine_b_rows(self, labels, returns):
+        return [
+            (t, v, label, target_return)
+            for t, v, label, target_return in zip(self.times, self.vecs, labels, returns)
         ]
 
-        def leaky_simulate_trades(rows, klines, horizon_ms):
-            # Corrupted decision function that improperly peeks at true_label
-            close_by_time = {int(r[0]): float(r[4]) for r in klines}
-            trades = []
-            for window_end_ms, _vec, true_label, _target_return in rows:
-                if true_label == 0:
-                    continue
-                side = "long" if true_label == 1 else "short"
-                entry_time = int(window_end_ms)
-                exit_time = entry_time + horizon_ms
-                if entry_time not in close_by_time or exit_time not in close_by_time:
-                    continue
-                trades.append({
-                    "entry_time": entry_time,
-                    "side": side,
-                })
-            return trades
+    def _run_engine_b(self, rows):
+        kline_map = {
+            int(t): {
+                "open": float(open_price),
+                "high": float(high),
+                "low": float(low),
+                "close": float(close),
+                "volume": float(volume),
+            }
+            for t, open_price, high, low, close, volume in self.klines
+        }
+        return simulate_engine_b_windows(
+            rows,
+            kline_map,
+            self.horizon_ms,
+            confidence_threshold=0.0,
+            ml_model=self.mock_model,
+        )
 
-        trades_orig = leaky_simulate_trades(rows_orig, self.klines, self.horizon_ms)
-        trades_inv = leaky_simulate_trades(rows_inv, self.klines, self.horizon_ms)
+    def _assert_same_engine_b_decisions(self, left, right):
+        decision_fields = ("entry_time", "exit_time", "side", "confidence")
+        self.assertEqual(
+            [tuple(trade[field] for field in decision_fields) for trade in left],
+            [tuple(trade[field] for field in decision_fields) for trade in right],
+        )
 
-        # Confirm that the adversarial simulation generates inverted trade directions
-        with self.assertRaises(AssertionError, msg="Adversarial check did not catch deliberate label leakage!"):
-            for i in range(min(len(trades_orig), len(trades_inv))):
-                self.assertEqual(trades_orig[i]["side"], trades_inv[i]["side"])
+    def test_production_engine_b_permutation_invariance(self):
+        """Permuting hidden outcomes cannot alter Engine B's production decisions."""
+        rows_orig = self._engine_b_rows(self.true_labels_orig, self.target_returns_orig)
+        perm = np.random.permutation(self.n_samples)
+        rows_permuted = self._engine_b_rows(
+            [self.true_labels_orig[i] for i in perm],
+            [self.target_returns_orig[i] for i in perm],
+        )
+        rows_inverted = self._engine_b_rows(
+            [-label for label in self.true_labels_orig],
+            [-target_return for target_return in self.target_returns_orig],
+        )
+
+        trades_orig, probabilities_orig, times_orig = self._run_engine_b(rows_orig)
+        trades_permuted, probabilities_permuted, times_permuted = self._run_engine_b(rows_permuted)
+        trades_inverted, probabilities_inverted, times_inverted = self._run_engine_b(rows_inverted)
+
+        self.assertGreater(len(trades_orig), 0)
+        self.assertEqual(probabilities_orig, probabilities_permuted)
+        self.assertEqual(probabilities_orig, probabilities_inverted)
+        self.assertEqual(times_orig, times_permuted)
+        self.assertEqual(times_orig, times_inverted)
+        self.assertEqual(trades_orig, trades_permuted)
+        self.assertEqual(trades_orig, trades_inverted)
+
+    def test_engine_b_uses_first_complete_five_bar_window(self):
+        """Index 4 is the first valid five-close momentum window (0 through 4)."""
+        times = [1700000000000 + i * self.horizon_ms for i in range(6)]
+        closes = [100.0, 101.0, 102.0, 103.0, 104.0, 105.0]
+        kline_map = {
+            timestamp: {
+                "open": close,
+                "high": close,
+                "low": close,
+                "close": close,
+                "volume": 1.0,
+            }
+            for timestamp, close in zip(times, closes)
+        }
+        rows = [(times[4], [0.0] * self.n_features, 1, 0.01)]
+
+        trades, probabilities, _times = simulate_engine_b_windows(
+            rows,
+            kline_map,
+            self.horizon_ms,
+            confidence_threshold=0.0,
+        )
+
+        self.assertEqual(len(trades), 1)
+        self.assertEqual(trades[0]["side"], "long")
+        self.assertAlmostEqual(probabilities[0], 0.405)
+
+    def test_engine_b_oracle_kills_label_leak_mutation(self):
+        """The decision comparison fails if production output is mutated from labels."""
+        rows = self._engine_b_rows(self.true_labels_orig, self.target_returns_orig)
+        trades, _probabilities, _times = self._run_engine_b(rows)
+        label_by_time = dict(zip(self.times, self.true_labels_orig))
+        mutated = [dict(trade) for trade in trades]
+        for trade in mutated:
+            label = label_by_time[trade["entry_time"]]
+            trade["side"] = "long" if label == 1 else "short" if label == -1 else "flat"
+
+        with self.assertRaises(AssertionError):
+            self._assert_same_engine_b_decisions(trades, mutated)
 
 
 if __name__ == "__main__":
