@@ -60,7 +60,7 @@ def ms(iso_str):
 def extract_dataset(symbol: str, timeframe: str = "4h", ws: int = 5, tf_ms: int = 14400000, threshold_pct: float = 0.003):
     conn = psycopg2.connect(**DB_CONFIG)
     cur = conn.cursor()
-    
+
     cols = ", ".join(f'"{c}"' for c in FEATURE_COLS)
     cur.execute(f"""
         SELECT "OpenTimeMs", {cols} FROM "MlFeatureStores"
@@ -68,7 +68,7 @@ def extract_dataset(symbol: str, timeframe: str = "4h", ws: int = 5, tf_ms: int 
         ORDER BY "OpenTimeMs" ASC
     """, (symbol, timeframe))
     feature_rows = cur.fetchall()
-    
+
     cur.execute("""
         SELECT "OpenTimeMs", "Close" FROM "Klines"
         WHERE "Symbol"=%s AND "Timeframe"=%s
@@ -76,17 +76,17 @@ def extract_dataset(symbol: str, timeframe: str = "4h", ws: int = 5, tf_ms: int 
     """, (symbol, timeframe))
     kline_rows = cur.fetchall()
     conn.close()
-    
+
     close_dict = {int(r[0]): float(r[1]) for r in kline_rows}
-    
+
     times = []
     vectors = []
     labels = []
     returns = []
-    
+
     for i in range(ws - 1, len(feature_rows)):
         window = feature_rows[i - ws + 1 : i + 1]
-        
+
         # Verify continuity
         is_continuous = True
         for j in range(1, len(window)):
@@ -95,7 +95,7 @@ def extract_dataset(symbol: str, timeframe: str = "4h", ws: int = 5, tf_ms: int 
                 break
         if not is_continuous:
             continue
-            
+
         # Check nulls for core indicators (first 28 features)
         has_null = False
         vec = []
@@ -108,60 +108,60 @@ def extract_dataset(symbol: str, timeframe: str = "4h", ws: int = 5, tf_ms: int 
             # default nullable features (e.g. RecentPatternEncoded, ActiveRuleCount) to 0.0
             vec.extend(float(v) if v is not None else 0.0 for v in vals)
             vec.extend(time_features(r[0]))
-            
+
         if has_null or len(vec) != ws * 35:
             continue
-            
+
         end_open_ms = int(window[-1][0])
         next_open_ms = end_open_ms + tf_ms
-        
+
         # Future return over next bar
         if end_open_ms not in close_dict or next_open_ms not in close_dict:
             continue
-            
+
         current_close = close_dict[end_open_ms]
         next_close = close_dict[next_open_ms]
         ret = (next_close - current_close) / current_close
-        
+
         if ret > threshold_pct:
             raw_label = 1   # UP
         elif ret < -threshold_pct:
             raw_label = -1  # DOWN
         else:
             raw_label = 0   # SIDEWAYS
-            
+
         times.append(end_open_ms)
         vectors.append(vec)
         labels.append(LABEL_REMAP[raw_label])
         returns.append(ret)
-        
+
     return np.array(times, dtype=np.int64), np.array(vectors, dtype=np.float32), np.array(labels, dtype=np.int64), np.array(returns, dtype=np.float32), close_dict
 
 def train_and_calibrate(symbol: str):
     print("=" * 65)
     print(f"Training & Calibrating 4h XGBoost Champion Model for {symbol}")
     print("=" * 65)
-    
+
     times, X, y, returns, close_dict = extract_dataset(symbol, timeframe="4h", ws=5)
     print(f"Total extracted sliding windows: {len(X)} (FeatureDim={X.shape[1]})")
-    
+
     # Temporal Split timestamps with 7-day purge/embargo
     train_end_ms = ms("2024-07-01T00:00:00")
     cal_start_ms = ms("2024-07-08T00:00:00")
     cal_end_ms = ms("2025-07-01T00:00:00")
     test_start_ms = ms("2025-07-08T00:00:00")
-    
+
     train_mask = times < train_end_ms
     cal_mask = (times >= cal_start_ms) & (times < cal_end_ms)
     test_mask = times >= test_start_ms
-    
+
     X_train, y_train = X[train_mask], y[train_mask]
     X_cal, y_cal = X[cal_mask], y[cal_mask]
     X_test, y_test = X[test_mask], y[test_mask]
     times_test, rets_test = times[test_mask], returns[test_mask]
-    
+
     print(f"Dataset Split: Train={len(X_train)} | Cal={len(X_cal)} | OOS Test={len(X_test)}")
-    
+
     # Base XGBoost fit strictly on training set
     base_xgb = xgb.XGBClassifier(
         n_estimators=200,
@@ -173,31 +173,31 @@ def train_and_calibrate(symbol: str):
         eval_metric="mlogloss"
     )
     base_xgb.fit(X_train, y_train)
-    
+
     # Prefit Isotonic Calibration strictly on temporal holdout Calibration set
     calibrated_clf = CalibratedClassifierCV(estimator=base_xgb, method="isotonic", cv="prefit")
     calibrated_clf.fit(X_cal, y_cal)
-    
+
     # Out-of-Sample (OOS) Test Evaluation
     test_probas = calibrated_clf.predict_proba(X_test)
     test_preds = test_probas.argmax(axis=1)
     test_confs = test_probas.max(axis=1)
-    
+
     oos_acc = float(accuracy_score(y_test, test_preds))
     oos_f1_macro = float(f1_score(y_test, test_preds, average='macro'))
     oos_f1_weighted = float(f1_score(y_test, test_preds, average='weighted'))
-    
+
     # Multiclass Brier Score
     y_test_one_hot = np.zeros_like(test_probas)
     for idx, label_idx in enumerate(y_test):
         y_test_one_hot[idx, label_idx] = 1.0
     brier_score = float(np.mean(np.sum((test_probas - y_test_one_hot) ** 2, axis=1)))
-    
+
     # Threshold Scan on OOS data
     best_thr = 0.61
     fee = 10.0 / 1e4
     slip = 5.0 / 1e4
-    
+
     trades = []
     trade_labels = []
     for t_ms, pred, conf, r in zip(times_test, test_preds, test_confs, rets_test):
@@ -209,13 +209,13 @@ def train_and_calibrate(symbol: str):
             net = gross - 2 * fee
             trades.append(net)
             trade_labels.append(pred)
-            
+
     trades = np.array(trades)
     trade_count = len(trades)
     win_rate = float((trades > 0).mean()) if trade_count > 0 else 0.0
     total_ret_pct = float((np.prod(1 + trades) - 1) * 100) if trade_count > 0 else 0.0
     sharpe = float((trades.mean() / trades.std()) * np.sqrt(2190)) if trade_count > 1 and trades.std() > 0 else 0.0
-    
+
     print(f"\n--- Honest OOS Evaluation Results ({symbol}) ---")
     print(f"  Accuracy (Overall) : {oos_acc*100:.2f}%")
     print(f"  Brier Score        : {brier_score:.4f}")
@@ -225,13 +225,13 @@ def train_and_calibrate(symbol: str):
     print(f"  Filtered Win Rate  : {win_rate*100:.2f}%")
     print(f"  Total Return       : {total_ret_pct:+.2f}%")
     print(f"  Sharpe Ratio (Ann) : {sharpe:.3f}")
-    
+
     # Save Model & Metadata
     model_filename = f"{symbol}_4h_ws5_h4h_XGB_calibrated.joblib"
     json_filename = f"{symbol}_4h_ws5_h4h_XGB_calibrated.json"
-    
+
     joblib.dump(calibrated_clf, MODELS_DIR / model_filename)
-    
+
     meta = {
         "symbol": symbol,
         "timeframe": "4h",
@@ -255,10 +255,10 @@ def train_and_calibrate(symbol: str):
         },
         "note": "labels remapped {-1,0,1}->{0,1,2}; argmax(proba)-1 = label"
     }
-    
+
     with open(MODELS_DIR / json_filename, "w") as f:
         json.dump(meta, f, indent=2)
-        
+
     print(f"[OK] Saved model to {model_filename} and metadata to {json_filename}")
     return meta
 
@@ -267,7 +267,7 @@ def main():
     results = {}
     for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT"]:
         results[sym] = train_and_calibrate(sym)
-        
+
     print("\n" + "=" * 65)
     print("ALL MODELS (BTC, ETH, SOL) TRAINED AND SAVED SUCCESSFULLY!")
     print("=" * 65)

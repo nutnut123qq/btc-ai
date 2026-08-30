@@ -26,18 +26,18 @@ def test_symbol(sym):
     cols = ", ".join(f'"{c}"' for c in FEATURE_COLS)
     cur.execute(f'SELECT "OpenTimeMs", {cols} FROM "MlFeatureStores" WHERE "Symbol"=%s AND "Timeframe"=\'4h\' ORDER BY "OpenTimeMs" ASC', (sym,))
     rows = cur.fetchall()
-    
+
     cur.execute('SELECT "OpenTimeMs", "Close" FROM "Klines" WHERE "Symbol"=%s AND "Timeframe"=\'4h\' ORDER BY "OpenTimeMs" ASC', (sym,))
     kline_rows = cur.fetchall()
     conn.close()
-    
+
     close_dict = {int(r[0]): float(r[1]) for r in kline_rows}
     print(f"[{sym}] Loaded {len(rows)} feature rows and {len(kline_rows)} klines")
-    
+
     valid_windows = 0
     ws = 5
     tf_ms = 14400000
-    
+
     for i in range(ws - 1, len(rows)):
         window = rows[i - ws + 1 : i + 1]
         is_continuous = True
@@ -47,7 +47,7 @@ def test_symbol(sym):
                 break
         if not is_continuous:
             continue
-            
+
         has_null = False
         for r in window:
             # check the first 28 features (excluding RecentPatternEncoded & ActiveRuleCount)
@@ -57,12 +57,12 @@ def test_symbol(sym):
                 break
         if has_null:
             continue
-            
+
         end_open_ms = int(window[-1][0])
         next_open_ms = end_open_ms + tf_ms
         if end_open_ms in close_dict and next_open_ms in close_dict:
             valid_windows += 1
-            
+
     print(f"[{sym}] Extracted valid windows: {valid_windows}")
 
 test_symbol("ETHUSDT")

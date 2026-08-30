@@ -5,17 +5,17 @@ from liquidation_engine import LiquidationEngine, save_liquidation_snapshot
 
 def test_math_formulas():
     engine = LiquidationEngine()
-    
+
     # 1. Test Long Liq formula: LiqPrice = EntryPrice * (1 - 1/Lev + MMR)
     # Entry = 100,000, Lev = 100, MMR = 0.004 => 100,000 * (1 - 0.01 + 0.004) = 100,000 * 0.994 = 99,400
     long_100x = engine.calculate_long_liq_price(100000.0, 100, 0.004)
     assert abs(long_100x - 99400.0) < 1e-4, f"Expected 99400.0, got {long_100x}"
-    
+
     # 2. Test Short Liq formula: LiqPrice = EntryPrice * (1 + 1/Lev - MMR)
     # Entry = 100,000, Lev = 50, MMR = 0.005 => 100,000 * (1 + 0.02 - 0.005) = 100,000 * 1.015 = 101,500
     short_50x = engine.calculate_short_liq_price(100000.0, 50, 0.005)
     assert abs(short_50x - 101500.0) < 1e-4, f"Expected 101500.0, got {short_50x}"
-    
+
     print("[PASS] Liquidation math formulas verified.")
 
 def test_swept_filtering():
@@ -29,12 +29,12 @@ def test_swept_filtering():
         {"open_time_ms": 3000, "open": 94, "high": 96, "low": 93, "close": 95, "volume": 10, "volume_usdt": 1000, "delta_oi_usdt": 500, "ls_ratio": 1.0},
     ]
     long_tranches, short_tranches = engine.compute_liquidation_tranches(bars, current_price=95.0)
-    
+
     # Check that bar 0 long tranches with liq_price > 90 were filtered out
     for t in long_tranches:
         if t["bar_idx"] == 0:
             assert t["liq_price"] < 90.0, f"Tranche with liq_price {t['liq_price']} should have been swept by low=90"
-            
+
     print("[PASS] Swept liquidation filtering verified.")
 
 def test_db_records():

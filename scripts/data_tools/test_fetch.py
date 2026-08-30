@@ -40,10 +40,10 @@ def test_fetch_parallel(symbol="ETHUSDT", interval="1d", start_ms=1577836800000)
     now_ms = int(time.time() * 1000)
     intv_ms = INTERVAL_MS[interval]
     chunk_span_ms = 1000 * intv_ms
-    
+
     start_times = list(range(start_ms, now_ms, chunk_span_ms))
     print(f"Testing {symbol} {interval}: {len(start_times)} chunks to fetch.")
-    
+
     t0 = time.time()
     all_candles = []
     with ThreadPoolExecutor(max_workers=5) as executor:
@@ -52,7 +52,7 @@ def test_fetch_parallel(symbol="ETHUSDT", interval="1d", start_ms=1577836800000)
             res = f.result()
             if res:
                 all_candles.extend(res)
-                
+
     t1 = time.time()
     print(f"Fetched {len(all_candles)} candles in {t1 - t0:.2f}s.")
 

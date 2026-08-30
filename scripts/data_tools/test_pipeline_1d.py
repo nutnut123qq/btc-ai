@@ -29,7 +29,7 @@ def test_pipeline_1d():
         resp = session.get(url, timeout=10)
         if resp.status_code == 200:
             raw_candles.extend(resp.json())
-    
+
     print(f"Fetched {len(raw_candles)} raw candles.")
 
     # Deduplicate by OpenTimeMs

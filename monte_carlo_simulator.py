@@ -167,19 +167,19 @@ def run_monte_carlo_simulation(
 def generate_markdown_report(metrics: Dict[str, Any], out_file: Path):
     score = metrics['robustness_score']
     score_assessment = "XUẤT SẮC" if score >= 85 else "ĐẠT CHUẨN" if score >= 70 else "CẦN CẢI THIỆN"
-    
+
     ror = metrics['risk_of_ruin_pct']
     ror_assessment = "SIÊU AN TOÀN" if ror <= 1.0 else "CHẤP NHẬN ĐƯỢC" if ror <= 5.0 else "RỦI RO CAO"
-    
+
     mdd = metrics['mdd_median_pct']
     mdd_assessment = "KIỂM SOÁT TỐT" if mdd <= 15.0 else "TRUNG BÌNH" if mdd <= 25.0 else "RỦI RO CAO"
-    
+
     mdd95 = metrics['mdd_95_pct']
     mdd95_assessment = "VƯỢT TRỘI" if mdd95 <= 25.0 else "ĐẠT CHUẨN" if mdd95 <= 35.0 else "CẦN THẬN TRỌNG"
-    
+
     mdd99 = metrics['mdd_99_pct']
     mdd99_assessment = "ĐẠT CHUẨN" if mdd99 <= 35.0 else "VƯỢT NGƯỠNG"
-    
+
     ret = metrics['annual_return_median_pct']
     ret_assessment = "SINH LỜI CAO" if ret >= 30.0 else "SINH LỜI DƯƠNG" if ret > 0 else "SINH LỜI ÂM"
 

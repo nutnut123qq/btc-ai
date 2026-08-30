@@ -21,9 +21,9 @@ def test_formula_parity():
 
     # Load existing TechnicalIndicators from DB for the same 500 bars
     cur.execute("""
-        SELECT "OpenTimeMs", "Rsi14", "Ema12", "Ema26", "Ema50", "Ema200", 
-               "Sma50", "Sma200", "Macd", "MacdSignal", "MacdHistogram", 
-               "BollingerUpper", "BollingerMiddle", "BollingerLower", 
+        SELECT "OpenTimeMs", "Rsi14", "Ema12", "Ema26", "Ema50", "Ema200",
+               "Sma50", "Sma200", "Macd", "MacdSignal", "MacdHistogram",
+               "BollingerUpper", "BollingerMiddle", "BollingerLower",
                "Atr14", "Obv", "ObvEma50", "Vwap", "RollingVwap24",
                "MacdNorm", "MacdSignalNorm", "MacdHistogramNorm"
         FROM "TechnicalIndicators"
@@ -32,9 +32,9 @@ def test_formula_parity():
         LIMIT 500;
     """)
     ti_rows = cur.fetchall()
-    ti_cols = ["OpenTimeMs", "Rsi14", "Ema12", "Ema26", "Ema50", "Ema200", 
-               "Sma50", "Sma200", "Macd", "MacdSignal", "MacdHistogram", 
-               "BollingerUpper", "BollingerMiddle", "BollingerLower", 
+    ti_cols = ["OpenTimeMs", "Rsi14", "Ema12", "Ema26", "Ema50", "Ema200",
+               "Sma50", "Sma200", "Macd", "MacdSignal", "MacdHistogram",
+               "BollingerUpper", "BollingerMiddle", "BollingerLower",
                "Atr14", "Obv", "ObvEma50", "Vwap", "RollingVwap24",
                "MacdNorm", "MacdSignalNorm", "MacdHistogramNorm"]
     db_ti = pd.DataFrame(ti_rows, columns=ti_cols)
