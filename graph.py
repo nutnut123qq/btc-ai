@@ -1,5 +1,4 @@
 import json
-import os
 import re
 from typing import Any, TypedDict, List, Dict, Optional
 
@@ -57,33 +56,6 @@ def _parse_json_strict(text: str) -> Dict[str, Any]:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         return json.loads(_extract_first_json_object(cleaned))
-
-
-def _llm_failure_message(exc: BaseException) -> str:
-    """Human-readable hint; avoids mislabeling connection errors as Gemini quota."""
-    raw = str(exc)
-    low = raw.lower()
-    if (
-        "10061" in raw
-        or "actively refused" in low
-        or "connection refused" in low
-        or "failed to establish a new connection" in low
-        or "name or service not known" in low
-    ):
-        base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-        return (
-            f"{raw} — Không kết nối được tới máy chủ LLM. "
-            f"Nếu dùng Ollama: chạy `ollama serve` và kiểm tra OLLAMA_BASE_URL (hiện mặc định {base})."
-        )
-    if "429" in raw or "quota" in low or "resource exhausted" in low or "rate limit" in low:
-        return f"{raw} — Hết quota hoặc bị giới hạn tần suất (API cloud)."
-    if "requires more system memory" in low:
-        return (
-            f"{raw} — RAM không đủ để load model Ollama. "
-            "Dùng model nhỏ hơn (ví dụ `ollama pull qwen2.5:1.5b` hoặc `qwen2.5:0.5b`), "
-            "đặt OLLAMA_MODEL trong .env, đóng app khác hoặc tăng RAM."
-        )
-    return raw
 
 
 async def _retrieve_news_context(*, backend_base_url: str, query: str, top_k: int) -> str:
@@ -146,13 +118,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Tóm tắt sentiment và các tin/ý chính nổi bật ảnh hưởng tới 24h tới. "
             "Cuối cùng ghi ngắn gọn: Bull case và Bear case (mỗi dòng 1-2 câu)."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            news_agent_text = response.content
-        except Exception as e:
-            news_agent_text = f"(News Analyst LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        news_agent_text = response.content
         return {
             "news_context": news_context,
             "news_agent_text": news_agent_text,
@@ -183,13 +152,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "Nếu context có các mẫu nến (Hammer, Engulfing, Morning Star, v.v.) hoặc bất thường volume, hãy phân tích ý nghĩa của chúng. "
             "Cuối cùng ghi ngắn gọn: Bull case và Bear case (mỗi dòng 1-2 câu)."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            tech_agent_text = response.content
-        except Exception as e:
-            tech_agent_text = f"(Tech Analyst LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        tech_agent_text = response.content
         return {
             "tech_context": tech_context,
             "tech_agent_text": tech_agent_text,
@@ -207,13 +173,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             f"TECH AGENT (text):\n{state.get('tech_agent_text','')}\n\n"
             "Trả về chuỗi lập luận bull (2-5 gạch đầu dòng) + 1 kết luận tóm tắt."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            bull_text = response.content
-        except Exception as e:
-            bull_text = f"(Bull Researcher LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        bull_text = response.content
         return {"bull_arguments_text": bull_text}
 
     async def bear_researcher_node(state: TAState) -> Dict[str, Any]:
@@ -228,13 +191,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             f"TECH AGENT (text):\n{state.get('tech_agent_text','')}\n\n"
             "Trả về chuỗi lập luận bear (2-5 gạch đầu dòng) + 1 kết luận tóm tắt."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            bear_text = response.content
-        except Exception as e:
-            bear_text = f"(Bear Researcher LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        bear_text = response.content
         return {"bear_arguments_text": bear_text}
 
     async def research_manager_node(state: TAState) -> Dict[str, Any]:
@@ -249,13 +209,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             f"BEAR:\n{state.get('bear_arguments_text','')}\n\n"
             "Viết 1 đoạn tổng hợp + 3 bullet: điều kiện ủng hộ bull, điều kiện ủng hộ bear, và điểm mơ hồ."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            manager_text = response.content
-        except Exception as e:
-            manager_text = f"(Research Manager LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        manager_text = response.content
         return {"research_manager_text": manager_text}
 
     async def trader_node(state: TAState) -> Dict[str, Any]:
@@ -271,13 +228,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "(2) confidence gợi ý (1-100), (3) final decision ngắn, "
             "(4) reasoning 3-6 câu."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            trader_text = response.content
-        except Exception as e:
-            trader_text = f"(Trader LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        trader_text = response.content
         return {"trader_text": trader_text}
 
     async def aggressive_debator_node(state: TAState) -> Dict[str, Any]:
@@ -293,13 +247,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             f"TRADER_SUMMARY:\n{state.get('trader_text','')}\n\n"
             "Trả về 3-6 bullet risk triggers (mỗi bullet nêu trigger + vì sao nguy hiểm)."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            text = response.content
-        except Exception as e:
-            text = f"(Aggressive Debator LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        text = response.content
         return {"aggressive_debator_text": text}
 
     async def neutral_debator_node(state: TAState) -> Dict[str, Any]:
@@ -314,13 +265,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             f"TRADER_SUMMARY:\n{state.get('trader_text','')}\n\n"
             "Trả về 3-6 bullet risk uncertainty (trigger/điều kiện + mức độ tác động)."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            text = response.content
-        except Exception as e:
-            text = f"(Neutral Debator LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        text = response.content
         return {"neutral_debator_text": text}
 
     async def conservative_debator_node(state: TAState) -> Dict[str, Any]:
@@ -335,13 +283,10 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             f"NEWS_CONTEXT:\n{state.get('news_context','')}\n\n"
             "Trả về 2-5 kịch bản xấu (worst-case scenarios) + mỗi kịch bản kèm 1-2 biện pháp theo dõi/giảm thiểu."
         )
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-            text = response.content
-        except Exception as e:
-            text = f"(Conservative Debator LLM unavailable: {_llm_failure_message(e)})"
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
+        text = response.content
         return {"conservative_debator_text": text}
 
     async def risk_judge_node(state: TAState) -> Dict[str, Any]:
@@ -384,29 +329,9 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
             "- sentiment/evidence phải trích từ context; không bịa.\n"
         )
 
-        try:
-            response = await llm.ainvoke(
-                [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
-            )
-        except Exception as e:
-            hint = _llm_failure_message(e)
-            return {
-                "symbol": symbol,
-                "forecast": "SIDEWAYS",
-                "confidence": 50,
-                "debate_summary": {
-                    "news_agent": state.get("news_agent_text", ""),
-                    "tech_agent": state.get("tech_agent_text", ""),
-                    "final_decision": f"Risk Judge LLM không chạy được: {hint}",
-                },
-                "reasoning": (
-                    f"Risk Judge không gọi được LLM ({hint}). "
-                    "Trả về SIDEWAYS / 50% để an toàn."
-                ),
-                "news_evidence": [],
-                "tech_evidence": {},
-                "risk_conditions": [],
-            }
+        response = await llm.ainvoke(
+            [SystemMessage(content=system_prompt), HumanMessage(content=human_prompt)]
+        )
         try:
             parsed = _parse_json_strict(response.content)
 
@@ -476,4 +401,3 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
     workflow.add_edge("risk_judge", END)
 
     return workflow.compile()
-
