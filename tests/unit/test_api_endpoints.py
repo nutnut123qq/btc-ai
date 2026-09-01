@@ -36,8 +36,8 @@ class TestApiEndpoints(unittest.TestCase):
             "feature_vector": [1.0, 2.0]
         }
         response = self.client.post("/api/predict", json=payload)
-        # Should return 500 (ValueError from dimension mismatch) or 422
-        self.assertIn(response.status_code, [400, 422, 500])
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Feature vector length", response.json()["detail"])
 
     def test_capabilities_reports_llm_disabled_but_ml_available(self):
         with (
@@ -52,6 +52,7 @@ class TestApiEndpoints(unittest.TestCase):
             "llmExplanation": False,
             "provider": "none",
             "reason": "LLM provider is disabled.",
+            "mlReason": None,
         })
 
     def test_capabilities_reports_ml_unavailable_when_registry_cannot_load(self):
@@ -60,6 +61,7 @@ class TestApiEndpoints(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["mlInference"])
+        self.assertEqual(response.json()["mlReason"], "Model registry is unavailable.")
         self.assertNotIn("secret registry error", response.text)
 
     def test_predict_does_not_require_llm(self):

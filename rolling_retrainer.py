@@ -20,6 +20,8 @@ Key capabilities:
 """
 
 import argparse
+import hashlib
+import importlib.metadata
 import json
 import math
 import os
@@ -45,6 +47,7 @@ AI_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(AI_DIR))
 
 from db_config import get_db_params
+from train_baseline_advanced import infer_feature_names
 
 MODELS_DIR = AI_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -53,6 +56,8 @@ REGISTRY_PATH = MODELS_DIR / "model_registry.json"
 DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
 LABEL_REMAP = {-1: 0, 0: 1, 1: 2}
 LABEL_INV = {0: -1, 1: 0, 2: 1}
+ARTIFACT_RUNTIME_PACKAGES = ("joblib", "scikit-learn", "xgboost")
+FEATURE_SCHEMA_VERSION = "window-dataset-35-v1"
 
 
 def log(msg: str):
@@ -186,9 +191,24 @@ def load_model_registry() -> Dict[str, Any]:
 
 
 def save_model_registry(registry: Dict[str, Any]):
-    """Save model registry to disk with pretty formatting."""
+    """Atomically save the model registry."""
     registry["updated_at_utc"] = datetime.now(timezone.utc).isoformat()
-    REGISTRY_PATH.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+    temporary_path = REGISTRY_PATH.with_suffix(".json.tmp")
+    temporary_path.write_text(json.dumps(registry, indent=2), encoding="utf-8")
+    os.replace(temporary_path, REGISTRY_PATH)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def feature_schema_hash(feature_names: List[str]) -> str:
+    payload = json.dumps(feature_names, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def get_active_model_for_symbol(
@@ -402,14 +422,20 @@ def retrain_symbol_rolling(
     log(f"  Optimal Threshold   : {best_thr:.2f} (Val Acc @ thr: {best_thr_acc*100:.2f}%)")
 
     # 6. Save Versioned Artifacts
-    date_str = datetime.now(timezone.utc).strftime("%Y%m%d")
+    date_str = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     version_tag = f"v{date_str}"
     model_filename = f"{symbol}_{timeframe}_ws{window_size}_h{horizon}_XGB_{version_tag}.joblib"
     json_filename = f"{symbol}_{timeframe}_ws{window_size}_h{horizon}_XGB_{version_tag}.json"
     
     model_path = MODELS_DIR / model_filename
     json_path = MODELS_DIR / json_filename
-    joblib.dump(calibrated_clf, model_path)
+    temporary_model_path = model_path.with_suffix(".joblib.tmp")
+    joblib.dump(calibrated_clf, temporary_model_path)
+    os.replace(temporary_model_path, model_path)
+
+    feature_names = infer_feature_names(window_size, int(X.shape[1]))
+    if len(feature_names) != int(X.shape[1]):
+        raise RuntimeError("Could not prove the feature schema for the trained artifact.")
 
     metadata = {
         "symbol": symbol,
@@ -421,6 +447,15 @@ def retrain_symbol_rolling(
         "base_model": "XGBoost (n_estimators=200, depth=6, lr=0.04)",
         "calibration": "isotonic (cv=5)",
         "feature_dim": int(X.shape[1]),
+        "feature_names": feature_names,
+        "feature_schema_version": FEATURE_SCHEMA_VERSION,
+        "feature_schema_hash": feature_schema_hash(feature_names),
+        "artifact_sha256": sha256_file(model_path),
+        "library_versions": {
+            package: importlib.metadata.version(package)
+            for package in ARTIFACT_RUNTIME_PACKAGES
+        },
+        "class_mapping": {"0": -1, "1": 0, "2": 1},
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "train_window_start": datetime.fromtimestamp(train_start_ms / 1000, timezone.utc).isoformat(),
         "train_window_end": datetime.fromtimestamp(val_start_ms / 1000, timezone.utc).isoformat(),
@@ -440,7 +475,9 @@ def retrain_symbol_rolling(
         "retrain_reasons": retrain_reason,
         "note": "labels remapped {-1,0,1}->{0,1,2}; argmax(proba)-1 = direction",
     }
-    json_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    temporary_json_path = json_path.with_suffix(".json.tmp")
+    temporary_json_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+    os.replace(temporary_json_path, json_path)
     log(f"[OK] Saved model artifact: {model_filename}")
 
     # 7. Update Model Registry

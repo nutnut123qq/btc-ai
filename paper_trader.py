@@ -23,7 +23,6 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional, List, Tuple, Dict
 
-import joblib
 import numpy as np
 import psycopg2
 
@@ -68,8 +67,6 @@ from trading_config import (
     ALTCOIN_VOLATILITY_HALT_BARS,
 )
 
-MODELS_DIR = AI_DIR / "models"
-
 FEATURE_COLS = [
     "CloseZscore", "ClosePctChange1", "ClosePctChange4", "ClosePctChange24",
     "HighLowRangePct", "BodyPct", "UpperWickPct", "LowerWickPct",
@@ -80,7 +77,7 @@ FEATURE_COLS = [
     "RecentPatternEncoded", "ActiveRuleCount",
 ]
 
-_MODEL_CACHE: dict[str, Any] = {}
+_UNAVAILABLE_MODELS: set[str] = set()
 
 
 def log(msg: str):
@@ -115,20 +112,17 @@ def push_system_alert(cur, conn, alert_type: str, title: str, message: str, pric
 
 
 def get_model_for_symbol(symbol: str) -> Tuple[Optional[Any], str]:
-    """Load active model from registry or fallback."""
+    """Load only a registry-promoted, runtime-compatible model."""
+    if symbol in _UNAVAILABLE_MODELS:
+        return None, "unavailable"
     try:
         model, meta = load_model(symbol, "4h", 5, "4h")
         model_name = meta.get("model_name") or f"{symbol}_4h_ws5_h4h_XGB_active"
         return model, model_name
     except Exception as e:
-        log(f"[WARN] Failed to load active model from registry for {symbol}: {e}. Trying fallback.")
-        fallback_file = f"{symbol}_4h_ws5_h4h_XGB_calibrated.joblib"
-        path = MODELS_DIR / fallback_file
-        if path.exists():
-            if fallback_file not in _MODEL_CACHE:
-                _MODEL_CACHE[fallback_file] = joblib.load(path)
-            return _MODEL_CACHE[fallback_file], fallback_file
-        return None, fallback_file
+        _UNAVAILABLE_MODELS.add(symbol)
+        log(f"[WARN] No promoted compatible model for {symbol}; ML momentum trades are disabled: {e}")
+        return None, "unavailable"
 
 
 def time_features(open_ms: int) -> list[float]:
@@ -1039,7 +1033,7 @@ def main():
     parser.add_argument("--mock-stress-test", action="store_true", help="Run Circuit Breaker Stress-Test Mock scenario")
     args = parser.parse_args()
 
-    if args.mock_stress-test if hasattr(args, "mock_stress-test") else args.mock_stress_test:
+    if args.mock_stress_test:
         run_stress_test_mock()
         return
 

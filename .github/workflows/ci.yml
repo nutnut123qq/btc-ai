@@ -1,0 +1,41 @@
+name: AI CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      LLM_PROVIDER: none
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock.txt
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --upgrade pip==24.2
+          python -m pip install --no-deps --requirement requirements.lock.txt
+      - name: Validate installed dependencies
+        run: python -m pip check
+      - name: Static compile and startup smoke
+        run: |
+          python -m compileall -q main.py graph.py prediction_service.py
+          python scripts/ci_smoke.py
+      - name: Run hermetic tests
+        run: python -m pytest -q

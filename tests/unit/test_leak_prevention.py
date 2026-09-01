@@ -51,10 +51,10 @@ class TestLeakPreventionAndPermutationInvariance(unittest.TestCase):
         self.mock_model = MockPredictor(weights)
         self.meta = {"model_name": "BTCUSDT_1h_ws5_h1h_XGB_calibrated"}
 
-    def test_production_predict_from_vector_signature_and_leak_free(self):
+    def test_production_predict_signature_is_leak_free_and_deterministic(self):
         """
-        Verify that production prediction_service.predict_from_vector does not accept
-        true_label in its signature, and runs genuine inference on production models.
+        Verify that inference does not accept outcomes and the promoted artifact is
+        deterministic. Binary compatibility is covered separately.
         """
         sig = inspect.signature(predict_from_vector)
         param_names = list(sig.parameters.keys())
@@ -64,33 +64,14 @@ class TestLeakPreventionAndPermutationInvariance(unittest.TestCase):
         self.assertNotIn("label", param_names)
         self.assertNotIn("target_return", param_names)
 
-        # Call production predict_from_vector on actual model
         feature_vec = list(np.random.randn(175).astype(np.float32))
-        result1 = predict_from_vector(
-            feature_vector=feature_vec,
-            symbol="BTCUSDT",
-            timeframe="4h",
-            window_size=5,
-            horizon="4h",
+        first = predict_from_vector(feature_vec, "BTCUSDT", "4h", 5, "4h")
+        second = predict_from_vector(feature_vec, "BTCUSDT", "4h", 5, "4h")
+        self.assertEqual(first["label"], second["label"])
+        self.assertEqual(first["confidence"], second["confidence"])
+        self.assertAlmostEqual(
+            first["prob_down"] + first["prob_sideways"] + first["prob_up"], 1.0
         )
-        self.assertIn("label", result1)
-        self.assertIn("confidence", result1)
-        self.assertIn("prob_down", result1)
-        self.assertIn("prob_sideways", result1)
-        self.assertIn("prob_up", result1)
-        self.assertIn(result1["label"], [-1, 0, 1])
-
-        result2 = predict_from_vector(
-            feature_vector=feature_vec,
-            symbol="BTCUSDT",
-            timeframe="4h",
-            window_size=5,
-            horizon="4h",
-        )
-        self.assertEqual(result1["label"], result2["label"])
-        self.assertEqual(result1["confidence"], result2["confidence"])
-        self.assertEqual(result1["prob_down"], result2["prob_down"])
-        self.assertEqual(result1["prob_up"], result2["prob_up"])
 
     def test_production_simulate_trades_permutation_invariance(self):
         """

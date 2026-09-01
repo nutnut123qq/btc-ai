@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from graph import build_ta_graph
-from prediction_service import list_available_models, predict_from_vector
+from prediction_service import ModelArtifactIncompatibleError, list_available_models, predict_from_vector
 
 load_dotenv()
 
@@ -45,6 +45,18 @@ def _error_envelope(error: LlmProviderError, request_id: str | None = None) -> d
 async def llm_provider_error_handler(request: Request, error: LlmProviderError):
     request_id = request.headers.get("x-request-id") or str(uuid4())
     return JSONResponse(status_code=503, content=_error_envelope(error, request_id))
+
+
+@app.exception_handler(ModelArtifactIncompatibleError)
+async def model_artifact_error_handler(request: Request, error: ModelArtifactIncompatibleError):
+    request_id = request.headers.get("x-request-id") or str(uuid4())
+    logger.warning("Model artifact unavailable code=MODEL_ARTIFACT_INCOMPATIBLE")
+    return JSONResponse(status_code=503, content={
+        "code": "MODEL_ARTIFACT_INCOMPATIBLE",
+        "message": "Không có model artifact đủ bằng chứng tương thích để suy luận.",
+        "retryable": False,
+        "requestId": request_id,
+    })
 
 
 def _provider_name() -> str:
@@ -156,17 +168,22 @@ def _build_llm():
 @app.get("/api/capabilities")
 async def capabilities():
     provider, llm_explanation, reason = _provider_capability()
+    ml_reason = None
     try:
         ml_inference = bool(list_available_models())
+        if not ml_inference:
+            ml_reason = "No manifest-compatible model artifact is available."
     except Exception:
         logger.warning("Model registry unavailable endpoint=capabilities code=MODEL_REGISTRY_UNAVAILABLE")
         ml_inference = False
+        ml_reason = "Model registry is unavailable."
     return {
         "mlInference": ml_inference,
         # Configuration capability only; provider reachability is checked by each LLM request.
         "llmExplanation": llm_explanation,
         "provider": provider,
         "reason": reason,
+        "mlReason": ml_reason,
     }
 
 
@@ -182,12 +199,13 @@ async def predict(request: PredictRequest):
             model_name=request.model_name,
         )
         return result
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except ModelArtifactIncompatibleError:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {e!s}")
+        logger.exception("Unexpected prediction failure")
+        raise ModelArtifactIncompatibleError("Unexpected prediction failure.") from e
 
 
 @app.get("/api/predict/models")

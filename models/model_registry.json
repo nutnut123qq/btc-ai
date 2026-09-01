@@ -1,14 +1,14 @@
 {
-  "updated_at_utc": "2026-08-25T04:51:36.163068+00:00",
+  "updated_at_utc": "2026-09-01T02:55:08.115990+00:00",
   "models": {
     "BTCUSDT_4h_ws5_h4h": {
       "symbol": "BTCUSDT",
       "timeframe": "4h",
       "window_size": 5,
       "horizon": "4h",
-      "active_model_file": "BTCUSDT_4h_ws5_h4h_XGB_v20260825.joblib",
-      "version": "v20260825",
-      "created_at_utc": "2026-08-25T04:48:43.830800+00:00",
+      "active_model_file": "BTCUSDT_4h_ws5_h4h_XGB_v20260901025507.joblib",
+      "version": "v20260901025507",
+      "created_at_utc": "2026-09-01T02:55:08.112991+00:00",
       "status": "active",
       "validation_accuracy": 0.9378,
       "oos_brier_score": 0.3906,
@@ -33,7 +33,8 @@
       "active_model_file": "ETHUSDT_4h_ws5_h4h_XGB_v20260825.joblib",
       "version": "v20260825",
       "created_at_utc": "2026-08-25T04:49:51.820394+00:00",
-      "status": "active",
+      "status": "quarantined",
+      "quarantine_reason": "No local training dataset or complete artifact lineage is available for production verification.",
       "validation_accuracy": 0.8647,
       "oos_brier_score": 0.4462,
       "oos_log_loss": 0.9499,
@@ -57,7 +58,8 @@
       "active_model_file": "SOLUSDT_4h_ws5_h4h_XGB_v20260825.joblib",
       "version": "v20260825",
       "created_at_utc": "2026-08-25T04:51:36.160559+00:00",
-      "status": "active",
+      "status": "quarantined",
+      "quarantine_reason": "No local training dataset or complete artifact lineage is available for production verification.",
       "validation_accuracy": 0.9726,
       "oos_brier_score": 0.5328,
       "oos_log_loss": 0.9066,
@@ -74,5 +76,31 @@
       "test_samples": 181
     }
   },
-  "history": []
+  "history": [
+    {
+      "symbol": "BTCUSDT",
+      "timeframe": "4h",
+      "window_size": 5,
+      "horizon": "4h",
+      "active_model_file": "BTCUSDT_4h_ws5_h4h_XGB_v20260825.joblib",
+      "version": "v20260825",
+      "created_at_utc": "2026-08-25T04:48:43.830800+00:00",
+      "status": "archived",
+      "validation_accuracy": 0.9378,
+      "oos_brier_score": 0.3906,
+      "oos_log_loss": 0.7063,
+      "oos_accuracy": 0.7403,
+      "optimal_threshold": 0.62,
+      "train_window_start": "2024-10-23T22:14:24+00:00",
+      "train_window_end": "2026-04-24T20:19:12+00:00",
+      "val_window_start": "2026-04-24T20:19:12+00:00",
+      "val_window_end": "2026-07-25T04:00:00+00:00",
+      "test_window_start": "2026-07-25T04:00:00+00:00",
+      "test_window_end": "2026-08-24T04:00:00+00:00",
+      "train_samples": 3288,
+      "val_samples": 547,
+      "test_samples": 181,
+      "archived_at_utc": "2026-09-01T02:55:08.115990+00:00"
+    }
+  ]
 }

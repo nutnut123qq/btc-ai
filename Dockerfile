@@ -7,9 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install python dependencies first for caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Copy and install the reviewed lock first for deterministic, cacheable builds.
+COPY requirements.txt requirements.lock.txt ./
+RUN python -m pip install --no-cache-dir pip==24.2 \
+    && python -m pip install --no-cache-dir --no-deps -r requirements.lock.txt \
+    && python -m pip check
 
 # Copy application source and trained models
 COPY . .
