@@ -8,8 +8,9 @@ multiple-testing bias / backtest overfitting).
 
 Thiết kế:
   - Expanding window: train = tất cả dữ liệu trước fold_start - purge_gap.
-  - Purge gap = purge_bars bars (mặc định 2 bars của timeframe) — tránh leak
-    do triple-barrier label là interval [t, t1] chồng lấn ranh giới fold.
+  - Purge gap = purge_bars bars (mặc định 2 bars của timeframe) — tránh cửa
+    sổ feature và outcome theo horizon chồng lấn ranh giới fold. Dataset hiện
+    dùng nhãn close-to-close; provenance được kiểm tra riêng khi promotion.
   - Mỗi fold: train XGB (params giống train_baseline_advanced), predict OOS,
     simulate trades (reuse backtest_strategy.simulate_trades) với fee/slippage
     + confidence threshold, tính metrics.
@@ -35,6 +36,7 @@ import xgboost as xgb
 sys.path.insert(0, str(Path(__file__).parent))
 from backtest_strategy import fetch_klines
 from db_config import get_db_connection
+from rolling_retrainer import evaluate_probabilities, majority_baseline_metrics
 
 LABEL_REMAP = {-1: 0, 0: 1, 1: 2}
 LABEL_INV = {0: -1, 1: 0, 2: 1}
@@ -153,11 +155,15 @@ def main():
             eval_metric="mlogloss", n_jobs=-1, random_state=42,
         )
         model.fit(X[tr_mask], np.array([LABEL_REMAP[v] for v in y[tr_mask]]))
+        y_train = np.array([LABEL_REMAP[v] for v in y[tr_mask]])
+        y_test = np.array([LABEL_REMAP[v] for v in y[te_mask]])
         proba = model.predict_proba(X[te_mask])
         pred = np.array([LABEL_INV[i] for i in proba.argmax(axis=1)], dtype=np.int8)
         conf = proba.max(axis=1)
 
         acc = float((pred == y[te_mask]).mean())
+        classification = evaluate_probabilities(y_test, proba)
+        baseline = majority_baseline_metrics(y_train, y_test)
 
         # Simulate trades trực tiếp từ pred/conf của fold (không qua model global)
         te_times = times[te_mask]
@@ -189,6 +195,8 @@ def main():
             "test_start": f"{d0:%Y-%m-%d}", "test_end": f"{d1:%Y-%m-%d}",
             "n_train": n_tr, "n_test": n_te,
             "acc": round(acc, 4),
+            "classification": classification,
+            "majority_baseline": baseline,
             "trades": len(trades),
         }
         if trades:
@@ -222,6 +230,11 @@ def main():
         "total_trades": len(all_trades),
         "overall_win_rate": round(wins / len(all_trades), 4) if all_trades else 0,
         "stitched_total_return_pct": round((eq - 1) * 100, 2),
+        "mean_macro_f1": round(float(np.mean([f["classification"]["f1_macro"] for f in fold_results])), 4),
+        "mean_balanced_accuracy": round(float(np.mean([f["classification"]["balanced_accuracy"] for f in fold_results])), 4),
+        "mean_mcc": round(float(np.mean([f["classification"]["mcc"] for f in fold_results])), 4),
+        "mean_brier_score": round(float(np.mean([f["classification"]["brier_score"] for f in fold_results])), 4),
+        "mean_baseline_brier_score": round(float(np.mean([f["majority_baseline"]["brier_score"] for f in fold_results])), 4),
     }
     print("\n=== AGGREGATE ===")
     for k, v in agg.items():

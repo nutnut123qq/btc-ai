@@ -1,5 +1,5 @@
 {
-  "updated_at_utc": "2026-09-01T02:55:08.115990+00:00",
+  "updated_at_utc": "2026-09-01T05:05:07+00:00",
   "models": {
     "BTCUSDT_4h_ws5_h4h": {
       "symbol": "BTCUSDT",
@@ -9,7 +9,8 @@
       "active_model_file": "BTCUSDT_4h_ws5_h4h_XGB_v20260901025507.joblib",
       "version": "v20260901025507",
       "created_at_utc": "2026-09-01T02:55:08.112991+00:00",
-      "status": "active",
+      "status": "quarantined",
+      "quarantine_reason": "Independent OOS audit failed majority-baseline and class-discrimination promotion gates.",
       "validation_accuracy": 0.9378,
       "oos_brier_score": 0.3906,
       "oos_log_loss": 0.7063,

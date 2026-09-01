@@ -11,9 +11,9 @@ Key capabilities:
    - Retraining trigger: Brier Score > 0.25 OR Model Age > 30 days OR forced CLI flag.
 2. Rolling Window Retraining:
    - Rolling Train Window: ~18 months prior to validation period.
-   - Validation & Calibration Window: ~3 months prior to test period.
+   - Calibration Window then independent promotion-gate Window: ~3 months.
    - Test / Drift Window: Last ~30 days.
-   - Base XGBoost Classifier + Isotonic Calibration (CalibratedClassifierCV).
+   - Base XGBoost trained before isotonic calibration; no split is reused for fitting and scoring.
 3. Model Registry Management:
    - Saves versioned model: ai/models/{Symbol}_{TF}_ws{WS}_h{H}_XGB_v{YYYYMMDD}.joblib
    - Updates ai/models/model_registry.json for active inference serving.
@@ -35,7 +35,14 @@ import joblib
 import numpy as np
 import psycopg2
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.metrics import accuracy_score, f1_score, log_loss
+from sklearn.frozen import FrozenEstimator
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score,
+    log_loss,
+    matthews_corrcoef,
+)
 from sklearn.utils.class_weight import compute_sample_weight
 import xgboost as xgb
 
@@ -58,6 +65,17 @@ LABEL_REMAP = {-1: 0, 0: 1, 1: 2}
 LABEL_INV = {0: -1, 1: 0, 2: 1}
 ARTIFACT_RUNTIME_PACKAGES = ("joblib", "scikit-learn", "xgboost")
 FEATURE_SCHEMA_VERSION = "window-dataset-35-v1"
+PURGE_BARS = 5
+PROMOTION_THRESHOLDS = {
+    "minimum_samples": 150,
+    "minimum_class_samples": 15,
+    "minimum_macro_f1": 0.40,
+    "minimum_balanced_accuracy": 0.40,
+    "minimum_mcc": 0.10,
+    "minimum_per_class_f1": 0.10,
+    "maximum_ece": 0.20,
+    "minimum_loss_improvement": 0.01,
+}
 
 
 def log(msg: str):
@@ -133,25 +151,27 @@ def compute_multiclass_brier_score(y_true: np.ndarray, y_proba: np.ndarray) -> f
     return float(np.mean(np.sum((y_proba - y_one_hot) ** 2, axis=1)))
 
 
-def evaluate_model_performance(
-    model: Any,
-    X: np.ndarray,
-    y: np.ndarray,
-) -> Dict[str, float]:
-    """
-    Evaluate model probabilities and predictions against ground truth labels.
-    """
-    if len(X) == 0 or len(y) == 0:
-        return {"brier_score": 0.0, "log_loss": 0.0, "accuracy": 0.0, "f1_macro": 0.0, "f1_weighted": 0.0}
+def expected_calibration_error(y: np.ndarray, probas: np.ndarray, bins: int = 10) -> float:
+    predictions = probas.argmax(axis=1)
+    confidences = probas.max(axis=1)
+    correct = predictions == y
+    error = 0.0
+    edges = np.linspace(0.0, 1.0, bins + 1)
+    for lower, upper in zip(edges[:-1], edges[1:]):
+        mask = (confidences >= lower) & (confidences < upper)
+        if upper == 1.0:
+            mask |= confidences == 1.0
+        if mask.any():
+            error += float(mask.mean() * abs(correct[mask].mean() - confidences[mask].mean()))
+    return error
 
-    if hasattr(model, "predict_proba"):
-        probas = model.predict_proba(X)
-        preds = probas.argmax(axis=1)
-    else:
-        preds = model.predict(X)
-        probas = np.zeros((len(preds), 3), dtype=np.float32)
-        for i, p in enumerate(preds):
-            probas[i, int(p)] = 1.0
+
+def evaluate_probabilities(y: np.ndarray, probas: np.ndarray) -> Dict[str, Any]:
+    """Return discrimination and calibration metrics without hiding class collapse."""
+    if len(y) == 0 or len(probas) == 0:
+        return {}
+    probas = np.asarray(probas, dtype=np.float64)
+    preds = probas.argmax(axis=1)
 
     brier = compute_multiclass_brier_score(y, probas)
     
@@ -164,15 +184,140 @@ def evaluate_model_performance(
         ll = float(-np.mean([np.log(clipped_probas[i, y[i]]) for i in range(len(y))]))
 
     acc = float(accuracy_score(y, preds))
+    balanced_acc = float(balanced_accuracy_score(y, preds))
+    mcc = float(matthews_corrcoef(y, preds))
+    per_class_f1 = f1_score(y, preds, labels=[0, 1, 2], average=None, zero_division=0)
     f1_m = float(f1_score(y, preds, average="macro", zero_division=0))
     f1_w = float(f1_score(y, preds, average="weighted", zero_division=0))
 
     return {
+        "samples": int(len(y)),
+        "class_counts": np.bincount(y, minlength=3).astype(int).tolist(),
+        "prediction_counts": np.bincount(preds, minlength=3).astype(int).tolist(),
         "brier_score": round(brier, 4),
         "log_loss": round(ll, 4),
         "accuracy": round(acc, 4),
+        "balanced_accuracy": round(balanced_acc, 4),
+        "mcc": round(mcc, 4),
+        "f1_per_class": {
+            "down": round(float(per_class_f1[0]), 4),
+            "sideways": round(float(per_class_f1[1]), 4),
+            "up": round(float(per_class_f1[2]), 4),
+        },
         "f1_macro": round(f1_m, 4),
         "f1_weighted": round(f1_w, 4),
+        "ece": round(expected_calibration_error(y, probas), 4),
+    }
+
+
+def evaluate_model_performance(model: Any, X: np.ndarray, y: np.ndarray) -> Dict[str, Any]:
+    if len(X) == 0 or len(y) == 0:
+        return {}
+    if hasattr(model, "predict_proba"):
+        probas = model.predict_proba(X)
+    else:
+        predictions = model.predict(X)
+        probas = np.eye(3, dtype=np.float32)[predictions.astype(int)]
+    return evaluate_probabilities(y, probas)
+
+
+def majority_baseline_metrics(y_train: np.ndarray, y_eval: np.ndarray) -> Dict[str, Any]:
+    """Use training priors only; evaluation labels never influence the baseline."""
+    counts = np.bincount(y_train, minlength=3).astype(np.float64)
+    priors = counts / counts.sum()
+    return evaluate_probabilities(y_eval, np.repeat(priors[None, :], len(y_eval), axis=0))
+
+
+def assess_promotion_gate(
+    validation_metrics: Dict[str, Any],
+    oos_metrics: Dict[str, Any],
+    validation_baseline: Dict[str, Any],
+    oos_baseline: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Fail closed unless two consecutive untouched windows beat naive priors."""
+    failures: List[str] = []
+    limits = PROMOTION_THRESHOLDS
+    for window, metrics, baseline in (
+        ("validation", validation_metrics, validation_baseline),
+        ("oos", oos_metrics, oos_baseline),
+    ):
+        if not metrics or not baseline:
+            failures.append(f"{window}: metrics unavailable")
+            continue
+        checks = {
+            "sample count": metrics["samples"] >= limits["minimum_samples"],
+            "class support": min(metrics["class_counts"]) >= limits["minimum_class_samples"],
+            "macro F1": metrics["f1_macro"] >= limits["minimum_macro_f1"],
+            "balanced accuracy": metrics["balanced_accuracy"] >= limits["minimum_balanced_accuracy"],
+            "MCC": metrics["mcc"] >= limits["minimum_mcc"],
+            "per-class F1": min(metrics["f1_per_class"].values()) >= limits["minimum_per_class_f1"],
+            "ECE": metrics["ece"] <= limits["maximum_ece"],
+            "Brier improvement": metrics["brier_score"] <= baseline["brier_score"] - limits["minimum_loss_improvement"],
+            "log-loss improvement": metrics["log_loss"] <= baseline["log_loss"] - limits["minimum_loss_improvement"],
+        }
+        failures.extend(f"{window}: {name}" for name, passed in checks.items() if not passed)
+    return {
+        "passed": not failures,
+        "policy": "two-independent-windows-v1",
+        "thresholds": limits,
+        "failures": failures,
+    }
+
+
+def dataset_provenance(
+    symbol: str,
+    timeframe: str,
+    window_size: int,
+    horizon: str,
+    times: np.ndarray,
+    X: np.ndarray,
+    y: np.ndarray,
+) -> Dict[str, Any]:
+    digest = hashlib.sha256()
+    for array in (times, X, y):
+        digest.update(np.ascontiguousarray(array).tobytes())
+    label_columns = {
+        "1h": ('"TargetDirection1h"', '"TargetDirectionTb1h"'),
+        "4h": ('"TargetDirection4h"', '"TargetDirectionTb4h"'),
+        "1d": ('"TargetDirection1d"', '"TargetDirectionTb1d"'),
+    }
+    if horizon not in label_columns:
+        raise ValueError(f"Unsupported horizon for label lineage: {horizon}")
+    close_column, triple_barrier_column = label_columns[horizon]
+    with psycopg2.connect(**get_db_params()) as connection, connection.cursor() as cursor:
+        cursor.execute(
+            f'''SELECT count(*),
+                count(*) FILTER (WHERE w."Label" = p.{close_column}),
+                count(*) FILTER (WHERE w."Label" = p.{triple_barrier_column})
+                FROM "WindowClassificationDatasets" w
+                LEFT JOIN "PriceTargets" p
+                  ON p."Symbol" = w."Symbol" AND p."Timeframe" = w."Timeframe"
+                 AND p."OpenTimeMs" = w."WindowEndMs"
+                WHERE w."Symbol" = %s AND w."Timeframe" = %s
+                  AND w."WindowSize" = %s AND w."Horizon" = %s''',
+            (symbol, timeframe, window_size, horizon),
+        )
+        total, close_matches, triple_barrier_matches = map(int, cursor.fetchone())
+    matching_sources = []
+    if total == len(y) and close_matches == total:
+        matching_sources.append(f"PriceTargets.TargetDirection{horizon}")
+    if total == len(y) and triple_barrier_matches == total:
+        matching_sources.append(f"PriceTargets.TargetDirectionTb{horizon}")
+
+    return {
+        "source_table": "WindowClassificationDatasets",
+        "identity": f"{symbol}_{timeframe}_ws{window_size}_h{horizon}",
+        "row_count": int(len(y)),
+        "first_window_end_ms": int(times[0]),
+        "last_window_end_ms": int(times[-1]),
+        "dataset_sha256": digest.hexdigest(),
+        "label_lineage": {
+            "complete": len(matching_sources) == 1,
+            "source_column": matching_sources[0] if len(matching_sources) == 1 else None,
+            "matching_sources": matching_sources,
+            "close_to_close_matches": close_matches,
+            "triple_barrier_matches": triple_barrier_matches,
+        },
     }
 
 
@@ -218,51 +363,21 @@ def get_active_model_for_symbol(
     horizon: str = "4h",
 ) -> Tuple[Optional[Any], Optional[Dict[str, Any]], Optional[str]]:
     """
-    Get the currently active model from registry or fallback files.
+    Get only the registry-promoted model; legacy filesystem fallbacks are unsafe.
     Returns: (model_obj, model_metadata, model_file_name)
     """
     registry = load_model_registry()
     key = f"{symbol}_{timeframe}_ws{window_size}_h{horizon}"
     
-    # 1. Check registry entry
-    if key in registry.get("models", {}):
-        entry = registry["models"][key]
-        active_file = entry.get("active_model_file")
-        if active_file:
-            path = MODELS_DIR / active_file
-            if path.exists():
-                try:
-                    model = joblib.load(path)
-                    meta_path = path.with_suffix(".json")
-                    meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else entry
-                    return model, meta, active_file
-                except Exception as e:
-                    log(f"[WARN] Failed to load model {active_file}: {e}")
-
-    # 2. Check fallback calibrated model
-    fallback_calibrated = f"{symbol}_{timeframe}_ws{window_size}_h{horizon}_XGB_calibrated.joblib"
-    calib_path = MODELS_DIR / fallback_calibrated
-    if calib_path.exists():
+    entry = registry.get("models", {}).get(key)
+    if isinstance(entry, dict) and entry.get("status") == "active":
         try:
-            model = joblib.load(calib_path)
-            meta_path = calib_path.with_suffix(".json")
-            meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
-            return model, meta, fallback_calibrated
-        except Exception as e:
-            log(f"[WARN] Failed to load fallback calibrated model: {e}")
+            from prediction_service import load_model
 
-    # 3. Check any matching joblib file
-    pattern = f"{symbol}_{timeframe}_ws{window_size}_h{horizon}_*.joblib"
-    matches = sorted(MODELS_DIR.glob(pattern), key=os.path.getmtime, reverse=True)
-    if matches:
-        try:
-            path = matches[0]
-            model = joblib.load(path)
-            meta_path = path.with_suffix(".json")
-            meta = json.loads(meta_path.read_text(encoding="utf-8")) if meta_path.exists() else {}
-            return model, meta, path.name
+            model, metadata = load_model(symbol, timeframe, window_size, horizon)
+            return model, metadata, str(entry["active_model_file"])
         except Exception as e:
-            log(f"[WARN] Failed to load latest matching model {matches[0].name}: {e}")
+            log(f"[WARN] Registered model is not promotion-safe: {e}")
 
     return None, None, None
 
@@ -308,20 +423,33 @@ def retrain_symbol_rolling(
     drift_ms = int(drift_days * 24 * 3600 * 1000)
     val_ms = int(val_months * 30.44 * 24 * 3600 * 1000)
     train_ms = int(train_months * 30.44 * 24 * 3600 * 1000)
+    timeframe_ms = {"15m": 900_000, "30m": 1_800_000, "1h": 3_600_000,
+                    "4h": 14_400_000, "1d": 86_400_000}.get(timeframe)
+    if timeframe_ms is None:
+        raise ValueError(f"Unsupported timeframe for temporal purge: {timeframe}")
+    purge_ms = PURGE_BARS * timeframe_ms
 
     test_start_ms = max_time_ms - drift_ms
     val_start_ms = test_start_ms - val_ms
+    gate_start_ms = test_start_ms - min(int(30 * 24 * 3600 * 1000), val_ms // 3)
     train_start_ms = max(int(times[0]), val_start_ms - train_ms)
 
     test_mask = times >= test_start_ms
-    val_mask = (times >= val_start_ms) & (times < test_start_ms)
-    train_mask = (times >= train_start_ms) & (times < val_start_ms)
+    gate_mask = (times >= gate_start_ms) & (times < test_start_ms - purge_ms)
+    calibration_mask = (times >= val_start_ms) & (times < gate_start_ms - purge_ms)
+    train_mask = (times >= train_start_ms) & (times < val_start_ms - purge_ms)
 
     X_train, y_train = X[train_mask], y[train_mask]
-    X_val, y_val = X[val_mask], y[val_mask]
+    X_calibration, y_calibration = X[calibration_mask], y[calibration_mask]
+    X_val, y_val = X[gate_mask], y[gate_mask]
     X_test, y_test = X[test_mask], y[test_mask]
 
-    log(f"Split Windows: Train={len(X_train):,} ({train_months}m) | Val={len(X_val):,} ({val_months}m) | Test={len(X_test):,} ({drift_days}d)")
+    log(
+        f"Purged temporal splits ({PURGE_BARS} bars): Train={len(X_train):,} | "
+        f"Calibration={len(X_calibration):,} | Gate={len(X_val):,} | Test={len(X_test):,}"
+    )
+    if min(len(X_train), len(X_calibration), len(X_val), len(X_test)) < 100:
+        return {"symbol": symbol, "status": "skipped_insufficient_temporal_splits", "retrained": False}
 
     # 3. Check Current Active Model Performance (Drift Detection)
     active_model, active_meta, active_file = get_active_model_for_symbol(symbol, timeframe, window_size, horizon)
@@ -388,17 +516,22 @@ def retrain_symbol_rolling(
         tree_method="hist",
     )
 
-    # Combine Train + Val for 5-fold cross-validated Isotonic Calibration
-    X_train_val = np.vstack([X_train, X_val])
-    y_train_val = np.concatenate([y_train, y_val])
-
-    log(f"Fitting Isotonic CalibratedClassifierCV on Train+Val ({len(X_train_val):,} samples)...")
-    calibrated_clf = CalibratedClassifierCV(estimator=base_xgb, method="isotonic", cv=5)
-    calibrated_clf.fit(X_train_val, y_train_val)
+    log(f"Fitting XGBoost on train only ({len(X_train):,} samples)...")
+    base_xgb.fit(X_train, y_train, sample_weight=sample_weights)
+    log(f"Fitting isotonic calibration on later calibration-only data ({len(X_calibration):,} samples)...")
+    calibrated_clf = CalibratedClassifierCV(estimator=FrozenEstimator(base_xgb), method="isotonic")
+    calibrated_clf.fit(X_calibration, y_calibration)
 
     # 5. Evaluate on Validation & Test Windows
     val_metrics = evaluate_model_performance(calibrated_clf, X_val, y_val)
     after_metrics = evaluate_model_performance(calibrated_clf, X_test, y_test)
+    val_baseline = majority_baseline_metrics(y_train, y_val)
+    test_baseline = majority_baseline_metrics(y_train, y_test)
+    provenance = dataset_provenance(symbol, timeframe, window_size, horizon, times, X, y)
+    promotion_gate = assess_promotion_gate(val_metrics, after_metrics, val_baseline, test_baseline)
+    if not provenance["label_lineage"]["complete"]:
+        promotion_gate["passed"] = False
+        promotion_gate["failures"].append("dataset: label lineage is ambiguous or incomplete")
 
     # Threshold scan for optimal trade filtering on validation set
     val_probas = calibrated_clf.predict_proba(X_val)
@@ -420,6 +553,29 @@ def retrain_symbol_rolling(
     log(f"  OOS Test Brier Score: {after_metrics['brier_score']:.4f} (Before: {before_metrics.get('brier_score', 0):.4f})")
     log(f"  OOS Test Log-Loss   : {after_metrics['log_loss']:.4f} (Before: {before_metrics.get('log_loss', 0):.4f})")
     log(f"  Optimal Threshold   : {best_thr:.2f} (Val Acc @ thr: {best_thr_acc*100:.2f}%)")
+    log(f"  Promotion Gate      : {'PASS' if promotion_gate['passed'] else 'FAIL'}")
+
+    if not promotion_gate["passed"]:
+        registry = load_model_registry()
+        model_key = f"{symbol}_{timeframe}_ws{window_size}_h{horizon}"
+        existing = registry.get("models", {}).get(model_key)
+        if isinstance(existing, dict) and existing.get("status") == "active":
+            existing["status"] = "quarantined"
+            existing["quarantine_reason"] = "Artifact lacks a passing independent-window promotion gate."
+            save_model_registry(registry)
+        log(f"[REJECTED] Candidate not saved or promoted: {', '.join(promotion_gate['failures'])}")
+        return {
+            "symbol": symbol,
+            "status": "candidate_rejected",
+            "retrained": False,
+            "before_metrics": before_metrics,
+            "validation_metrics": val_metrics,
+            "oos_metrics": after_metrics,
+            "after_metrics": after_metrics,
+            "validation_baseline": val_baseline,
+            "oos_baseline": test_baseline,
+            "promotion_gate": promotion_gate,
+        }
 
     # 6. Save Versioned Artifacts
     date_str = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -445,7 +601,7 @@ def retrain_symbol_rolling(
         "model_name": f"XGB_{version_tag}",
         "version": version_tag,
         "base_model": "XGBoost (n_estimators=200, depth=6, lr=0.04)",
-        "calibration": "isotonic (cv=5)",
+        "calibration": "isotonic on later calibration-only window",
         "feature_dim": int(X.shape[1]),
         "feature_names": feature_names,
         "feature_schema_version": FEATURE_SCHEMA_VERSION,
@@ -456,21 +612,28 @@ def retrain_symbol_rolling(
             for package in ARTIFACT_RUNTIME_PACKAGES
         },
         "class_mapping": {"0": -1, "1": 0, "2": 1},
+        "data_provenance": provenance,
+        "promotion_gate": promotion_gate,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "train_window_start": datetime.fromtimestamp(train_start_ms / 1000, timezone.utc).isoformat(),
-        "train_window_end": datetime.fromtimestamp(val_start_ms / 1000, timezone.utc).isoformat(),
-        "val_window_start": datetime.fromtimestamp(val_start_ms / 1000, timezone.utc).isoformat(),
-        "val_window_end": datetime.fromtimestamp(test_start_ms / 1000, timezone.utc).isoformat(),
+        "train_window_end": datetime.fromtimestamp((val_start_ms - purge_ms) / 1000, timezone.utc).isoformat(),
+        "calibration_window_start": datetime.fromtimestamp(val_start_ms / 1000, timezone.utc).isoformat(),
+        "calibration_window_end": datetime.fromtimestamp((gate_start_ms - purge_ms) / 1000, timezone.utc).isoformat(),
+        "val_window_start": datetime.fromtimestamp(gate_start_ms / 1000, timezone.utc).isoformat(),
+        "val_window_end": datetime.fromtimestamp((test_start_ms - purge_ms) / 1000, timezone.utc).isoformat(),
         "test_window_start": datetime.fromtimestamp(test_start_ms / 1000, timezone.utc).isoformat(),
         "test_window_end": max_dt.isoformat(),
         "sample_counts": {
             "train": len(X_train),
+            "calibration": len(X_calibration),
             "val": len(X_val),
             "test": len(X_test),
         },
         "optimal_threshold": best_thr,
         "validation_metrics": val_metrics,
+        "validation_baseline": val_baseline,
         "oos_metrics": after_metrics,
+        "oos_baseline": test_baseline,
         "before_metrics": before_metrics,
         "retrain_reasons": retrain_reason,
         "note": "labels remapped {-1,0,1}->{0,1,2}; argmax(proba)-1 = direction",
@@ -590,7 +753,14 @@ def run_rolling_retrainer_suite(
         acc_after = f"{after.get('accuracy', 0)*100:.1f}%" if "accuracy" in after else "N/A"
         acc_str = f"{acc_before} -> {acc_after}"
 
-        status_str = "RETRAINED" if r.get("retrained") else "HEALTHY"
+        if r.get("retrained"):
+            status_str = "RETRAINED"
+        elif status == "candidate_rejected":
+            status_str = "REJECTED"
+        elif status == "healthy_no_retrain_needed":
+            status_str = "HEALTHY"
+        else:
+            status_str = "SKIPPED"
         print(f"{sym:<10} | {ver:<22} | {brier_str:<23} | {acc_str:<21} | {status_str:<10}")
 
     print("=" * 92)

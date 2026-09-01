@@ -29,7 +29,6 @@ def _active_entries():
 
 def test_active_registry_entries_match_sidecar_manifests():
     entries = _active_entries()
-    assert entries, "model registry must contain at least one active artifact"
 
     for key, entry in entries:
         filename = entry["active_model_file"]
@@ -59,6 +58,8 @@ def test_active_sidecars_have_complete_lineage_and_are_servable():
         "library_versions",
         "class_mapping",
         "feature_names",
+        "data_provenance",
+        "promotion_gate",
     }
     for _, entry in _active_entries():
         artifact = MODELS_DIR / entry["active_model_file"]
@@ -70,6 +71,14 @@ def test_active_sidecars_have_complete_lineage_and_are_servable():
         assert model is not None
         assert loaded_manifest["artifact_sha256"] == manifest["artifact_sha256"]
     assert len(list_available_models()) == len(_active_entries())
+
+
+def test_unverified_registry_entries_are_quarantined():
+    registry = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
+    quarantined = [entry for entry in registry["models"].values() if entry.get("status") == "quarantined"]
+    assert quarantined, "registry should retain quarantine evidence"
+    available_files = {model["file"] for model in list_available_models()}
+    assert not available_files.intersection(entry["active_model_file"] for entry in quarantined)
 
 
 def test_active_artifacts_load_with_pinned_runtime():

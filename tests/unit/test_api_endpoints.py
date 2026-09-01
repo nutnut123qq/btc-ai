@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from main import app
+from prediction_service import ModelArtifactIncompatibleError
 
 
 class TestApiEndpoints(unittest.TestCase):
@@ -27,7 +28,7 @@ class TestApiEndpoints(unittest.TestCase):
         self.assertIsInstance(data["models"], list)
 
     def test_predict_endpoint_validation_error(self):
-        # Empty feature vector should fail validation or return 422/500
+        # A quarantined model fails closed before model-specific shape validation.
         payload = {
             "symbol": "BTCUSDT",
             "timeframe": "4h",
@@ -35,9 +36,13 @@ class TestApiEndpoints(unittest.TestCase):
             "horizon": "4h",
             "feature_vector": [1.0, 2.0]
         }
-        response = self.client.post("/api/predict", json=payload)
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("Feature vector length", response.json()["detail"])
+        with patch(
+            "main.predict_from_vector",
+            side_effect=ModelArtifactIncompatibleError("quarantined"),
+        ):
+            response = self.client.post("/api/predict", json=payload)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["code"], "MODEL_ARTIFACT_INCOMPATIBLE")
 
     def test_capabilities_reports_llm_disabled_but_ml_available(self):
         with (

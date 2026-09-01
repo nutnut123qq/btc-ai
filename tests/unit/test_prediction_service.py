@@ -1,5 +1,7 @@
 import unittest
 import sys
+import hashlib
+import importlib.metadata
 import json
 import tempfile
 from pathlib import Path
@@ -20,14 +22,11 @@ class TestPredictionService(unittest.TestCase):
     """
 
     def test_list_available_models(self):
-        models = list_available_models()
-        self.assertEqual(len(models), 1)
-        self.assertEqual(models[0]["symbol"], "BTCUSDT")
-        self.assertTrue(models[0]["is_active"])
+        self.assertTrue(all(model["is_active"] for model in list_available_models()))
 
     def test_predict_from_vector_dimension_mismatch(self):
         # Passing an invalid feature vector of length 5 (expected 175 for ws=5)
-        with self.assertRaises(ValueError):
+        with patch("prediction_service._registry_models", return_value={}), self.assertRaises(ModelArtifactIncompatibleError):
             predict_from_vector(
                 feature_vector=[1.0, 2.0, 3.0],
                 symbol="BTCUSDT",
@@ -37,15 +36,13 @@ class TestPredictionService(unittest.TestCase):
             )
 
     def test_predict_from_vector_valid_shape(self):
-        # 5 bars * 35 features = 175 features
-        vec = [0.0] * 175
-        result = predict_from_vector(
-            feature_vector=vec,
-            symbol="BTCUSDT",
-            timeframe="4h",
-            window_size=5,
-            horizon="4h"
-        )
+        class FixedModel:
+            def predict_proba(self, _features):
+                return np.asarray([[0.1, 0.7, 0.2]])
+
+        manifest = {"feature_dim": 175, "class_mapping": {"0": -1, "1": 0, "2": 1}, "version": "test"}
+        with patch("prediction_service.load_model", return_value=(FixedModel(), manifest)):
+            result = predict_from_vector([0.0] * 175, "BTCUSDT", "4h", 5, "4h")
         self.assertIn(result["label"], (-1, 0, 1))
         self.assertGreaterEqual(result["confidence"], 0.0)
         self.assertLessEqual(result["confidence"], 1.0)
@@ -66,6 +63,47 @@ class TestPredictionService(unittest.TestCase):
                 self.assertRaises(ModelArtifactIncompatibleError),
             ):
                 load_model("BTCUSDT", "4h", 5, "4h", legacy.name)
+
+    def test_active_artifact_with_failed_promotion_gate_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temp:
+            models_dir = Path(temp)
+            artifact = models_dir / "candidate.joblib"
+            artifact.write_bytes(b"candidate")
+            feature_names = ["feature"]
+            manifest = {
+                "symbol": "BTCUSDT",
+                "timeframe": "4h",
+                "window_size": 5,
+                "horizon": "4h",
+                "version": "test",
+                "feature_dim": 1,
+                "feature_names": feature_names,
+                "feature_schema_version": "test",
+                "feature_schema_hash": hashlib.sha256(json.dumps(feature_names, separators=(",", ":")).encode()).hexdigest(),
+                "artifact_sha256": hashlib.sha256(b"candidate").hexdigest(),
+                "library_versions": {"joblib": importlib.metadata.version("joblib")},
+                "class_mapping": {"0": -1, "1": 0, "2": 1},
+                "data_provenance": {
+                    "identity": "BTCUSDT_4h_ws5_h4h",
+                    "row_count": 1,
+                    "dataset_sha256": "0" * 64,
+                    "label_lineage": {"complete": True, "source_column": "test.Target"},
+                },
+                "promotion_gate": {"passed": False},
+            }
+            artifact.with_suffix(".json").write_text(json.dumps(manifest), encoding="utf-8")
+            registry = models_dir / "model_registry.json"
+            registry.write_text(json.dumps({"models": {"BTCUSDT_4h_ws5_h4h": {
+                "symbol": "BTCUSDT", "timeframe": "4h", "window_size": 5, "horizon": "4h",
+                "status": "active", "active_model_file": artifact.name, "version": "test",
+            }}}), encoding="utf-8")
+            with (
+                patch("prediction_service.MODELS_DIR", models_dir),
+                patch("prediction_service.REGISTRY_PATH", registry),
+                patch("prediction_service._REQUIRED_LIBRARY_VERSIONS", {"joblib"}),
+                self.assertRaisesRegex(ModelArtifactIncompatibleError, "promotion gate"),
+            ):
+                load_model("BTCUSDT", "4h", 5, "4h")
 
     def test_live_probability_exception_is_sanitized_as_artifact_error(self):
         class BrokenModel:

@@ -1,6 +1,7 @@
 import inspect
 import unittest
 import numpy as np
+from unittest.mock import patch
 
 from prediction_service import predict_from_vector
 from backtest_strategy import simulate_trades
@@ -65,8 +66,14 @@ class TestLeakPreventionAndPermutationInvariance(unittest.TestCase):
         self.assertNotIn("target_return", param_names)
 
         feature_vec = list(np.random.randn(175).astype(np.float32))
-        first = predict_from_vector(feature_vec, "BTCUSDT", "4h", 5, "4h")
-        second = predict_from_vector(feature_vec, "BTCUSDT", "4h", 5, "4h")
+        manifest = {
+            "feature_dim": 175,
+            "class_mapping": {"0": -1, "1": 0, "2": 1},
+            "version": "test",
+        }
+        with patch("prediction_service.load_model", return_value=(self.mock_model, manifest)):
+            first = predict_from_vector(feature_vec, "BTCUSDT", "4h", 5, "4h")
+            second = predict_from_vector(feature_vec, "BTCUSDT", "4h", 5, "4h")
         self.assertEqual(first["label"], second["label"])
         self.assertEqual(first["confidence"], second["confidence"])
         self.assertAlmostEqual(

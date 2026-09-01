@@ -24,6 +24,8 @@ _REQUIRED_MANIFEST_FIELDS = {
     "library_versions",
     "class_mapping",
     "feature_names",
+    "data_provenance",
+    "promotion_gate",
 }
 _REQUIRED_LIBRARY_VERSIONS = {"joblib", "scikit-learn", "xgboost"}
 
@@ -125,6 +127,23 @@ def _resolve_active_artifact(
         raise ModelArtifactIncompatibleError(f"Manifest identity mismatch for {filename}.")
     if manifest.get("version") != entry.get("version"):
         raise ModelArtifactIncompatibleError(f"Manifest version mismatch for {filename}.")
+
+    provenance = manifest["data_provenance"]
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("identity") != key
+        or not isinstance(provenance.get("row_count"), int)
+        or provenance["row_count"] <= 0
+        or not isinstance(provenance.get("dataset_sha256"), str)
+        or len(provenance["dataset_sha256"]) != 64
+        or not isinstance(provenance.get("label_lineage"), dict)
+        or provenance["label_lineage"].get("complete") is not True
+        or not isinstance(provenance["label_lineage"].get("source_column"), str)
+    ):
+        raise ModelArtifactIncompatibleError(f"Dataset provenance is invalid for {filename}.")
+    promotion_gate = manifest["promotion_gate"]
+    if not isinstance(promotion_gate, dict) or promotion_gate.get("passed") is not True:
+        raise ModelArtifactIncompatibleError(f"Artifact {filename} did not pass the promotion gate.")
 
     if model_name and model_name not in {filename, artifact.stem, manifest.get("model_name")}:
         raise ModelArtifactIncompatibleError("Requested model is not the registered active artifact.")

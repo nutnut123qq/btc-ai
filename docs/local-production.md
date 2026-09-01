@@ -15,10 +15,13 @@ Production-like runs must not use `--reload`. `LLM_PROVIDER=none` disables only
 LLM explanations. Model inference is reported available only when an `active`
 registry artifact has a complete manifest (artifact hash, feature-schema
 version/hash, class mapping, and exact runtime library versions). The current
-BTCUSDT artifact was rebuilt with that lineage and is active. ETHUSDT and
-SOLUSDT remain quarantined because their local training provenance cannot be
-proven. `/api/predict` and the paper trader fail closed for those unavailable
-artifacts instead of guessing or loading a legacy fallback.
+BTCUSDT, ETHUSDT, and SOLUSDT are currently quarantined. The rebuilt BTC
+artifact has technical lineage, but an independent temporal audit showed that
+it does not beat the recent majority baseline and collapses on the directional
+classes. ETH and SOL still lack provable local training provenance. A model is
+servable only after its manifest contains complete dataset/label provenance and
+a passing independent-window promotion gate; `/api/predict` and the paper
+trader otherwise fail closed instead of guessing or loading a legacy fallback.
 
 To update dependencies, create a clean Python 3.12 virtual environment, install
 `requirements.txt`, run all CI commands, then regenerate `requirements.lock.txt`
