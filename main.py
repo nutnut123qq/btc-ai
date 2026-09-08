@@ -16,7 +16,7 @@ load_dotenv()
 
 # LLM_PROVIDER: "none" | "ollama" (default) | "gemini" | "blackbox"
 # Ollama: OLLAMA_MODEL (default qwen2.5:1.5b — fits ~3GB RAM), OLLAMA_BASE_URL, optional OLLAMA_NUM_CTX
-# Gemini: GOOGLE_API_KEY, optional GEMINI_MODEL (default gemini-2.5-flash)
+# Gemini: GOOGLE_API_KEY, optional GEMINI_MODEL (default gemini-3.8-flash)
 # Blackbox: BLACKBOX_API_KEY, optional BLACKBOX_BASE_URL (default https://api.blackbox.ai).
 # BLACKBOX_MODEL: use an id from GET https://api.blackbox.ai/v1/models (e.g. blackboxai/openai/gpt-5.2).
 
@@ -127,7 +127,7 @@ def _build_llm():
             from langchain_google_genai import ChatGoogleGenerativeAI
 
             return ChatGoogleGenerativeAI(
-                model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
                 google_api_key=os.environ["GOOGLE_API_KEY"],
                 temperature=0.7,
                 max_retries=1,
