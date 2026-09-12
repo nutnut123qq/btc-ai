@@ -11,10 +11,13 @@ SLIPPAGE_BPS: float = 5.0      # Average market slippage for major pairs (0.05%)
 TOTAL_COST_PER_SIDE_BPS: float = FEE_BPS + SLIPPAGE_BPS  # 15.0 bps (0.15%)
 TOTAL_ROUNDTRIP_COST_PCT: float = (TOTAL_COST_PER_SIDE_BPS * 2.0) / 10_000.0  # 0.0030 (0.30%)
 
-# Default Market Symbols & Timeframes
+# Default Market Symbols & Production Candle Timeframes
 DEFAULT_SYMBOL: str = "BTCUSDT"
 ACTIVE_SYMBOLS: List[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
-SUPPORTED_TIMEFRAMES: List[str] = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"]
+ACTIVE_PRODUCTION_TIMEFRAMES: tuple[str, ...] = ("1h", "4h", "1d")
+DEFAULT_TIMEFRAME: str = "4h"
+# Backwards-compatible name for callers that expose production choices.
+SUPPORTED_TIMEFRAMES: List[str] = list(ACTIVE_PRODUCTION_TIMEFRAMES)
 SUPPORTED_HORIZONS: List[str] = ["1h", "4h", "1d", "3d", "7d"]
 
 # Dataset Partitioning & ML Validation
@@ -26,8 +29,6 @@ DEFAULT_CONFIDENCE_THRESHOLD: float = 0.58
 TIMEFRAME_THRESHOLDS: Dict[str, float] = {
     "4h": 0.61,
     "1h": 0.58,
-    "30m": 0.56,
-    "15m": 0.55,
 }
 
 # Per-Asset Calibrated Thresholds for 4h (Sniper Calibration & Noise Filtering)
@@ -78,5 +79,4 @@ VOLATILITY_HALT_THRESHOLD: float = 0.08       # 8.0% candle amplitude / body on 
 MAX_CONSECUTIVE_LOSSES: int = 4               # Max consecutive losing trades
 CIRCUIT_BREAKER_COOLDOWN_HOURS: int = 24      # Cooldown duration after breaker trigger
 ALTCOIN_VOLATILITY_HALT_BARS: int = 2         # Altcoin entry halt (2 bars = 8h) on BTC flash crash
-
 

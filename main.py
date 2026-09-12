@@ -11,6 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from graph import build_ta_graph
 from prediction_service import ModelArtifactIncompatibleError, list_available_models, predict_from_vector
+from trading_config import DEFAULT_TIMEFRAME
 
 load_dotenv()
 
@@ -108,9 +109,9 @@ class AnalyzeRequest(BaseModel):
 
 class PredictRequest(BaseModel):
     symbol: str = "BTCUSDT"
-    timeframe: str = "1h"
+    timeframe: str = DEFAULT_TIMEFRAME
     window_size: int = 5
-    horizon: str = "1h"
+    horizon: str = "4h"
     feature_vector: list[float]
     model_name: str | None = None
 

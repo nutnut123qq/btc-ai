@@ -9,6 +9,7 @@ import requests
 import psycopg2
 from psycopg2.extras import execute_values
 from db_config import get_db_connection
+from trading_config import ACTIVE_PRODUCTION_TIMEFRAMES
 from verify_indicators import compute_indicators
 
 if sys.stdout.encoding != 'utf-8':
@@ -31,12 +32,12 @@ CONFIGS = [
     {
         "symbol": "SOLUSDT",
         "start_ms": 1597125600000, # 2020-08-11 06:00:00 UTC (Listing date)
-        "timeframes": ["1d", "4h", "1h", "30m", "15m", "5m", "1m"]
+        "timeframes": list(ACTIVE_PRODUCTION_TIMEFRAMES)
     },
     {
         "symbol": "ETHUSDT",
         "start_ms": 1577836800000, # 2020-01-01 00:00:00 UTC
-        "timeframes": ["1d", "4h", "1h", "30m", "15m", "5m", "1m"]
+        "timeframes": list(ACTIVE_PRODUCTION_TIMEFRAMES)
     }
 ]
 

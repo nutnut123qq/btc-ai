@@ -6,6 +6,11 @@ import httpx
 from langchain_core.messages import SystemMessage, HumanMessage
 from langgraph.graph import StateGraph, START, END
 
+from trading_config import DEFAULT_TIMEFRAME
+
+
+TECH_ANALYSIS_TIMEFRAME = DEFAULT_TIMEFRAME
+
 
 class TAState(TypedDict, total=False):
     symbol: str
@@ -128,7 +133,7 @@ def build_ta_graph(*, llm: Any, backend_base_url: str):
         }
 
     async def tech_analyst_node(state: TAState) -> Dict[str, Any]:
-        interval = "1h"
+        interval = TECH_ANALYSIS_TIMEFRAME
         limit = 48
 
         # Tool retrieval (Tech)

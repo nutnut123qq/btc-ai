@@ -86,6 +86,33 @@ class TestApiEndpoints(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), expected)
 
+    def test_predict_defaults_to_primary_4h_model_identity(self):
+        expected = {"label": 0, "probability": 0.7}
+        with patch("main.predict_from_vector", return_value=expected) as predictor:
+            response = self.client.post("/api/predict", json={"feature_vector": [1.0]})
+
+        self.assertEqual(response.status_code, 200)
+        predictor.assert_called_once_with(
+            feature_vector=[1.0],
+            symbol="BTCUSDT",
+            timeframe="4h",
+            window_size=5,
+            horizon="4h",
+            model_name=None,
+        )
+
+    def test_predict_rejects_inactive_minute_timeframe(self):
+        response = self.client.post("/api/predict", json={
+            "symbol": "BTCUSDT",
+            "timeframe": "15m",
+            "window_size": 5,
+            "horizon": "1h",
+            "feature_vector": [1.0],
+        })
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Inactive production timeframe", response.json()["detail"])
+
     def test_llm_endpoints_return_structured_503_when_disabled(self):
         with patch.dict(os.environ, {"LLM_PROVIDER": "none"}):
             responses = [
