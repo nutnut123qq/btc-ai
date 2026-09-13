@@ -138,6 +138,11 @@ def compute_k(n_samples):
     return max(5, min(500, k))
 
 
+def primary_horizon_for(timeframe):
+    """Return the real label horizon persisted with cluster membership."""
+    return "1d" if timeframe == "1d" else "4h"
+
+
 def cluster_windows(X, n_clusters, random_state=42):
     """Run Mini-Batch K-Means on feature vectors."""
     scaler = StandardScaler()
@@ -260,7 +265,7 @@ def write_results(conn, symbol, timeframe, window_size, version,
                   centroids, intra_dists, cluster_labels, member_counts,
                   representative_ohlcs, outcome_stats_by_cluster,
                   starts, ends, cosine_dists, labels_all, returns_all,
-                  horizons_data):
+                  horizons_data, primary_horizon):
     """
     Write archetypes, outcomes, and occurrences to PostgreSQL.
     Batch insert to keep memory low.
@@ -357,9 +362,7 @@ def write_results(conn, symbol, timeframe, window_size, version,
         conn.commit()
         print(f"  Inserted {outcome_count} outcome records")
 
-        # Insert occurrences in batches (use the primary horizon data for label/return)
-        # We use the first horizon in the data as the "primary" for occurrence records
-        primary_horizon = HORIZONS[1]  # "4h" as primary
+        # Insert cluster membership with the actual primary horizon used for this timeframe.
         occ_batch = []
         occ_count = 0
 
@@ -417,7 +420,7 @@ def process_combo(conn, symbol, timeframe, window_size, version):
     print(f"{'='*60}")
 
     # Use the primary horizon for clustering (4h for intra-day, 1d for daily)
-    primary_horizon = "1d" if timeframe == "1d" else "4h"
+    primary_horizon = primary_horizon_for(timeframe)
     t0 = time.time()
 
     X, y, starts, ends, rets = fetch_window_data(
@@ -540,7 +543,7 @@ def process_combo(conn, symbol, timeframe, window_size, version):
         centroids, intra_dists, cluster_labels, member_counts,
         representative_ohlcs, outcome_stats_by_cluster,
         starts, ends, cosine_dists, y, rets,
-        horizons_data,
+        horizons_data, primary_horizon,
     )
 
     elapsed = time.time() - t0
