@@ -12,9 +12,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -34,11 +36,58 @@ from research_contract import ResearchManifest
 
 CLASSES = np.array([-1, 0, 1], dtype=np.int8)
 INTERVAL_MS = 4 * 60 * 60 * 1000
-FEATURES_PER_BAR = 35
-ACTIVE_RULE_COUNT_OFFSET = 29
-EVALUATOR_VERSION = "btc-4h-next-bar-ml-evidence-v1"
+STORED_FEATURE_NAMES = (
+    "CloseZscore",
+    "ClosePctChange1",
+    "ClosePctChange4",
+    "ClosePctChange24",
+    "HighLowRangePct",
+    "BodyPct",
+    "UpperWickPct",
+    "LowerWickPct",
+    "Rsi14",
+    "Rsi14Slope",
+    "MacdNorm",
+    "MacdSignalNorm",
+    "MacdHistogramNorm",
+    "Ema12Dist",
+    "Ema26Dist",
+    "Ema50Dist",
+    "Ema200Dist",
+    "Sma50Dist",
+    "Sma200Dist",
+    "BollingerWidth",
+    "BollingerPosition",
+    "Atr14Pct",
+    "ObvEmaDist",
+    "VwapDist",
+    "RollingVwapDist",
+    "VolumeZscore",
+    "VolumeSma20Ratio",
+    "TakerBuyRatio",
+    "RecentPatternEncoded",
+    "ActiveRuleCount",
+    "HourSin",
+    "HourCos",
+    "DayOfWeekSin",
+    "DayOfWeekCos",
+    "IsWeekend",
+)
+EXCLUDED_NONCAUSAL_FEATURES = frozenset({"ActiveRuleCount"})
+CAUSAL_FEATURE_NAMES = tuple(
+    name for name in STORED_FEATURE_NAMES if name not in EXCLUDED_NONCAUSAL_FEATURES
+)
+STORED_FEATURES_PER_BAR = len(STORED_FEATURE_NAMES)
+CAUSAL_FEATURES_PER_BAR = len(CAUSAL_FEATURE_NAMES)
+EVALUATOR_VERSION = "btc-4h-next-bar-ml-evidence-v2"
 DECLARED_MODEL_FAMILY = ("logistic_scaled", "hist_gradient_boosting")
-DECLARED_BASELINES = ("rolling_class_probs", "rolling_majority", "momentum", "reversion")
+BASELINE_DEFINITIONS = {
+    "rolling_class_probs": "Laplace-smoothed class prior from labels available by decision time",
+    "rolling_majority": "Most likely rolling class prior with fixed rule confidence",
+    "momentum": "Sign of the final bar's named ClosePctChange1 feature",
+    "reversion": "Opposite sign of the final bar's named ClosePctChange1 feature",
+}
+DECLARED_BASELINES = tuple(BASELINE_DEFINITIONS)
 
 
 @dataclass(frozen=True)
@@ -130,19 +179,40 @@ def dataset_sha256(data: BenchmarkData) -> str:
 
 
 def drop_noncausal_stored_features(features: np.ndarray, window_size: int) -> np.ndarray:
-    expected = window_size * FEATURES_PER_BAR
+    expected = window_size * STORED_FEATURES_PER_BAR
     if features.ndim != 2 or features.shape[1] != expected:
         raise ValueError(f"stored feature matrix must have {expected} columns")
-    excluded_columns = [
-        bar_index * FEATURES_PER_BAR + ACTIVE_RULE_COUNT_OFFSET
-        for bar_index in range(window_size)
-    ]
-    return np.delete(features, excluded_columns, axis=1)
+    causal_offsets = [STORED_FEATURE_NAMES.index(name) for name in CAUSAL_FEATURE_NAMES]
+    by_bar = features.reshape(len(features), window_size, STORED_FEATURES_PER_BAR)
+    return by_bar[:, :, causal_offsets].reshape(
+        len(features), window_size * CAUSAL_FEATURES_PER_BAR
+    )
+
+
+def extract_causal_feature(
+    features: np.ndarray,
+    *,
+    window_size: int,
+    feature_name: str,
+    bar_index: int = -1,
+) -> np.ndarray:
+    """Extract one named feature from a causal flattened window matrix."""
+    if feature_name not in CAUSAL_FEATURE_NAMES:
+        raise ValueError(f"feature is absent from causal schema: {feature_name}")
+    expected = window_size * CAUSAL_FEATURES_PER_BAR
+    if features.ndim != 2 or features.shape[1] != expected:
+        raise ValueError(f"causal feature matrix must have {expected} columns")
+    resolved_bar = bar_index if bar_index >= 0 else window_size + bar_index
+    if not 0 <= resolved_bar < window_size:
+        raise IndexError(f"bar_index {bar_index} is outside a {window_size}-bar window")
+    feature_offset = CAUSAL_FEATURE_NAMES.index(feature_name)
+    by_bar = features.reshape(len(features), window_size, CAUSAL_FEATURES_PER_BAR)
+    return by_bar[:, resolved_bar, feature_offset].copy()
 
 
 def load_btc_4h_benchmark(*, decision_cutoff_ms: int, window_size: int = 5) -> BenchmarkData:
     """Read the fixed benchmark from PostgreSQL without modifying any table."""
-    feature_dim = window_size * FEATURES_PER_BAR
+    feature_dim = window_size * STORED_FEATURES_PER_BAR
     query = """
         SELECT w."FeatureVector", p."TargetDirection4h", w."WindowEndMs", w."FeatureDim"
         FROM "WindowClassificationDatasets" AS w
@@ -187,8 +257,12 @@ def load_btc_4h_benchmark(*, decision_cutoff_ms: int, window_size: int = 5) -> B
     labels = labels[final_mask]
     decision_times = decision_times[final_mask]
     label_available = label_available[final_mask]
-    # Feature index 1 is ClosePctChange1; the final bar starts at this offset.
-    last_returns = features[:, (window_size - 1) * FEATURES_PER_BAR + 1]
+    last_returns = extract_causal_feature(
+        features,
+        window_size=window_size,
+        feature_name="ClosePctChange1",
+        bar_index=-1,
+    )
     data = BenchmarkData(features, labels, decision_times, label_available, last_returns)
     data.validate()
     return data
@@ -294,6 +368,39 @@ def _baseline_probabilities(
             reversion, config.rule_confidence
         )
     return outputs
+
+
+def _validate_probability_coverage(
+    probabilities: dict[str, np.ndarray],
+    trial_timestamps: dict[str, np.ndarray],
+    expected_timestamps: np.ndarray,
+) -> dict[str, str]:
+    """Fail closed unless every trial evaluates the exact shared timestamp set."""
+    expected_rows = len(expected_timestamps)
+    hashes: dict[str, str] = {}
+    for name in DECLARED_MODEL_FAMILY + DECLARED_BASELINES:
+        if name not in probabilities:
+            raise ValueError(f"missing probability output for declared trial: {name}")
+        if name not in trial_timestamps:
+            raise ValueError(f"missing timestamp coverage for declared trial: {name}")
+        values = probabilities[name]
+        if values.shape != (expected_rows, len(CLASSES)):
+            raise ValueError(
+                f"probability coverage mismatch for {name}: "
+                f"expected {(expected_rows, len(CLASSES))}, got {values.shape}"
+            )
+        covered_timestamps = trial_timestamps[name]
+        if not np.array_equal(covered_timestamps, expected_timestamps):
+            raise ValueError(f"timestamp coverage mismatch for {name}")
+        if not np.isfinite(values).all():
+            raise ValueError(f"non-finite probability output for {name}")
+        if not np.allclose(values.sum(axis=1), 1.0, rtol=0.0, atol=1e-9):
+            raise ValueError(f"probabilities do not sum to one for {name}")
+        hashes[name] = hashlib.sha256(covered_timestamps.astype("<i8").tobytes()).hexdigest()
+    undeclared = set(probabilities).union(trial_timestamps).difference(hashes)
+    if undeclared:
+        raise ValueError(f"evaluation output contains undeclared trials: {sorted(undeclared)}")
+    return hashes
 
 
 def _brier_rows(labels: np.ndarray, probabilities: np.ndarray) -> np.ndarray:
@@ -433,6 +540,9 @@ def evaluate_walk_forward(
     baseline_outputs: dict[str, list[np.ndarray]] = {name: [] for name in DECLARED_BASELINES}
     labels_by_fold: list[np.ndarray] = []
     timestamps_by_fold: list[np.ndarray] = []
+    timestamps_by_trial: dict[str, list[np.ndarray]] = {
+        name: [] for name in DECLARED_MODEL_FAMILY + DECLARED_BASELINES
+    }
     fold_contracts: list[dict[str, Any]] = []
 
     for fold in folds:
@@ -456,9 +566,11 @@ def evaluate_walk_forward(
             calibrator.fit(calibration_base, data.labels[calibration_indices])
             test_base = _aligned_probabilities(estimator, data.features[test_indices])
             model_outputs[model_name].append(calibrator.transform(test_base))
+            timestamps_by_trial[model_name].append(data.decision_times_ms[test_indices])
         fold_baselines = _baseline_probabilities(data, test_indices, config)
         for baseline_name in DECLARED_BASELINES:
             baseline_outputs[baseline_name].append(fold_baselines[baseline_name])
+            timestamps_by_trial[baseline_name].append(data.decision_times_ms[test_indices])
 
     labels = np.concatenate(labels_by_fold)
     timestamps = np.concatenate(timestamps_by_fold)
@@ -468,13 +580,20 @@ def evaluate_walk_forward(
         name: np.concatenate(values)
         for name, values in (model_outputs | baseline_outputs).items()
     }
+    trial_timestamps = {
+        name: np.concatenate(values) for name, values in timestamps_by_trial.items()
+    }
+    timestamp_hashes = _validate_probability_coverage(
+        probabilities,
+        trial_timestamps,
+        timestamps,
+    )
     metrics = {
         name: _metrics(labels, model_probabilities, config.reliability_bins)
         for name, model_probabilities in probabilities.items()
     }
     strongest_baseline = min(DECLARED_BASELINES, key=lambda name: metrics[name]["brier"])
     baseline_loss = _brier_rows(labels, probabilities[strongest_baseline])
-    timestamp_hash = hashlib.sha256(timestamps.astype("<i8").tobytes()).hexdigest()
 
     trials: list[dict[str, Any]] = []
     per_candidate_alpha = config.familywise_alpha / len(DECLARED_MODEL_FAMILY)
@@ -504,7 +623,7 @@ def evaluate_walk_forward(
                     "confidenceLevel": 1.0 - per_candidate_alpha,
                 },
                 "coverage": 1.0,
-                "evaluationTimestampSha256": timestamp_hash,
+                "evaluationTimestampSha256": timestamp_hashes[name],
             }
         )
     for name in DECLARED_BASELINES:
@@ -515,7 +634,7 @@ def evaluate_walk_forward(
                 "status": "reference",
                 "metrics": metrics[name],
                 "coverage": 1.0,
-                "evaluationTimestampSha256": timestamp_hash,
+                "evaluationTimestampSha256": timestamp_hashes[name],
             }
         )
 
@@ -525,7 +644,7 @@ def evaluate_walk_forward(
     checks = {
         "declaredFamilyComplete": {trial["trial"] for trial in trials}
         == set(DECLARED_MODEL_FAMILY + DECLARED_BASELINES),
-        "identicalTimestampCoverage": all(len(probabilities[name]) == len(timestamps) for name in probabilities),
+        "identicalTimestampCoverage": len(set(timestamp_hashes.values())) == 1,
         "minimumSamples": len(timestamps) >= config.minimum_gate_samples,
         "minimumClassSupport": min(class_counts.values()) >= config.minimum_class_samples,
         "brierBetterThanStrongestBaseline": metrics[selected]["brier"] < metrics[strongest_baseline]["brier"],
@@ -538,6 +657,7 @@ def evaluate_walk_forward(
         "scope": "BTCUSDT 4h next-bar direction benchmark",
         "declaredModelFamily": list(DECLARED_MODEL_FAMILY),
         "declaredBaselines": list(DECLARED_BASELINES),
+        "baselineDefinitions": BASELINE_DEFINITIONS,
         "folds": fold_contracts,
         "evaluationRows": int(len(timestamps)),
         "evaluationTimestampsMs": timestamps.tolist(),
@@ -592,7 +712,7 @@ def build_manifest(
         "firstDecisionTimeMs": int(data.decision_times_ms[0]),
         "lastDecisionTimeMs": int(data.decision_times_ms[-1]),
         "decisionCutoffMs": int(decision_cutoff_ms),
-        "featureSource": "WindowClassificationDatasets.FeatureVector excluding ActiveRuleCount for every bar",
+        "featureSource": "WindowClassificationDatasets.FeatureVector mapped by named per-bar schema, excluding ActiveRuleCount",
         "labelSource": "PriceTargets.TargetDirection4h",
         "rowJoin": "Symbol + Timeframe + WindowEndMs=OpenTimeMs",
         "closedBarPredicate": "WindowEndMs + 4h <= cutoff",
@@ -616,7 +736,11 @@ def build_manifest(
             **asdict(config),
             "declaredModelFamily": list(DECLARED_MODEL_FAMILY),
             "declaredBaselines": list(DECLARED_BASELINES),
-            "featureSchema": "WindowClassificationDataset 35 features/bar flattened; ActiveRuleCount offset 29 removed because it lacks point-in-time rule-version lineage",
+            "baselineDefinitions": BASELINE_DEFINITIONS,
+            "storedFeatureNames": list(STORED_FEATURE_NAMES),
+            "causalFeatureNames": list(CAUSAL_FEATURE_NAMES),
+            "excludedNoncausalFeatures": sorted(EXCLUDED_NONCAUSAL_FEATURES),
+            "featureSchema": "WindowClassificationDataset named 35-feature bars flattened oldest-to-newest; ActiveRuleCount removed because it lacks point-in-time rule-version lineage",
             "label": "PriceTargets.TargetDirection4h close-to-close (not triple-barrier); available at next 4h bar close",
         },
         data_provenance=provenance,
@@ -634,6 +758,24 @@ def build_manifest(
     )
 
 
+def _write_immutable(path: Path, content: str) -> None:
+    """Publish a complete artifact atomically without ever replacing a peer."""
+    fd, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+            handle.write(content)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.link(temporary_path, path)
+        except FileExistsError:
+            if path.read_text(encoding="utf-8") != content:
+                raise FileExistsError(f"refusing to overwrite immutable evidence artifact: {path}")
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+
 def write_evidence(output_dir: Path, manifest: dict[str, Any], evaluation: dict[str, Any]) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_hash = manifest["manifestSha256"]
@@ -647,10 +789,7 @@ def write_evidence(output_dir: Path, manifest: dict[str, Any], evaluation: dict[
         for trial in evaluation["trials"]
     )
     for path, content in ((report_path, report_content), (ledger_path, ledger_content)):
-        if path.exists() and path.read_text(encoding="utf-8") != content:
-            raise FileExistsError(f"refusing to overwrite immutable evidence artifact: {path}")
-        if not path.exists():
-            path.write_text(content, encoding="utf-8")
+        _write_immutable(path, content)
     return {"report": report_path, "trialLedger": ledger_path}
 
 

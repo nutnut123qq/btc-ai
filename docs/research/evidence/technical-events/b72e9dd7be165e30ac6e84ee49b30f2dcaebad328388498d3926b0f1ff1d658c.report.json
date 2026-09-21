@@ -1,0 +1,2646 @@
+{
+  "evaluation": {
+    "chronologicalOos": true,
+    "eligibleOutcomeBars": 14729,
+    "evaluatorVersion": "btc-4h-technical-event-evidence-v1",
+    "interpretation": "Predictive evidence here is conditional next-bar evidence only; it is not a tradable strategy or PnL estimate.",
+    "modules": {
+      "candle_patterns": {
+        "availabilityBasis": "Availability is reconstructed from the recognizer's frozen pattern-length map: Single at its close, known Double at the second contiguous close, and known Triple at the third; unknown multi-pattern names fail closed",
+        "diagnostics": {
+          "rowsWhoseStoredCategoryWasCorrectedByFrozenLengthMap": 93,
+          "skippedUnjoinableOrUnknownRows": 1,
+          "storedRows": 9499
+        },
+        "eventTypeCount": 23,
+        "events": {
+          "BearishEngulfing": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5379413974455297,
+              "contextBaselineBrier": 0.24853753586436644,
+              "eventPriorAccuracy": 0.560480841472577,
+              "eventPriorBrier": 0.24670796203371256,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.00011826149440855907,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0007289574204309055,
+                "upper": 0.0005160974087985712
+              },
+              "pairedBrierLift": 0.0018295738306539106,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.004745670577619992,
+                "upper": 0.008789964980089986
+              }
+            },
+            "coverageOfRealized": 0.9772393538913363,
+            "evaluatedOosOccurrences": 1331,
+            "firstOosDecisionTimeMs": 1584777599999,
+            "lastOosDecisionTimeMs": 1789487999999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.00033276957311162794,
+                "upper": 0.0009337699449331419
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0008199424396309362,
+                "upper": 0.0012520140201105335
+              },
+              "meanReturnFraction": 0.0002981488769095478,
+              "positiveCount": 750,
+              "positiveRate": 0.5634861006761833,
+              "positiveRateWilsonCi": {
+                "lower": 0.5366971195875144,
+                "upper": 0.5899096762107733
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.5204336555299721,
+                "upper": 0.605602543619331
+              }
+            },
+            "realizedOccurrences": 1362,
+            "status": "inconclusive",
+            "storedOccurrences": 1362
+          },
+          "BearishHarami": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5098841172460804,
+              "contextBaselineBrier": 0.25049689079751497,
+              "eventPriorAccuracy": 0.520109066121336,
+              "eventPriorBrier": 0.2501816335142059,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.00017413509794931382,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0007200886056828207,
+                "upper": 0.0003510464815330109
+              },
+              "pairedBrierLift": 0.00031525728330904354,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.0022251924127270396,
+                "upper": 0.0032157485212212537
+              }
+            },
+            "coverageOfRealized": 0.970880211780278,
+            "evaluatedOosOccurrences": 1467,
+            "firstOosDecisionTimeMs": 1581019199999,
+            "lastOosDecisionTimeMs": 1789804799999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0002890504927304827,
+                "upper": 0.0007924959456230754
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0006854730853270653,
+                "upper": 0.001051258149411122
+              },
+              "meanReturnFraction": 0.00025426753934224624,
+              "positiveCount": 764,
+              "positiveRate": 0.5207907293796864,
+              "positiveRateWilsonCi": {
+                "lower": 0.4952058676557587,
+                "upper": 0.546266991049835
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.4797817075938836,
+                "upper": 0.5615214514359307
+              }
+            },
+            "realizedOccurrences": 1511,
+            "status": "inconclusive",
+            "storedOccurrences": 1511
+          },
+          "BearishMarubozu": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 1.0,
+              "contextBaselineBrier": 0.23781739029613794,
+              "eventPriorAccuracy": 1.0,
+              "eventPriorBrier": 0.2197265625,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.019934049998217903,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": null,
+              "pairedBrierLift": 0.018090827796137937,
+              "pairedBrierLiftBlockBootstrapCi": null
+            },
+            "coverageOfRealized": 0.03225806451612903,
+            "evaluatedOosOccurrences": 1,
+            "firstOosDecisionTimeMs": 1782979199999,
+            "lastOosDecisionTimeMs": 1782979199999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": null,
+              "meanReturnBlockBootstrapFamilywiseCi": null,
+              "meanReturnFraction": 0.02008346136050898,
+              "positiveCount": 1,
+              "positiveRate": 1.0,
+              "positiveRateWilsonCi": {
+                "lower": 0.20654931437723745,
+                "upper": 1.0
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.09187281970379124,
+                "upper": 1.0
+              }
+            },
+            "realizedOccurrences": 31,
+            "status": "insufficient_evidence",
+            "storedOccurrences": 31
+          },
+          "BullishEngulfing": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.4864457831325301,
+              "contextBaselineBrier": 0.25377757138056567,
+              "eventPriorAccuracy": 0.5233433734939759,
+              "eventPriorBrier": 0.24963812700083512,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.00039482407873779954,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0009986074241779028,
+                "upper": 0.00022062548774525983
+              },
+              "pairedBrierLift": 0.004139444379730538,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.002104698339252117,
+                "upper": 0.011894989610941275
+              }
+            },
+            "coverageOfRealized": 0.9686360320933625,
+            "evaluatedOosOccurrences": 1328,
+            "firstOosDecisionTimeMs": 1581710399999,
+            "lastOosDecisionTimeMs": 1789905599999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.00067824726960368,
+                "upper": 0.0005474905712798069
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0010400281535129466,
+                "upper": 0.0009726420712501219
+              },
+              "meanReturnFraction": -4.067712149866656e-05,
+              "positiveCount": 621,
+              "positiveRate": 0.46762048192771083,
+              "positiveRateWilsonCi": {
+                "lower": 0.44091713898353063,
+                "upper": 0.4945106107456672
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.42497182025427743,
+                "upper": 0.5107475988752127
+              }
+            },
+            "realizedOccurrences": 1371,
+            "status": "inconclusive",
+            "storedOccurrences": 1371
+          },
+          "BullishHarami": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5014144271570015,
+              "contextBaselineBrier": 0.2507307571959916,
+              "eventPriorAccuracy": 0.49646393210749645,
+              "eventPriorBrier": 0.25047181040652394,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -2.2228149288027163e-05,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0005857528502582975,
+                "upper": 0.0006518466110180017
+              },
+              "pairedBrierLift": 0.0002589467894676614,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.003062354264623976,
+                "upper": 0.0026317679515878182
+              }
+            },
+            "coverageOfRealized": 0.9751724137931035,
+            "evaluatedOosOccurrences": 1414,
+            "firstOosDecisionTimeMs": 1582862399999,
+            "lastOosDecisionTimeMs": 1789531199999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.00019793863062835378,
+                "upper": 0.0009973973382205246
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0004995090650167737,
+                "upper": 0.001266775818286892
+              },
+              "meanReturnFraction": 0.00034309097240299216,
+              "positiveCount": 711,
+              "positiveRate": 0.5028288543140028,
+              "positiveRateWilsonCi": {
+                "lower": 0.47679579502481245,
+                "upper": 0.5288465847703546
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.46115053515582727,
+                "upper": 0.5444678976387428
+              }
+            },
+            "realizedOccurrences": 1450,
+            "status": "inconclusive",
+            "storedOccurrences": 1450
+          },
+          "BullishMarubozu": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.6666666666666666,
+              "contextBaselineBrier": 0.24834000204201898,
+              "eventPriorAccuracy": 0.3333333333333333,
+              "eventPriorBrier": 0.2705926408868641,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.0017875652516777811,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": 3.686268661459019e-05,
+                "upper": 0.00288321278191752
+              },
+              "pairedBrierLift": -0.02225263884484517,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.025797315612480123,
+                "upper": -0.01504399554583041
+              }
+            },
+            "coverageOfRealized": 0.23076923076923078,
+            "evaluatedOosOccurrences": 9,
+            "firstOosDecisionTimeMs": 1755115199999,
+            "lastOosDecisionTimeMs": 1788451199999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": 0.0004138762364185311,
+                "upper": 0.0031613680736953067
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": 0.0004138762364185311,
+                "upper": 0.0031613680736953067
+              },
+              "meanReturnFraction": 0.0021167626503704306,
+              "positiveCount": 7,
+              "positiveRate": 0.7777777777777778,
+              "positiveRateWilsonCi": {
+                "lower": 0.452588969106989,
+                "upper": 0.9367748928821532
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.29830570834754194,
+                "upper": 0.9664601225818272
+              }
+            },
+            "realizedOccurrences": 39,
+            "status": "insufficient_evidence",
+            "storedOccurrences": 39
+          },
+          "DarkCloudCover": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.46875,
+              "contextBaselineBrier": 0.25310997694254644,
+              "eventPriorAccuracy": 0.53125,
+              "eventPriorBrier": 0.2544860125461998,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.002047146220832464,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.004175566136755328,
+                "upper": -0.0002700946220323388
+              },
+              "pairedBrierLift": -0.0013760356036533247,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.012758766070248923,
+                "upper": 0.010323620685475002
+              }
+            },
+            "coverageOfRealized": 0.5161290322580645,
+            "evaluatedOosOccurrences": 32,
+            "firstOosDecisionTimeMs": 1657267199999,
+            "lastOosDecisionTimeMs": 1789775999999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0035233898641405456,
+                "upper": 0.0004181606511382893
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.004331390260965018,
+                "upper": 0.001441096969243637
+              },
+              "meanReturnFraction": -0.001417635274190622,
+              "positiveCount": 17,
+              "positiveRate": 0.53125,
+              "positiveRateWilsonCi": {
+                "lower": 0.36449517118974645,
+                "upper": 0.6913061289193116
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.28134060306182007,
+                "upper": 0.7664096303133482
+              }
+            },
+            "realizedOccurrences": 62,
+            "status": "inconclusive",
+            "storedOccurrences": 62
+          },
+          "Doji": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5420560747663551,
+              "contextBaselineBrier": 0.24661150280669766,
+              "eventPriorAccuracy": 0.5654205607476636,
+              "eventPriorBrier": 0.24816801162331292,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.0006868127519483319,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0011541425309812279,
+                "upper": 0.002511835945622974
+              },
+              "pairedBrierLift": -0.0015565088166153024,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.020063730006948364,
+                "upper": 0.014279380374392348
+              }
+            },
+            "coverageOfRealized": 0.8770491803278688,
+            "evaluatedOosOccurrences": 214,
+            "firstOosDecisionTimeMs": 1601870399999,
+            "lastOosDecisionTimeMs": 1789948799999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0007619957674684935,
+                "upper": 0.0028650417305115545
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0017202323728114273,
+                "upper": 0.003925218135040596
+              },
+              "meanReturnFraction": 0.0010892488614866738,
+              "positiveCount": 121,
+              "positiveRate": 0.5654205607476636,
+              "positiveRateWilsonCi": {
+                "lower": 0.49843070083660085,
+                "upper": 0.6301031427741641
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.45833526378490674,
+                "upper": 0.6667291600010041
+              }
+            },
+            "realizedOccurrences": 244,
+            "status": "inconclusive",
+            "storedOccurrences": 244
+          },
+          "DragonflyDoji": {
+            "coverageOfRealized": 0.0,
+            "evaluatedOosOccurrences": 0,
+            "minimumContextHistory": 100,
+            "minimumEventHistory": 30,
+            "realizedOccurrences": 10,
+            "status": "insufficient_history",
+            "storedOccurrences": 10
+          },
+          "EveningStar": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5555555555555556,
+              "contextBaselineBrier": 0.24763130851323478,
+              "eventPriorAccuracy": 0.4444444444444444,
+              "eventPriorBrier": 0.267674901709201,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.0005648219544002661,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0024064849995705825,
+                "upper": 0.0018727339255855276
+              },
+              "pairedBrierLift": -0.02004359319596623,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.05578223073560367,
+                "upper": 0.0049961379164932766
+              }
+            },
+            "coverageOfRealized": 0.375,
+            "evaluatedOosOccurrences": 18,
+            "firstOosDecisionTimeMs": 1723823999999,
+            "lastOosDecisionTimeMs": 1788969599999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0017974465092919407,
+                "upper": 0.0023997194793159895
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.002719913869734395,
+                "upper": 0.004053149292807441
+              },
+              "meanReturnFraction": 0.0011785702296876848,
+              "positiveCount": 8,
+              "positiveRate": 0.4444444444444444,
+              "positiveRateWilsonCi": {
+                "lower": 0.24559518127005642,
+                "upper": 0.6628358435795721
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.16763426533697168,
+                "upper": 0.7606415881431462
+              }
+            },
+            "realizedOccurrences": 48,
+            "status": "insufficient_evidence",
+            "storedOccurrences": 48
+          },
+          "GravestoneDoji": {
+            "coverageOfRealized": 0.0,
+            "evaluatedOosOccurrences": 0,
+            "minimumContextHistory": 100,
+            "minimumEventHistory": 30,
+            "realizedOccurrences": 1,
+            "status": "insufficient_history",
+            "storedOccurrences": 1
+          },
+          "Hammer": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.46835443037974683,
+              "contextBaselineBrier": 0.2597617149420199,
+              "eventPriorAccuracy": 0.4050632911392405,
+              "eventPriorBrier": 0.2555571450946432,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.001699091482975841,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.002652355556212086,
+                "upper": -7.576579531775752e-05
+              },
+              "pairedBrierLift": 0.004204569847376721,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.019541870669243705,
+                "upper": 0.02862351017075055
+              }
+            },
+            "coverageOfRealized": 0.7247706422018348,
+            "evaluatedOosOccurrences": 79,
+            "firstOosDecisionTimeMs": 1638403199999,
+            "lastOosDecisionTimeMs": 1789487999999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0021967731490064525,
+                "upper": 0.000298464656173258
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.003018509569790975,
+                "upper": 0.001228965970605662
+              },
+              "meanReturnFraction": -0.0012551047933983363,
+              "positiveCount": 37,
+              "positiveRate": 0.46835443037974683,
+              "positiveRateWilsonCi": {
+                "lower": 0.3623578415657776,
+                "upper": 0.5772859060072555
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.3054319862875978,
+                "upper": 0.6383153071422065
+              }
+            },
+            "realizedOccurrences": 109,
+            "status": "inconclusive",
+            "storedOccurrences": 109
+          },
+          "HangingMan": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.6835443037974683,
+              "contextBaselineBrier": 0.24036224245662724,
+              "eventPriorAccuracy": 0.6708860759493671,
+              "eventPriorBrier": 0.22659364658060904,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.0017744430718348557,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.003799978164740821,
+                "upper": -0.00013145181066918154
+              },
+              "pairedBrierLift": 0.013768595876018171,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.006309267684089961,
+                "upper": 0.03349836425716054
+              }
+            },
+            "coverageOfRealized": 0.7247706422018348,
+            "evaluatedOosOccurrences": 79,
+            "firstOosDecisionTimeMs": 1637366399999,
+            "lastOosDecisionTimeMs": 1786823999999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.003124727553132705,
+                "upper": 0.00047838348451682367
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.00447055553449513,
+                "upper": 0.0012807996452870842
+              },
+              "meanReturnFraction": -0.0011192631164976664,
+              "positiveCount": 25,
+              "positiveRate": 0.31645569620253167,
+              "positiveRateWilsonCi": {
+                "lower": 0.22445285966871514,
+                "upper": 0.4254808762548768
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.18043176402254385,
+                "upper": 0.4933025378703216
+              }
+            },
+            "realizedOccurrences": 109,
+            "status": "inconclusive",
+            "storedOccurrences": 109
+          },
+          "InvertedHammer": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5555555555555556,
+              "contextBaselineBrier": 0.2468282776904287,
+              "eventPriorAccuracy": 0.5555555555555556,
+              "eventPriorBrier": 0.26456038783417685,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.0003077013014097129,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0010955986563254405,
+                "upper": 0.0009090982455438493
+              },
+              "pairedBrierLift": -0.01773211014374816,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.04104297835901283,
+                "upper": 0.024824325108715933
+              }
+            },
+            "coverageOfRealized": 0.375,
+            "evaluatedOosOccurrences": 18,
+            "firstOosDecisionTimeMs": 1708646399999,
+            "lastOosDecisionTimeMs": 1774569599999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0007232201516044077,
+                "upper": 0.0012044440594200056
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0010935194231378824,
+                "upper": 0.001662278077335803
+              },
+              "meanReturnFraction": 2.3211106900505258e-05,
+              "positiveCount": 10,
+              "positiveRate": 0.5555555555555556,
+              "positiveRateWilsonCi": {
+                "lower": 0.33716415642042785,
+                "upper": 0.7544048187299436
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.2393584118568538,
+                "upper": 0.8323657346630283
+              }
+            },
+            "realizedOccurrences": 48,
+            "status": "insufficient_evidence",
+            "storedOccurrences": 48
+          },
+          "MorningStar": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.6,
+              "contextBaselineBrier": 0.24048093194864645,
+              "eventPriorAccuracy": 0.6,
+              "eventPriorBrier": 0.24950284371843778,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.0021040898302702488,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": 0.0005581649862365419,
+                "upper": 0.00490691432661984
+              },
+              "pairedBrierLift": -0.009021911769791316,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.013934115523308943,
+                "upper": -0.005445355049628161
+              }
+            },
+            "coverageOfRealized": 0.3333333333333333,
+            "evaluatedOosOccurrences": 15,
+            "firstOosDecisionTimeMs": 1716566399999,
+            "lastOosDecisionTimeMs": 1788883199999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": 0.0008773663765081708,
+                "upper": 0.0052383447387441455
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": 0.0005488063755632932,
+                "upper": 0.005464585395731625
+              },
+              "meanReturnFraction": 0.0024087340315528394,
+              "positiveCount": 9,
+              "positiveRate": 0.6,
+              "positiveRateWilsonCi": {
+                "lower": 0.35746830120624606,
+                "upper": 0.8017550385865841
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.24897433839564964,
+                "upper": 0.8715820920006622
+              }
+            },
+            "realizedOccurrences": 45,
+            "status": "insufficient_evidence",
+            "storedOccurrences": 45
+          },
+          "PiercingLine": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.6190476190476191,
+              "contextBaselineBrier": 0.238210189398823,
+              "eventPriorAccuracy": 0.6190476190476191,
+              "eventPriorBrier": 0.24630922977682362,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.00027267650159256844,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.002802557519248674,
+                "upper": 0.004003368238556928
+              },
+              "pairedBrierLift": -0.008099040378000627,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.013494346255788265,
+                "upper": -0.0029794763241601254
+              }
+            },
+            "coverageOfRealized": 0.4117647058823529,
+            "evaluatedOosOccurrences": 21,
+            "firstOosDecisionTimeMs": 1704326399999,
+            "lastOosDecisionTimeMs": 1787774399999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0025196045540518,
+                "upper": 0.004572796713826785
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.002937241340331819,
+                "upper": 0.00551493328983045
+              },
+              "meanReturnFraction": 0.0005776834356000568,
+              "positiveCount": 13,
+              "positiveRate": 0.6190476190476191,
+              "positiveRateWilsonCi": {
+                "lower": 0.4087865377511576,
+                "upper": 0.7924898863143551
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.30358697990328926,
+                "upper": 0.8583059392189352
+              }
+            },
+            "realizedOccurrences": 51,
+            "status": "insufficient_evidence",
+            "storedOccurrences": 51
+          },
+          "ShootingStar": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5,
+              "contextBaselineBrier": 0.2509439366518893,
+              "eventPriorAccuracy": 0.5,
+              "eventPriorBrier": 0.2587881317040603,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.0003820235009241993,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0015518896486185563,
+                "upper": 0.0021381270604898398
+              },
+              "pairedBrierLift": -0.007844195052170938,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.026671766403639607,
+                "upper": 0.014114829030002071
+              }
+            },
+            "coverageOfRealized": 0.7169811320754716,
+            "evaluatedOosOccurrences": 76,
+            "firstOosDecisionTimeMs": 1650340799999,
+            "lastOosDecisionTimeMs": 1789790399999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0008986515268811756,
+                "upper": 0.0025991435811945993
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0016544140839290919,
+                "upper": 0.0036922330142065665
+              },
+              "meanReturnFraction": 0.0010179691864811772,
+              "positiveCount": 38,
+              "positiveRate": 0.5,
+              "positiveRateWilsonCi": {
+                "lower": 0.39032595445464624,
+                "upper": 0.6096740455453538
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.3303741099195523,
+                "upper": 0.6696258900804477
+              }
+            },
+            "realizedOccurrences": 106,
+            "status": "inconclusive",
+            "storedOccurrences": 106
+          },
+          "SpinningTop": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5138473053892215,
+              "contextBaselineBrier": 0.24992028236175323,
+              "eventPriorAccuracy": 0.499625748502994,
+              "eventPriorBrier": 0.2503533908762496,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.00025908393431210355,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0006879980262311,
+                "upper": 0.00014573737438946982
+              },
+              "pairedBrierLift": -0.0004331085144963556,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.00219311098324717,
+                "upper": 0.0013074399815094467
+              }
+            },
+            "coverageOfRealized": 0.9762513701132627,
+            "evaluatedOosOccurrences": 2672,
+            "firstOosDecisionTimeMs": 1579967999999,
+            "lastOosDecisionTimeMs": 1789963199999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0002733372931932045,
+                "upper": 0.0005305362584425785
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0005283911078093413,
+                "upper": 0.0007665255415535367
+              },
+              "meanReturnFraction": 0.00013668922122121903,
+              "positiveCount": 1350,
+              "positiveRate": 0.5052395209580839,
+              "positiveRateWilsonCi": {
+                "lower": 0.48628833017536705,
+                "upper": 0.5241756679466819
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.47486690256674435,
+                "upper": 0.5355735167839765
+              }
+            },
+            "realizedOccurrences": 2737,
+            "status": "inconclusive",
+            "storedOccurrences": 2737
+          },
+          "ThreeInsideDown": {
+            "coverageOfRealized": 0.0,
+            "evaluatedOosOccurrences": 0,
+            "minimumContextHistory": 100,
+            "minimumEventHistory": 30,
+            "realizedOccurrences": 20,
+            "status": "insufficient_history",
+            "storedOccurrences": 20
+          },
+          "ThreeInsideUp": {
+            "coverageOfRealized": 0.0,
+            "evaluatedOosOccurrences": 0,
+            "minimumContextHistory": 100,
+            "minimumEventHistory": 30,
+            "realizedOccurrences": 29,
+            "status": "insufficient_history",
+            "storedOccurrences": 29
+          },
+          "ThreeWhiteSoldiers": {
+            "coverageOfRealized": 0.0,
+            "evaluatedOosOccurrences": 0,
+            "minimumContextHistory": 100,
+            "minimumEventHistory": 30,
+            "realizedOccurrences": 2,
+            "status": "insufficient_history",
+            "storedOccurrences": 2
+          },
+          "TweezerBottoms": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.4090909090909091,
+              "contextBaselineBrier": 0.26896281783162973,
+              "eventPriorAccuracy": 0.4090909090909091,
+              "eventPriorBrier": 0.25660467661357633,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.000429075253870425,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.004465609116121144,
+                "upper": 0.0008722196590316
+              },
+              "pairedBrierLift": 0.012358141218053358,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.01891907697948489,
+                "upper": 0.0542442689772485
+              }
+            },
+            "coverageOfRealized": 0.4230769230769231,
+            "evaluatedOosOccurrences": 22,
+            "firstOosDecisionTimeMs": 1728446399999,
+            "lastOosDecisionTimeMs": 1786751999999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.004143063914844524,
+                "upper": 0.0012888979913008084
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.004944894386781835,
+                "upper": 0.002008866816496127
+              },
+              "meanReturnFraction": -0.00011424087780141015,
+              "positiveCount": 9,
+              "positiveRate": 0.4090909090909091,
+              "positiveRateWilsonCi": {
+                "lower": 0.23255816196471876,
+                "upper": 0.6126518152368488
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.16207354230290105,
+                "upper": 0.7124740923274164
+              }
+            },
+            "realizedOccurrences": 52,
+            "status": "insufficient_evidence",
+            "storedOccurrences": 52
+          },
+          "TweezerTops": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5483870967741935,
+              "contextBaselineBrier": 0.24786596440223166,
+              "eventPriorAccuracy": 0.5483870967741935,
+              "eventPriorBrier": 0.25617082309570927,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.0005702829724770544,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0011775738637769327,
+                "upper": 0.0011724540246111392
+              },
+              "pairedBrierLift": -0.008304858693477668,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.019765257603852088,
+                "upper": 0.02197472327331967
+              }
+            },
+            "coverageOfRealized": 0.5081967213114754,
+            "evaluatedOosOccurrences": 31,
+            "firstOosDecisionTimeMs": 1670702399999,
+            "lastOosDecisionTimeMs": 1782561599999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.00043995384962071453,
+                "upper": 0.0018975268769898187
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.000967736888014391,
+                "upper": 0.002220631946044798
+              },
+              "meanReturnFraction": 0.0012206497567130133,
+              "positiveCount": 14,
+              "positiveRate": 0.45161290322580644,
+              "positiveRateWilsonCi": {
+                "lower": 0.2916173598052002,
+                "upper": 0.6222783236264547
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.2183360169875065,
+                "upper": 0.7082867427769036
+              }
+            },
+            "realizedOccurrences": 61,
+            "status": "inconclusive",
+            "storedOccurrences": 61
+          }
+        },
+        "reason": null,
+        "status": "evaluable"
+      },
+      "causal_smc": {
+        "availabilityBasis": "explicit AvailableTimeMs from smc-causal-v2",
+        "diagnostics": {
+          "excludedLegacyRows": 7149,
+          "invalidAvailabilityRows": 0,
+          "skippedUnjoinableRows": 0
+        },
+        "events": {},
+        "reason": "no causal-v2 rows with valid availability join to closed 4h candles",
+        "status": "unavailable"
+      },
+      "market_regime": {
+        "availabilityBasis": "Stored regime indicators include the finalized current candle and prior bars; available at the matching candle close",
+        "diagnostics": {
+          "skippedUnjoinableRows": 0
+        },
+        "eventTypeCount": 5,
+        "events": {
+          "Breakout": {
+            "coverageOfRealized": 0.0,
+            "evaluatedOosOccurrences": 0,
+            "minimumContextHistory": 100,
+            "minimumEventHistory": 30,
+            "realizedOccurrences": 15,
+            "status": "insufficient_history",
+            "storedOccurrences": 15
+          },
+          "Compression": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.46308724832214765,
+              "contextBaselineBrier": 0.2532345850748172,
+              "eventPriorAccuracy": 0.42953020134228187,
+              "eventPriorBrier": 0.2562171635075042,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.001141839156908581,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0020847420069398546,
+                "upper": 8.174432198755988e-06
+              },
+              "pairedBrierLift": -0.00298257843268693,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.021350355057586697,
+                "upper": 0.018805448893941708
+              }
+            },
+            "coverageOfRealized": 0.8324022346368715,
+            "evaluatedOosOccurrences": 149,
+            "firstOosDecisionTimeMs": 1777247999999,
+            "lastOosDecisionTimeMs": 1786449599999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0018761412298125043,
+                "upper": 0.00026583111245919095
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0026620591666391305,
+                "upper": 0.0008076445062733632
+              },
+              "meanReturnFraction": -0.0009181996934537823,
+              "positiveCount": 69,
+              "positiveRate": 0.46308724832214765,
+              "positiveRateWilsonCi": {
+                "lower": 0.3849579354501229,
+                "upper": 0.5430720631845758
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.3409906139621916,
+                "upper": 0.5897767532586732
+              }
+            },
+            "realizedOccurrences": 179,
+            "status": "inconclusive",
+            "storedOccurrences": 179
+          },
+          "RangeBound": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5286624203821656,
+              "contextBaselineBrier": 0.24963317123063783,
+              "eventPriorAccuracy": 0.49203821656050956,
+              "eventPriorBrier": 0.2511201792230397,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.00022106374382041248,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0007665457760850122,
+                "upper": 0.0003368549929070137
+              },
+              "pairedBrierLift": -0.0014870079924019651,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.005068412472165639,
+                "upper": 0.003414071372559309
+              }
+            },
+            "coverageOfRealized": 0.9544072948328267,
+            "evaluatedOosOccurrences": 628,
+            "firstOosDecisionTimeMs": 1771343999999,
+            "lastOosDecisionTimeMs": 1786535999999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0005381542436777058,
+                "upper": 0.0005962909011800649
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0008830481269986363,
+                "upper": 0.0009339556463171546
+              },
+              "meanReturnFraction": 2.134425230585271e-05,
+              "positiveCount": 320,
+              "positiveRate": 0.5095541401273885,
+              "positiveRateWilsonCi": {
+                "lower": 0.47051664697169837,
+                "upper": 0.5484754590898404
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.4471759633262107,
+                "upper": 0.5716362164526996
+              }
+            },
+            "realizedOccurrences": 658,
+            "status": "inconclusive",
+            "storedOccurrences": 658
+          },
+          "TrendingDown": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5769230769230769,
+              "contextBaselineBrier": 0.24760851370179826,
+              "eventPriorAccuracy": 0.5076923076923077,
+              "eventPriorBrier": 0.2541662939417786,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": 0.00010938086850846445,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0014758647495715844,
+                "upper": 0.0017660825555569793
+              },
+              "pairedBrierLift": -0.006557780239980315,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.01286603564203069,
+                "upper": 0.002759507421414793
+              }
+            },
+            "coverageOfRealized": 0.8125,
+            "evaluatedOosOccurrences": 130,
+            "firstOosDecisionTimeMs": 1774079999999,
+            "lastOosDecisionTimeMs": 1785729599999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.001158598864665902,
+                "upper": 0.0019740962918818154
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0021614555339126685,
+                "upper": 0.00266050819493797
+              },
+              "meanReturnFraction": 0.0003355918578238496,
+              "positiveCount": 67,
+              "positiveRate": 0.5153846153846153,
+              "positiveRateWilsonCi": {
+                "lower": 0.43027433372748797,
+                "upper": 0.599611772081914
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.3814437820765374,
+                "upper": 0.6471512144817654
+              }
+            },
+            "realizedOccurrences": 160,
+            "status": "inconclusive",
+            "storedOccurrences": 160
+          },
+          "TrendingUp": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.41379310344827586,
+              "contextBaselineBrier": 0.25374425786550786,
+              "eventPriorAccuracy": 0.6206896551724138,
+              "eventPriorBrier": 0.24091876435520398,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.001001653407818664,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0027386960657228942,
+                "upper": 0.0009250003193272908
+              },
+              "pairedBrierLift": 0.01282549351030391,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.02613690700049452,
+                "upper": 0.043458237991648954
+              }
+            },
+            "coverageOfRealized": 0.6590909090909091,
+            "evaluatedOosOccurrences": 58,
+            "firstOosDecisionTimeMs": 1776196799999,
+            "lastOosDecisionTimeMs": 1778817599999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0025033598964570455,
+                "upper": 0.0010958923660575963
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0033102537771487702,
+                "upper": 0.0020294655792720442
+              },
+              "meanReturnFraction": -0.0007646294346491992,
+              "positiveCount": 22,
+              "positiveRate": 0.3793103448275862,
+              "positiveRateWilsonCi": {
+                "lower": 0.2656427267728758,
+                "upper": 0.5079719280723111
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.21089959078346676,
+                "upper": 0.5828681044547299
+              }
+            },
+            "realizedOccurrences": 88,
+            "status": "inconclusive",
+            "storedOccurrences": 88
+          }
+        },
+        "reason": null,
+        "status": "evaluable"
+      },
+      "volume_anomaly": {
+        "availabilityBasis": "Current-candle volume statistics use only the finalized candle and prior rolling volume; available at that candle close",
+        "diagnostics": {
+          "predeclaredThresholds": [
+            1.5,
+            2.0
+          ],
+          "skippedUnjoinableRows": 0
+        },
+        "eventTypeCount": 2,
+        "events": {
+          "volume_ratio_gte_1_5": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.5060289389067524,
+              "contextBaselineBrier": 0.25111389121078254,
+              "eventPriorAccuracy": 0.5132636655948553,
+              "eventPriorBrier": 0.25017454038826503,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.00011113547861051007,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0006688392662400876,
+                "upper": 0.0004487220369320881
+              },
+              "pairedBrierLift": 0.0009393508225174726,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.0011278037246275018,
+                "upper": 0.0031601694052813844
+              }
+            },
+            "coverageOfRealized": 0.97339593114241,
+            "evaluatedOosOccurrences": 2488,
+            "firstOosDecisionTimeMs": 1580198399999,
+            "lastOosDecisionTimeMs": 1789747199999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0002317366947551363,
+                "upper": 0.0008623699261061074
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.0005868009559538318,
+                "upper": 0.0012247989096032586
+              },
+              "meanReturnFraction": 0.00032694961488181055,
+              "positiveCount": 1284,
+              "positiveRate": 0.5160771704180064,
+              "positiveRateWilsonCi": {
+                "lower": 0.496430821985909,
+                "upper": 0.5356739492533741
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.4845766366954586,
+                "upper": 0.5474504632010772
+              }
+            },
+            "realizedOccurrences": 2556,
+            "status": "inconclusive",
+            "storedOccurrences": 2556
+          },
+          "volume_ratio_gte_2_0": {
+            "causalExpandingPriorComparison": {
+              "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+              "contextBaselineAccuracy": 0.4864406779661017,
+              "contextBaselineBrier": 0.2516305976425206,
+              "eventPriorAccuracy": 0.4830508474576271,
+              "eventPriorBrier": 0.2508756323747589,
+              "inferenceAlpha": 0.0016666666666666668,
+              "meanReturnMinusPriorContextMean": -0.00013744148504410896,
+              "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+                "lower": -0.0009605071733250572,
+                "upper": 0.0007360261083141054
+              },
+              "pairedBrierLift": 0.0007549652677616311,
+              "pairedBrierLiftBlockBootstrapCi": {
+                "lower": -0.003756634211490569,
+                "upper": 0.004996614576760269
+              }
+            },
+            "coverageOfRealized": 0.9680065627563577,
+            "evaluatedOosOccurrences": 1180,
+            "firstOosDecisionTimeMs": 1582516799999,
+            "lastOosDecisionTimeMs": 1789747199999,
+            "outcome": {
+              "meanReturnBlockBootstrapCi": {
+                "lower": -0.0005305406822173564,
+                "upper": 0.001150102498613186
+              },
+              "meanReturnBlockBootstrapFamilywiseCi": {
+                "lower": -0.000923250032627912,
+                "upper": 0.0017997479426982922
+              },
+              "meanReturnFraction": 0.00030055595349813113,
+              "positiveCount": 597,
+              "positiveRate": 0.5059322033898305,
+              "positiveRateWilsonCi": {
+                "lower": 0.47743289698224883,
+                "upper": 0.5343930108668868
+              },
+              "positiveRateWilsonFamilywiseCi": {
+                "lower": 0.4603141771251758,
+                "upper": 0.5514516696285973
+              }
+            },
+            "realizedOccurrences": 1219,
+            "status": "inconclusive",
+            "storedOccurrences": 1219
+          }
+        },
+        "reason": null,
+        "status": "evaluable"
+      }
+    },
+    "multipleTesting": {
+      "declaredTrialCount": 30,
+      "familywiseAlpha": 0.05,
+      "method": "Bonferroni across every reported event type",
+      "minimumBootstrapSamplesForAdjustedTail": 1200,
+      "perTrialInferenceAlpha": 0.0016666666666666668,
+      "statusUsesFamilywisePairedBrierInterval": true
+    },
+    "negativeResultIsValid": true,
+    "outcome": "signal close to next contiguous 4h close; positive iff return > 0",
+    "parametersTunedOnEvaluationPeriod": false,
+    "pnlClaim": false,
+    "promotionAllowed": false,
+    "scope": "BTCUSDT 4h closed-bar technical event evidence",
+    "totalClosedBars": 14731,
+    "trials": [
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5379413974455297,
+          "contextBaselineBrier": 0.24853753586436644,
+          "eventPriorAccuracy": 0.560480841472577,
+          "eventPriorBrier": 0.24670796203371256,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.00011826149440855907,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0007289574204309055,
+            "upper": 0.0005160974087985712
+          },
+          "pairedBrierLift": 0.0018295738306539106,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.004745670577619992,
+            "upper": 0.008789964980089986
+          }
+        },
+        "coverageOfRealized": 0.9772393538913363,
+        "evaluatedOosOccurrences": 1331,
+        "eventType": "BearishEngulfing",
+        "firstOosDecisionTimeMs": 1584777599999,
+        "lastOosDecisionTimeMs": 1789487999999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.00033276957311162794,
+            "upper": 0.0009337699449331419
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0008199424396309362,
+            "upper": 0.0012520140201105335
+          },
+          "meanReturnFraction": 0.0002981488769095478,
+          "positiveCount": 750,
+          "positiveRate": 0.5634861006761833,
+          "positiveRateWilsonCi": {
+            "lower": 0.5366971195875144,
+            "upper": 0.5899096762107733
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.5204336555299721,
+            "upper": 0.605602543619331
+          }
+        },
+        "realizedOccurrences": 1362,
+        "status": "inconclusive",
+        "storedOccurrences": 1362
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5098841172460804,
+          "contextBaselineBrier": 0.25049689079751497,
+          "eventPriorAccuracy": 0.520109066121336,
+          "eventPriorBrier": 0.2501816335142059,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.00017413509794931382,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0007200886056828207,
+            "upper": 0.0003510464815330109
+          },
+          "pairedBrierLift": 0.00031525728330904354,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.0022251924127270396,
+            "upper": 0.0032157485212212537
+          }
+        },
+        "coverageOfRealized": 0.970880211780278,
+        "evaluatedOosOccurrences": 1467,
+        "eventType": "BearishHarami",
+        "firstOosDecisionTimeMs": 1581019199999,
+        "lastOosDecisionTimeMs": 1789804799999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0002890504927304827,
+            "upper": 0.0007924959456230754
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0006854730853270653,
+            "upper": 0.001051258149411122
+          },
+          "meanReturnFraction": 0.00025426753934224624,
+          "positiveCount": 764,
+          "positiveRate": 0.5207907293796864,
+          "positiveRateWilsonCi": {
+            "lower": 0.4952058676557587,
+            "upper": 0.546266991049835
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.4797817075938836,
+            "upper": 0.5615214514359307
+          }
+        },
+        "realizedOccurrences": 1511,
+        "status": "inconclusive",
+        "storedOccurrences": 1511
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 1.0,
+          "contextBaselineBrier": 0.23781739029613794,
+          "eventPriorAccuracy": 1.0,
+          "eventPriorBrier": 0.2197265625,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.019934049998217903,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": null,
+          "pairedBrierLift": 0.018090827796137937,
+          "pairedBrierLiftBlockBootstrapCi": null
+        },
+        "coverageOfRealized": 0.03225806451612903,
+        "evaluatedOosOccurrences": 1,
+        "eventType": "BearishMarubozu",
+        "firstOosDecisionTimeMs": 1782979199999,
+        "lastOosDecisionTimeMs": 1782979199999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": null,
+          "meanReturnBlockBootstrapFamilywiseCi": null,
+          "meanReturnFraction": 0.02008346136050898,
+          "positiveCount": 1,
+          "positiveRate": 1.0,
+          "positiveRateWilsonCi": {
+            "lower": 0.20654931437723745,
+            "upper": 1.0
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.09187281970379124,
+            "upper": 1.0
+          }
+        },
+        "realizedOccurrences": 31,
+        "status": "insufficient_evidence",
+        "storedOccurrences": 31
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.4864457831325301,
+          "contextBaselineBrier": 0.25377757138056567,
+          "eventPriorAccuracy": 0.5233433734939759,
+          "eventPriorBrier": 0.24963812700083512,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.00039482407873779954,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0009986074241779028,
+            "upper": 0.00022062548774525983
+          },
+          "pairedBrierLift": 0.004139444379730538,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.002104698339252117,
+            "upper": 0.011894989610941275
+          }
+        },
+        "coverageOfRealized": 0.9686360320933625,
+        "evaluatedOosOccurrences": 1328,
+        "eventType": "BullishEngulfing",
+        "firstOosDecisionTimeMs": 1581710399999,
+        "lastOosDecisionTimeMs": 1789905599999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.00067824726960368,
+            "upper": 0.0005474905712798069
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0010400281535129466,
+            "upper": 0.0009726420712501219
+          },
+          "meanReturnFraction": -4.067712149866656e-05,
+          "positiveCount": 621,
+          "positiveRate": 0.46762048192771083,
+          "positiveRateWilsonCi": {
+            "lower": 0.44091713898353063,
+            "upper": 0.4945106107456672
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.42497182025427743,
+            "upper": 0.5107475988752127
+          }
+        },
+        "realizedOccurrences": 1371,
+        "status": "inconclusive",
+        "storedOccurrences": 1371
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5014144271570015,
+          "contextBaselineBrier": 0.2507307571959916,
+          "eventPriorAccuracy": 0.49646393210749645,
+          "eventPriorBrier": 0.25047181040652394,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -2.2228149288027163e-05,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0005857528502582975,
+            "upper": 0.0006518466110180017
+          },
+          "pairedBrierLift": 0.0002589467894676614,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.003062354264623976,
+            "upper": 0.0026317679515878182
+          }
+        },
+        "coverageOfRealized": 0.9751724137931035,
+        "evaluatedOosOccurrences": 1414,
+        "eventType": "BullishHarami",
+        "firstOosDecisionTimeMs": 1582862399999,
+        "lastOosDecisionTimeMs": 1789531199999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.00019793863062835378,
+            "upper": 0.0009973973382205246
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0004995090650167737,
+            "upper": 0.001266775818286892
+          },
+          "meanReturnFraction": 0.00034309097240299216,
+          "positiveCount": 711,
+          "positiveRate": 0.5028288543140028,
+          "positiveRateWilsonCi": {
+            "lower": 0.47679579502481245,
+            "upper": 0.5288465847703546
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.46115053515582727,
+            "upper": 0.5444678976387428
+          }
+        },
+        "realizedOccurrences": 1450,
+        "status": "inconclusive",
+        "storedOccurrences": 1450
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.6666666666666666,
+          "contextBaselineBrier": 0.24834000204201898,
+          "eventPriorAccuracy": 0.3333333333333333,
+          "eventPriorBrier": 0.2705926408868641,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.0017875652516777811,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": 3.686268661459019e-05,
+            "upper": 0.00288321278191752
+          },
+          "pairedBrierLift": -0.02225263884484517,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.025797315612480123,
+            "upper": -0.01504399554583041
+          }
+        },
+        "coverageOfRealized": 0.23076923076923078,
+        "evaluatedOosOccurrences": 9,
+        "eventType": "BullishMarubozu",
+        "firstOosDecisionTimeMs": 1755115199999,
+        "lastOosDecisionTimeMs": 1788451199999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": 0.0004138762364185311,
+            "upper": 0.0031613680736953067
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": 0.0004138762364185311,
+            "upper": 0.0031613680736953067
+          },
+          "meanReturnFraction": 0.0021167626503704306,
+          "positiveCount": 7,
+          "positiveRate": 0.7777777777777778,
+          "positiveRateWilsonCi": {
+            "lower": 0.452588969106989,
+            "upper": 0.9367748928821532
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.29830570834754194,
+            "upper": 0.9664601225818272
+          }
+        },
+        "realizedOccurrences": 39,
+        "status": "insufficient_evidence",
+        "storedOccurrences": 39
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.46875,
+          "contextBaselineBrier": 0.25310997694254644,
+          "eventPriorAccuracy": 0.53125,
+          "eventPriorBrier": 0.2544860125461998,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.002047146220832464,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.004175566136755328,
+            "upper": -0.0002700946220323388
+          },
+          "pairedBrierLift": -0.0013760356036533247,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.012758766070248923,
+            "upper": 0.010323620685475002
+          }
+        },
+        "coverageOfRealized": 0.5161290322580645,
+        "evaluatedOosOccurrences": 32,
+        "eventType": "DarkCloudCover",
+        "firstOosDecisionTimeMs": 1657267199999,
+        "lastOosDecisionTimeMs": 1789775999999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0035233898641405456,
+            "upper": 0.0004181606511382893
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.004331390260965018,
+            "upper": 0.001441096969243637
+          },
+          "meanReturnFraction": -0.001417635274190622,
+          "positiveCount": 17,
+          "positiveRate": 0.53125,
+          "positiveRateWilsonCi": {
+            "lower": 0.36449517118974645,
+            "upper": 0.6913061289193116
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.28134060306182007,
+            "upper": 0.7664096303133482
+          }
+        },
+        "realizedOccurrences": 62,
+        "status": "inconclusive",
+        "storedOccurrences": 62
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5420560747663551,
+          "contextBaselineBrier": 0.24661150280669766,
+          "eventPriorAccuracy": 0.5654205607476636,
+          "eventPriorBrier": 0.24816801162331292,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.0006868127519483319,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0011541425309812279,
+            "upper": 0.002511835945622974
+          },
+          "pairedBrierLift": -0.0015565088166153024,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.020063730006948364,
+            "upper": 0.014279380374392348
+          }
+        },
+        "coverageOfRealized": 0.8770491803278688,
+        "evaluatedOosOccurrences": 214,
+        "eventType": "Doji",
+        "firstOosDecisionTimeMs": 1601870399999,
+        "lastOosDecisionTimeMs": 1789948799999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0007619957674684935,
+            "upper": 0.0028650417305115545
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0017202323728114273,
+            "upper": 0.003925218135040596
+          },
+          "meanReturnFraction": 0.0010892488614866738,
+          "positiveCount": 121,
+          "positiveRate": 0.5654205607476636,
+          "positiveRateWilsonCi": {
+            "lower": 0.49843070083660085,
+            "upper": 0.6301031427741641
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.45833526378490674,
+            "upper": 0.6667291600010041
+          }
+        },
+        "realizedOccurrences": 244,
+        "status": "inconclusive",
+        "storedOccurrences": 244
+      },
+      {
+        "coverageOfRealized": 0.0,
+        "evaluatedOosOccurrences": 0,
+        "eventType": "DragonflyDoji",
+        "minimumContextHistory": 100,
+        "minimumEventHistory": 30,
+        "module": "candle_patterns",
+        "realizedOccurrences": 10,
+        "status": "insufficient_history",
+        "storedOccurrences": 10
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5555555555555556,
+          "contextBaselineBrier": 0.24763130851323478,
+          "eventPriorAccuracy": 0.4444444444444444,
+          "eventPriorBrier": 0.267674901709201,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.0005648219544002661,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0024064849995705825,
+            "upper": 0.0018727339255855276
+          },
+          "pairedBrierLift": -0.02004359319596623,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.05578223073560367,
+            "upper": 0.0049961379164932766
+          }
+        },
+        "coverageOfRealized": 0.375,
+        "evaluatedOosOccurrences": 18,
+        "eventType": "EveningStar",
+        "firstOosDecisionTimeMs": 1723823999999,
+        "lastOosDecisionTimeMs": 1788969599999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0017974465092919407,
+            "upper": 0.0023997194793159895
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.002719913869734395,
+            "upper": 0.004053149292807441
+          },
+          "meanReturnFraction": 0.0011785702296876848,
+          "positiveCount": 8,
+          "positiveRate": 0.4444444444444444,
+          "positiveRateWilsonCi": {
+            "lower": 0.24559518127005642,
+            "upper": 0.6628358435795721
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.16763426533697168,
+            "upper": 0.7606415881431462
+          }
+        },
+        "realizedOccurrences": 48,
+        "status": "insufficient_evidence",
+        "storedOccurrences": 48
+      },
+      {
+        "coverageOfRealized": 0.0,
+        "evaluatedOosOccurrences": 0,
+        "eventType": "GravestoneDoji",
+        "minimumContextHistory": 100,
+        "minimumEventHistory": 30,
+        "module": "candle_patterns",
+        "realizedOccurrences": 1,
+        "status": "insufficient_history",
+        "storedOccurrences": 1
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.46835443037974683,
+          "contextBaselineBrier": 0.2597617149420199,
+          "eventPriorAccuracy": 0.4050632911392405,
+          "eventPriorBrier": 0.2555571450946432,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.001699091482975841,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.002652355556212086,
+            "upper": -7.576579531775752e-05
+          },
+          "pairedBrierLift": 0.004204569847376721,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.019541870669243705,
+            "upper": 0.02862351017075055
+          }
+        },
+        "coverageOfRealized": 0.7247706422018348,
+        "evaluatedOosOccurrences": 79,
+        "eventType": "Hammer",
+        "firstOosDecisionTimeMs": 1638403199999,
+        "lastOosDecisionTimeMs": 1789487999999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0021967731490064525,
+            "upper": 0.000298464656173258
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.003018509569790975,
+            "upper": 0.001228965970605662
+          },
+          "meanReturnFraction": -0.0012551047933983363,
+          "positiveCount": 37,
+          "positiveRate": 0.46835443037974683,
+          "positiveRateWilsonCi": {
+            "lower": 0.3623578415657776,
+            "upper": 0.5772859060072555
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.3054319862875978,
+            "upper": 0.6383153071422065
+          }
+        },
+        "realizedOccurrences": 109,
+        "status": "inconclusive",
+        "storedOccurrences": 109
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.6835443037974683,
+          "contextBaselineBrier": 0.24036224245662724,
+          "eventPriorAccuracy": 0.6708860759493671,
+          "eventPriorBrier": 0.22659364658060904,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.0017744430718348557,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.003799978164740821,
+            "upper": -0.00013145181066918154
+          },
+          "pairedBrierLift": 0.013768595876018171,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.006309267684089961,
+            "upper": 0.03349836425716054
+          }
+        },
+        "coverageOfRealized": 0.7247706422018348,
+        "evaluatedOosOccurrences": 79,
+        "eventType": "HangingMan",
+        "firstOosDecisionTimeMs": 1637366399999,
+        "lastOosDecisionTimeMs": 1786823999999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.003124727553132705,
+            "upper": 0.00047838348451682367
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.00447055553449513,
+            "upper": 0.0012807996452870842
+          },
+          "meanReturnFraction": -0.0011192631164976664,
+          "positiveCount": 25,
+          "positiveRate": 0.31645569620253167,
+          "positiveRateWilsonCi": {
+            "lower": 0.22445285966871514,
+            "upper": 0.4254808762548768
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.18043176402254385,
+            "upper": 0.4933025378703216
+          }
+        },
+        "realizedOccurrences": 109,
+        "status": "inconclusive",
+        "storedOccurrences": 109
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5555555555555556,
+          "contextBaselineBrier": 0.2468282776904287,
+          "eventPriorAccuracy": 0.5555555555555556,
+          "eventPriorBrier": 0.26456038783417685,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.0003077013014097129,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0010955986563254405,
+            "upper": 0.0009090982455438493
+          },
+          "pairedBrierLift": -0.01773211014374816,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.04104297835901283,
+            "upper": 0.024824325108715933
+          }
+        },
+        "coverageOfRealized": 0.375,
+        "evaluatedOosOccurrences": 18,
+        "eventType": "InvertedHammer",
+        "firstOosDecisionTimeMs": 1708646399999,
+        "lastOosDecisionTimeMs": 1774569599999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0007232201516044077,
+            "upper": 0.0012044440594200056
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0010935194231378824,
+            "upper": 0.001662278077335803
+          },
+          "meanReturnFraction": 2.3211106900505258e-05,
+          "positiveCount": 10,
+          "positiveRate": 0.5555555555555556,
+          "positiveRateWilsonCi": {
+            "lower": 0.33716415642042785,
+            "upper": 0.7544048187299436
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.2393584118568538,
+            "upper": 0.8323657346630283
+          }
+        },
+        "realizedOccurrences": 48,
+        "status": "insufficient_evidence",
+        "storedOccurrences": 48
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.6,
+          "contextBaselineBrier": 0.24048093194864645,
+          "eventPriorAccuracy": 0.6,
+          "eventPriorBrier": 0.24950284371843778,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.0021040898302702488,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": 0.0005581649862365419,
+            "upper": 0.00490691432661984
+          },
+          "pairedBrierLift": -0.009021911769791316,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.013934115523308943,
+            "upper": -0.005445355049628161
+          }
+        },
+        "coverageOfRealized": 0.3333333333333333,
+        "evaluatedOosOccurrences": 15,
+        "eventType": "MorningStar",
+        "firstOosDecisionTimeMs": 1716566399999,
+        "lastOosDecisionTimeMs": 1788883199999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": 0.0008773663765081708,
+            "upper": 0.0052383447387441455
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": 0.0005488063755632932,
+            "upper": 0.005464585395731625
+          },
+          "meanReturnFraction": 0.0024087340315528394,
+          "positiveCount": 9,
+          "positiveRate": 0.6,
+          "positiveRateWilsonCi": {
+            "lower": 0.35746830120624606,
+            "upper": 0.8017550385865841
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.24897433839564964,
+            "upper": 0.8715820920006622
+          }
+        },
+        "realizedOccurrences": 45,
+        "status": "insufficient_evidence",
+        "storedOccurrences": 45
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.6190476190476191,
+          "contextBaselineBrier": 0.238210189398823,
+          "eventPriorAccuracy": 0.6190476190476191,
+          "eventPriorBrier": 0.24630922977682362,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.00027267650159256844,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.002802557519248674,
+            "upper": 0.004003368238556928
+          },
+          "pairedBrierLift": -0.008099040378000627,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.013494346255788265,
+            "upper": -0.0029794763241601254
+          }
+        },
+        "coverageOfRealized": 0.4117647058823529,
+        "evaluatedOosOccurrences": 21,
+        "eventType": "PiercingLine",
+        "firstOosDecisionTimeMs": 1704326399999,
+        "lastOosDecisionTimeMs": 1787774399999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0025196045540518,
+            "upper": 0.004572796713826785
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.002937241340331819,
+            "upper": 0.00551493328983045
+          },
+          "meanReturnFraction": 0.0005776834356000568,
+          "positiveCount": 13,
+          "positiveRate": 0.6190476190476191,
+          "positiveRateWilsonCi": {
+            "lower": 0.4087865377511576,
+            "upper": 0.7924898863143551
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.30358697990328926,
+            "upper": 0.8583059392189352
+          }
+        },
+        "realizedOccurrences": 51,
+        "status": "insufficient_evidence",
+        "storedOccurrences": 51
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5,
+          "contextBaselineBrier": 0.2509439366518893,
+          "eventPriorAccuracy": 0.5,
+          "eventPriorBrier": 0.2587881317040603,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.0003820235009241993,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0015518896486185563,
+            "upper": 0.0021381270604898398
+          },
+          "pairedBrierLift": -0.007844195052170938,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.026671766403639607,
+            "upper": 0.014114829030002071
+          }
+        },
+        "coverageOfRealized": 0.7169811320754716,
+        "evaluatedOosOccurrences": 76,
+        "eventType": "ShootingStar",
+        "firstOosDecisionTimeMs": 1650340799999,
+        "lastOosDecisionTimeMs": 1789790399999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0008986515268811756,
+            "upper": 0.0025991435811945993
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0016544140839290919,
+            "upper": 0.0036922330142065665
+          },
+          "meanReturnFraction": 0.0010179691864811772,
+          "positiveCount": 38,
+          "positiveRate": 0.5,
+          "positiveRateWilsonCi": {
+            "lower": 0.39032595445464624,
+            "upper": 0.6096740455453538
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.3303741099195523,
+            "upper": 0.6696258900804477
+          }
+        },
+        "realizedOccurrences": 106,
+        "status": "inconclusive",
+        "storedOccurrences": 106
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5138473053892215,
+          "contextBaselineBrier": 0.24992028236175323,
+          "eventPriorAccuracy": 0.499625748502994,
+          "eventPriorBrier": 0.2503533908762496,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.00025908393431210355,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0006879980262311,
+            "upper": 0.00014573737438946982
+          },
+          "pairedBrierLift": -0.0004331085144963556,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.00219311098324717,
+            "upper": 0.0013074399815094467
+          }
+        },
+        "coverageOfRealized": 0.9762513701132627,
+        "evaluatedOosOccurrences": 2672,
+        "eventType": "SpinningTop",
+        "firstOosDecisionTimeMs": 1579967999999,
+        "lastOosDecisionTimeMs": 1789963199999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0002733372931932045,
+            "upper": 0.0005305362584425785
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0005283911078093413,
+            "upper": 0.0007665255415535367
+          },
+          "meanReturnFraction": 0.00013668922122121903,
+          "positiveCount": 1350,
+          "positiveRate": 0.5052395209580839,
+          "positiveRateWilsonCi": {
+            "lower": 0.48628833017536705,
+            "upper": 0.5241756679466819
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.47486690256674435,
+            "upper": 0.5355735167839765
+          }
+        },
+        "realizedOccurrences": 2737,
+        "status": "inconclusive",
+        "storedOccurrences": 2737
+      },
+      {
+        "coverageOfRealized": 0.0,
+        "evaluatedOosOccurrences": 0,
+        "eventType": "ThreeInsideDown",
+        "minimumContextHistory": 100,
+        "minimumEventHistory": 30,
+        "module": "candle_patterns",
+        "realizedOccurrences": 20,
+        "status": "insufficient_history",
+        "storedOccurrences": 20
+      },
+      {
+        "coverageOfRealized": 0.0,
+        "evaluatedOosOccurrences": 0,
+        "eventType": "ThreeInsideUp",
+        "minimumContextHistory": 100,
+        "minimumEventHistory": 30,
+        "module": "candle_patterns",
+        "realizedOccurrences": 29,
+        "status": "insufficient_history",
+        "storedOccurrences": 29
+      },
+      {
+        "coverageOfRealized": 0.0,
+        "evaluatedOosOccurrences": 0,
+        "eventType": "ThreeWhiteSoldiers",
+        "minimumContextHistory": 100,
+        "minimumEventHistory": 30,
+        "module": "candle_patterns",
+        "realizedOccurrences": 2,
+        "status": "insufficient_history",
+        "storedOccurrences": 2
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.4090909090909091,
+          "contextBaselineBrier": 0.26896281783162973,
+          "eventPriorAccuracy": 0.4090909090909091,
+          "eventPriorBrier": 0.25660467661357633,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.000429075253870425,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.004465609116121144,
+            "upper": 0.0008722196590316
+          },
+          "pairedBrierLift": 0.012358141218053358,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.01891907697948489,
+            "upper": 0.0542442689772485
+          }
+        },
+        "coverageOfRealized": 0.4230769230769231,
+        "evaluatedOosOccurrences": 22,
+        "eventType": "TweezerBottoms",
+        "firstOosDecisionTimeMs": 1728446399999,
+        "lastOosDecisionTimeMs": 1786751999999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.004143063914844524,
+            "upper": 0.0012888979913008084
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.004944894386781835,
+            "upper": 0.002008866816496127
+          },
+          "meanReturnFraction": -0.00011424087780141015,
+          "positiveCount": 9,
+          "positiveRate": 0.4090909090909091,
+          "positiveRateWilsonCi": {
+            "lower": 0.23255816196471876,
+            "upper": 0.6126518152368488
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.16207354230290105,
+            "upper": 0.7124740923274164
+          }
+        },
+        "realizedOccurrences": 52,
+        "status": "insufficient_evidence",
+        "storedOccurrences": 52
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5483870967741935,
+          "contextBaselineBrier": 0.24786596440223166,
+          "eventPriorAccuracy": 0.5483870967741935,
+          "eventPriorBrier": 0.25617082309570927,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.0005702829724770544,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0011775738637769327,
+            "upper": 0.0011724540246111392
+          },
+          "pairedBrierLift": -0.008304858693477668,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.019765257603852088,
+            "upper": 0.02197472327331967
+          }
+        },
+        "coverageOfRealized": 0.5081967213114754,
+        "evaluatedOosOccurrences": 31,
+        "eventType": "TweezerTops",
+        "firstOosDecisionTimeMs": 1670702399999,
+        "lastOosDecisionTimeMs": 1782561599999,
+        "module": "candle_patterns",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.00043995384962071453,
+            "upper": 0.0018975268769898187
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.000967736888014391,
+            "upper": 0.002220631946044798
+          },
+          "meanReturnFraction": 0.0012206497567130133,
+          "positiveCount": 14,
+          "positiveRate": 0.45161290322580644,
+          "positiveRateWilsonCi": {
+            "lower": 0.2916173598052002,
+            "upper": 0.6222783236264547
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.2183360169875065,
+            "upper": 0.7082867427769036
+          }
+        },
+        "realizedOccurrences": 61,
+        "status": "inconclusive",
+        "storedOccurrences": 61
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5060289389067524,
+          "contextBaselineBrier": 0.25111389121078254,
+          "eventPriorAccuracy": 0.5132636655948553,
+          "eventPriorBrier": 0.25017454038826503,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.00011113547861051007,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0006688392662400876,
+            "upper": 0.0004487220369320881
+          },
+          "pairedBrierLift": 0.0009393508225174726,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.0011278037246275018,
+            "upper": 0.0031601694052813844
+          }
+        },
+        "coverageOfRealized": 0.97339593114241,
+        "evaluatedOosOccurrences": 2488,
+        "eventType": "volume_ratio_gte_1_5",
+        "firstOosDecisionTimeMs": 1580198399999,
+        "lastOosDecisionTimeMs": 1789747199999,
+        "module": "volume_anomaly",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0002317366947551363,
+            "upper": 0.0008623699261061074
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0005868009559538318,
+            "upper": 0.0012247989096032586
+          },
+          "meanReturnFraction": 0.00032694961488181055,
+          "positiveCount": 1284,
+          "positiveRate": 0.5160771704180064,
+          "positiveRateWilsonCi": {
+            "lower": 0.496430821985909,
+            "upper": 0.5356739492533741
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.4845766366954586,
+            "upper": 0.5474504632010772
+          }
+        },
+        "realizedOccurrences": 2556,
+        "status": "inconclusive",
+        "storedOccurrences": 2556
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.4864406779661017,
+          "contextBaselineBrier": 0.2516305976425206,
+          "eventPriorAccuracy": 0.4830508474576271,
+          "eventPriorBrier": 0.2508756323747589,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.00013744148504410896,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0009605071733250572,
+            "upper": 0.0007360261083141054
+          },
+          "pairedBrierLift": 0.0007549652677616311,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.003756634211490569,
+            "upper": 0.004996614576760269
+          }
+        },
+        "coverageOfRealized": 0.9680065627563577,
+        "evaluatedOosOccurrences": 1180,
+        "eventType": "volume_ratio_gte_2_0",
+        "firstOosDecisionTimeMs": 1582516799999,
+        "lastOosDecisionTimeMs": 1789747199999,
+        "module": "volume_anomaly",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0005305406822173564,
+            "upper": 0.001150102498613186
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.000923250032627912,
+            "upper": 0.0017997479426982922
+          },
+          "meanReturnFraction": 0.00030055595349813113,
+          "positiveCount": 597,
+          "positiveRate": 0.5059322033898305,
+          "positiveRateWilsonCi": {
+            "lower": 0.47743289698224883,
+            "upper": 0.5343930108668868
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.4603141771251758,
+            "upper": 0.5514516696285973
+          }
+        },
+        "realizedOccurrences": 1219,
+        "status": "inconclusive",
+        "storedOccurrences": 1219
+      },
+      {
+        "coverageOfRealized": 0.0,
+        "evaluatedOosOccurrences": 0,
+        "eventType": "Breakout",
+        "minimumContextHistory": 100,
+        "minimumEventHistory": 30,
+        "module": "market_regime",
+        "realizedOccurrences": 15,
+        "status": "insufficient_history",
+        "storedOccurrences": 15
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.46308724832214765,
+          "contextBaselineBrier": 0.2532345850748172,
+          "eventPriorAccuracy": 0.42953020134228187,
+          "eventPriorBrier": 0.2562171635075042,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.001141839156908581,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0020847420069398546,
+            "upper": 8.174432198755988e-06
+          },
+          "pairedBrierLift": -0.00298257843268693,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.021350355057586697,
+            "upper": 0.018805448893941708
+          }
+        },
+        "coverageOfRealized": 0.8324022346368715,
+        "evaluatedOosOccurrences": 149,
+        "eventType": "Compression",
+        "firstOosDecisionTimeMs": 1777247999999,
+        "lastOosDecisionTimeMs": 1786449599999,
+        "module": "market_regime",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0018761412298125043,
+            "upper": 0.00026583111245919095
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0026620591666391305,
+            "upper": 0.0008076445062733632
+          },
+          "meanReturnFraction": -0.0009181996934537823,
+          "positiveCount": 69,
+          "positiveRate": 0.46308724832214765,
+          "positiveRateWilsonCi": {
+            "lower": 0.3849579354501229,
+            "upper": 0.5430720631845758
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.3409906139621916,
+            "upper": 0.5897767532586732
+          }
+        },
+        "realizedOccurrences": 179,
+        "status": "inconclusive",
+        "storedOccurrences": 179
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5286624203821656,
+          "contextBaselineBrier": 0.24963317123063783,
+          "eventPriorAccuracy": 0.49203821656050956,
+          "eventPriorBrier": 0.2511201792230397,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.00022106374382041248,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0007665457760850122,
+            "upper": 0.0003368549929070137
+          },
+          "pairedBrierLift": -0.0014870079924019651,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.005068412472165639,
+            "upper": 0.003414071372559309
+          }
+        },
+        "coverageOfRealized": 0.9544072948328267,
+        "evaluatedOosOccurrences": 628,
+        "eventType": "RangeBound",
+        "firstOosDecisionTimeMs": 1771343999999,
+        "lastOosDecisionTimeMs": 1786535999999,
+        "module": "market_regime",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0005381542436777058,
+            "upper": 0.0005962909011800649
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0008830481269986363,
+            "upper": 0.0009339556463171546
+          },
+          "meanReturnFraction": 2.134425230585271e-05,
+          "positiveCount": 320,
+          "positiveRate": 0.5095541401273885,
+          "positiveRateWilsonCi": {
+            "lower": 0.47051664697169837,
+            "upper": 0.5484754590898404
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.4471759633262107,
+            "upper": 0.5716362164526996
+          }
+        },
+        "realizedOccurrences": 658,
+        "status": "inconclusive",
+        "storedOccurrences": 658
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.5769230769230769,
+          "contextBaselineBrier": 0.24760851370179826,
+          "eventPriorAccuracy": 0.5076923076923077,
+          "eventPriorBrier": 0.2541662939417786,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": 0.00010938086850846445,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0014758647495715844,
+            "upper": 0.0017660825555569793
+          },
+          "pairedBrierLift": -0.006557780239980315,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.01286603564203069,
+            "upper": 0.002759507421414793
+          }
+        },
+        "coverageOfRealized": 0.8125,
+        "evaluatedOosOccurrences": 130,
+        "eventType": "TrendingDown",
+        "firstOosDecisionTimeMs": 1774079999999,
+        "lastOosDecisionTimeMs": 1785729599999,
+        "module": "market_regime",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.001158598864665902,
+            "upper": 0.0019740962918818154
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0021614555339126685,
+            "upper": 0.00266050819493797
+          },
+          "meanReturnFraction": 0.0003355918578238496,
+          "positiveCount": 67,
+          "positiveRate": 0.5153846153846153,
+          "positiveRateWilsonCi": {
+            "lower": 0.43027433372748797,
+            "upper": 0.599611772081914
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.3814437820765374,
+            "upper": 0.6471512144817654
+          }
+        },
+        "realizedOccurrences": 160,
+        "status": "inconclusive",
+        "storedOccurrences": 160
+      },
+      {
+        "causalExpandingPriorComparison": {
+          "baseline": "all prior BTCUSDT 4h bars in the same causal six-close trend context whose next-bar outcomes were available by the event decision",
+          "contextBaselineAccuracy": 0.41379310344827586,
+          "contextBaselineBrier": 0.25374425786550786,
+          "eventPriorAccuracy": 0.6206896551724138,
+          "eventPriorBrier": 0.24091876435520398,
+          "inferenceAlpha": 0.0016666666666666668,
+          "meanReturnMinusPriorContextMean": -0.001001653407818664,
+          "meanReturnMinusPriorContextMeanBlockBootstrapCi": {
+            "lower": -0.0027386960657228942,
+            "upper": 0.0009250003193272908
+          },
+          "pairedBrierLift": 0.01282549351030391,
+          "pairedBrierLiftBlockBootstrapCi": {
+            "lower": -0.02613690700049452,
+            "upper": 0.043458237991648954
+          }
+        },
+        "coverageOfRealized": 0.6590909090909091,
+        "evaluatedOosOccurrences": 58,
+        "eventType": "TrendingUp",
+        "firstOosDecisionTimeMs": 1776196799999,
+        "lastOosDecisionTimeMs": 1778817599999,
+        "module": "market_regime",
+        "outcome": {
+          "meanReturnBlockBootstrapCi": {
+            "lower": -0.0025033598964570455,
+            "upper": 0.0010958923660575963
+          },
+          "meanReturnBlockBootstrapFamilywiseCi": {
+            "lower": -0.0033102537771487702,
+            "upper": 0.0020294655792720442
+          },
+          "meanReturnFraction": -0.0007646294346491992,
+          "positiveCount": 22,
+          "positiveRate": 0.3793103448275862,
+          "positiveRateWilsonCi": {
+            "lower": 0.2656427267728758,
+            "upper": 0.5079719280723111
+          },
+          "positiveRateWilsonFamilywiseCi": {
+            "lower": 0.21089959078346676,
+            "upper": 0.5828681044547299
+          }
+        },
+        "realizedOccurrences": 88,
+        "status": "inconclusive",
+        "storedOccurrences": 88
+      },
+      {
+        "eventType": null,
+        "module": "causal_smc",
+        "reason": "no causal-v2 rows with valid availability join to closed 4h candles",
+        "status": "unavailable"
+      }
+    ]
+  },
+  "manifest": {
+    "codeProvenance": {
+      "evaluatorSha256": "2e0c4df08a6f25d7b2298889ca005319722797143d03361a8bafb1184b2bcc63",
+      "git": {
+        "commit": "a836562f4588055b43fd8e5df4954dde796c84f4",
+        "dirty": true
+      },
+      "researchContractSha256": "670355c9f248bfcc389975b972873c5ab6b48c71295325584e6ed044b74877a5"
+    },
+    "contractVersion": "btc-technical-research-v1",
+    "costs": {
+      "feePerSideBps": 10.0,
+      "role": "classification-dead-zone-floor; no fill or net-PnL claim",
+      "roundTripBps": 30.0,
+      "roundTripPctPoints": 0.3,
+      "roundTripReturnFraction": 0.003,
+      "slippagePerSideBps": 5.0,
+      "totalPerSideBps": 15.0
+    },
+    "dataProvenance": {
+      "closedBarPredicate": "Klines.CloseTimeMs <= decision cutoff",
+      "databaseIdentity": {
+        "database": "bitcoin_analyst",
+        "host": "localhost",
+        "passwordExcluded": true,
+        "port": 5432
+      },
+      "datasetSha256": "e87fc72ec6308503b58e92a58d4cc7cca2d6a370b2e18c3d756c83a1438f7ea0",
+      "decisionCutoffMs": 1789989416416,
+      "firstOpenTimeMs": 1577836800000,
+      "lastCloseTimeMs": 1789977599999,
+      "moduleInventory": {
+        "candle_patterns": {
+          "availabilityBasis": "Availability is reconstructed from the recognizer's frozen pattern-length map: Single at its close, known Double at the second contiguous close, and known Triple at the third; unknown multi-pattern names fail closed",
+          "eventRows": 9498,
+          "reason": null,
+          "status": "evaluable"
+        },
+        "causal_smc": {
+          "availabilityBasis": "explicit AvailableTimeMs from smc-causal-v2",
+          "eventRows": 0,
+          "reason": "no causal-v2 rows with valid availability join to closed 4h candles",
+          "status": "unavailable"
+        },
+        "market_regime": {
+          "availabilityBasis": "Stored regime indicators include the finalized current candle and prior bars; available at the matching candle close",
+          "eventRows": 1100,
+          "reason": null,
+          "status": "evaluable"
+        },
+        "volume_anomaly": {
+          "availabilityBasis": "Current-candle volume statistics use only the finalized candle and prior rolling volume; available at that candle close",
+          "eventRows": 3775,
+          "reason": null,
+          "status": "evaluable"
+        }
+      },
+      "outcomeRealization": "next open is exactly +4h and next close is within cutoff",
+      "rowCount": 14731,
+      "source": "postgresql-readonly"
+    },
+    "decisionTime": "after-signal-bar-close",
+    "experiment": "btc-4h-technical-event-evidence",
+    "manifestSha256": "b72e9dd7be165e30ac6e84ee49b30f2dcaebad328388498d3926b0f1ff1d658c",
+    "outcomePriceBasis": "signal-bar-close-to-next-contiguous-bar-close",
+    "parameters": {
+      "alpha": 0.05,
+      "block_size_events": 8,
+      "bootstrap_samples": 2000,
+      "directionDefinition": "next return > 0",
+      "doubleCandlePatterns": [
+        "BearishEngulfing",
+        "BearishHarami",
+        "BullishEngulfing",
+        "BullishHarami",
+        "DarkCloudCover",
+        "PiercingLine",
+        "TweezerBottoms",
+        "TweezerTops"
+      ],
+      "evaluatorVersion": "btc-4h-technical-event-evidence-v1",
+      "min_context_history": 100,
+      "min_event_history": 30,
+      "modules": [
+        "candle_patterns",
+        "volume_anomaly",
+        "market_regime",
+        "causal_smc"
+      ],
+      "random_seed": 42,
+      "selection": "none; every stored event type and both predeclared volume thresholds are reported",
+      "smcCalculationVersion": "smc-causal-v2",
+      "tripleCandlePatterns": [
+        "EveningStar",
+        "MorningStar",
+        "ThreeBlackCrows",
+        "ThreeInsideDown",
+        "ThreeInsideUp",
+        "ThreeWhiteSoldiers"
+      ],
+      "volumeThresholds": [
+        1.5,
+        2.0
+      ]
+    },
+    "runtimeDependencies": {
+      "numpy": "2.5.2",
+      "psycopg2": "2.9.12 (dt dec pq3 ext lo64)",
+      "python": "3.12.7"
+    },
+    "signalBarState": "closed",
+    "symbol": "BTCUSDT",
+    "timeframe": "4h"
+  },
+  "reportSha256": "4a187794c2690ffa541dccdd4510072da9da442c9c123714f6344c4e2a7897ce"
+}

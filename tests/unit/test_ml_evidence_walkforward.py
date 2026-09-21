@@ -1,15 +1,21 @@
 import json
 
 import numpy as np
+import pytest
+
+import ml_evidence_walkforward as evaluator
 
 from ml_evidence_walkforward import (
+    CAUSAL_FEATURE_NAMES,
     DECLARED_BASELINES,
     DECLARED_MODEL_FAMILY,
+    STORED_FEATURE_NAMES,
     BenchmarkData,
     EvaluatorConfig,
     build_manifest,
     drop_noncausal_stored_features,
     evaluate_walk_forward,
+    extract_causal_feature,
     write_evidence,
 )
 
@@ -43,12 +49,37 @@ def _config():
 
 
 def test_stored_active_rule_count_is_removed_from_every_bar():
-    matrix = np.arange(2 * 3 * 35, dtype=np.float64).reshape(2, 3 * 35)
+    stored_stride = len(STORED_FEATURE_NAMES)
+    causal_stride = len(CAUSAL_FEATURE_NAMES)
+    matrix = np.arange(2 * 3 * stored_stride, dtype=np.float64).reshape(2, 3 * stored_stride)
     filtered = drop_noncausal_stored_features(matrix, window_size=3)
 
-    assert filtered.shape == (2, 3 * 34)
-    removed = {29, 35 + 29, 70 + 29}
+    assert filtered.shape == (2, 3 * causal_stride)
+    active_rule_offset = STORED_FEATURE_NAMES.index("ActiveRuleCount")
+    removed = {bar * stored_stride + active_rule_offset for bar in range(3)}
     assert set(matrix[0]) - set(filtered[0]) == {matrix[0, index] for index in removed}
+
+
+def test_last_bar_return_is_extracted_by_name_after_noncausal_column_is_removed():
+    window_size = 3
+    stored_stride = len(STORED_FEATURE_NAMES)
+    matrix = np.zeros((2, window_size, stored_stride), dtype=np.float64)
+    close_return_offset = STORED_FEATURE_NAMES.index("ClosePctChange1")
+    body_offset = STORED_FEATURE_NAMES.index("BodyPct")
+    active_rule_offset = STORED_FEATURE_NAMES.index("ActiveRuleCount")
+    matrix[:, -1, close_return_offset] = [0.125, -0.25]
+    matrix[:, -1, body_offset] = [91.0, 92.0]
+    matrix[:, :, active_rule_offset] = 999.0
+
+    causal = drop_noncausal_stored_features(matrix.reshape(2, -1), window_size)
+    extracted = extract_causal_feature(
+        causal,
+        window_size=window_size,
+        feature_name="ClosePctChange1",
+    )
+
+    np.testing.assert_array_equal(extracted, np.array([0.125, -0.25]))
+    assert not np.isin(extracted, [91.0, 92.0]).any()
 
 
 def test_outer_folds_purge_labels_and_keep_fit_calibration_before_test():
@@ -80,6 +111,65 @@ def test_every_declared_trial_uses_identical_timestamp_coverage():
     assert len({trial["evaluationTimestampSha256"] for trial in trials}) == 1
     assert all(trial["coverage"] == 1.0 for trial in trials)
     assert report["promotionGate"]["checks"]["identicalTimestampCoverage"] is True
+
+
+def test_evaluator_fails_closed_when_one_baseline_has_different_row_coverage(monkeypatch):
+    original = evaluator._baseline_probabilities
+
+    def mismatched_baselines(data, test_indices, config):
+        outputs = original(data, test_indices, config)
+        outputs["momentum"] = outputs["momentum"][:-1]
+        return outputs
+
+    monkeypatch.setattr(evaluator, "_baseline_probabilities", mismatched_baselines)
+    with pytest.raises(ValueError, match="probability coverage mismatch for momentum"):
+        evaluate_walk_forward(_dataset(), _config())
+
+
+def test_coverage_validator_rejects_same_rows_in_different_timestamp_order():
+    expected = np.array([1_000, 2_000, 3_000], dtype=np.int64)
+    probabilities = {
+        name: np.full((3, 3), 1.0 / 3.0)
+        for name in DECLARED_MODEL_FAMILY + DECLARED_BASELINES
+    }
+    timestamps = {
+        name: expected.copy() for name in DECLARED_MODEL_FAMILY + DECLARED_BASELINES
+    }
+    timestamps["momentum"] = expected[::-1]
+
+    with pytest.raises(ValueError, match="timestamp coverage mismatch for momentum"):
+        evaluator._validate_probability_coverage(probabilities, timestamps, expected)
+
+
+def test_baseline_history_excludes_labels_unavailable_at_each_decision():
+    data = _dataset(rows=12)
+    delayed_availability = data.label_available_times_ms.copy()
+    delayed_availability[:9] = data.decision_times_ms[10] + 1
+    delayed = BenchmarkData(
+        data.features,
+        data.labels,
+        data.decision_times_ms,
+        delayed_availability,
+        data.last_returns,
+    )
+    config = _config()
+    test_indices = np.array([10], dtype=np.int64)
+
+    original = evaluator._baseline_probabilities(delayed, test_indices, config)
+    changed_labels = delayed.labels.copy()
+    changed_labels[:9] = 1
+    changed = BenchmarkData(
+        delayed.features,
+        changed_labels,
+        delayed.decision_times_ms,
+        delayed.label_available_times_ms,
+        delayed.last_returns,
+    )
+    replay = evaluator._baseline_probabilities(changed, test_indices, config)
+
+    np.testing.assert_array_equal(
+        original["rolling_class_probs"], replay["rolling_class_probs"]
+    )
 
 
 def test_negative_or_inconclusive_candidate_is_recorded_and_not_promoted():

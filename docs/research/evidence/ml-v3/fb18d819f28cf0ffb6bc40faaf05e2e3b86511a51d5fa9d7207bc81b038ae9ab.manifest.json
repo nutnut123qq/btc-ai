@@ -1,0 +1,23 @@
+{
+  "artifacts": {
+    "datasetSnapshot": {
+      "bytes": 3579780,
+      "file": "d5dd2d189a6c3e58b4ffb0d9b33a032729e1410b648d3302629a0d913c15055e.dataset.npz",
+      "sha256": "d5dd2d189a6c3e58b4ffb0d9b33a032729e1410b648d3302629a0d913c15055e"
+    },
+    "report": {
+      "bytes": 151936,
+      "file": "d4048c86145d68914f4275b910f420c0d918bbe0c414d90f7267998456f09b5a.report.json",
+      "sha256": "d4048c86145d68914f4275b910f420c0d918bbe0c414d90f7267998456f09b5a"
+    },
+    "rowPredictions": {
+      "bytes": 16673831,
+      "file": "be22e43db3b3721648635a829896877c034763b59d66d4613ea1b709d7e6b99d.predictions.jsonl",
+      "sha256": "be22e43db3b3721648635a829896877c034763b59d66d4613ea1b709d7e6b99d"
+    }
+  },
+  "bundleManifestSha256": "fb18d819f28cf0ffb6bc40faaf05e2e3b86511a51d5fa9d7207bc81b038ae9ab",
+  "integrityPolicy": "verify every artifact byte hash before use; fail closed on missing or mismatched files",
+  "researchManifestSha256": "b5dc0aae663d6fe86d427b988e8c79e7328ff0486d04578973023e474b0c3660",
+  "schemaVersion": "btc-ml-evidence-bundle/v3"
+}

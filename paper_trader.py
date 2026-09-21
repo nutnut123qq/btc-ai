@@ -32,6 +32,13 @@ sys.path.insert(0, str(AI_DIR))
 
 from db_config import get_db_params, get_db_connection
 from prediction_service import load_model
+from forward_paper_recorder import (
+    PaperObservation,
+    deterministic_decision_id,
+    ensure_observation_schema,
+    fetch_binance_spot_quote,
+    insert_observation,
+)
 from execution_engine import (
     ExecutionContract,
     ExecutionCostSpec,
@@ -85,10 +92,16 @@ FEATURE_COLS = [
     "RollingVwapDist", "VolumeZscore", "VolumeSma20Ratio", "TakerBuyRatio",
     "RecentPatternEncoded", "ActiveRuleCount",
 ]
+TIME_FEATURE_COLS = ["HourSin", "HourCos", "DayOfWeekSin", "DayOfWeekCos", "IsWeekend"]
 
 _UNAVAILABLE_MODELS: set[str] = set()
 FORWARD_PAPER_MODE = "forward-paper"
 REPLAY_MODE = "replay"
+FORWARD_PAPER_TIMEFRAME = "4h"
+FORWARD_PAPER_TIMEFRAME_MS = 4 * 60 * 60 * 1000
+FORWARD_PAPER_MAX_SIGNAL_AGE_MS = int(
+    os.getenv("FORWARD_PAPER_MAX_SIGNAL_AGE_MS", str(5 * 60 * 60 * 1000))
+)
 PAPER_EXECUTION_CONTRACT = ExecutionContract(
     mode=ExecutionMode.SPOT_REFERENCE_DERIVATIVE_SIMULATION,
     price_source_market="binance-spot-btcusdt",
@@ -135,35 +148,51 @@ def push_system_alert(cur, conn, alert_type: str, title: str, message: str, pric
     conn.commit()
 
 
-def get_model_for_symbol(symbol: str) -> Tuple[Optional[Any], str]:
-    """Load only a registry-promoted, runtime-compatible model."""
+def get_model_bundle_for_symbol(symbol: str) -> Tuple[Optional[Any], Optional[dict], str]:
+    """Load a promoted model together with the manifest that defines its input schema."""
     symbol = require_active_symbol(symbol)
     if symbol in _UNAVAILABLE_MODELS:
-        return None, "unavailable"
+        return None, None, "unavailable"
     try:
         model, meta = load_model(symbol, "4h", 5, "4h")
         model_name = meta.get("model_name") or f"{symbol}_4h_ws5_h4h_XGB_active"
-        return model, model_name
+        return model, meta, model_name
     except Exception as e:
         _UNAVAILABLE_MODELS.add(symbol)
         log(f"[WARN] No promoted compatible model for {symbol}; ML momentum trades are disabled: {e}")
-        return None, "unavailable"
+        return None, None, "unavailable"
+
+
+def get_model_for_symbol(symbol: str) -> Tuple[Optional[Any], str]:
+    """Compatibility wrapper for legacy replay callers."""
+    model, _manifest, model_name = get_model_bundle_for_symbol(symbol)
+    return model, model_name
 
 
 def time_features(open_ms: int) -> list[float]:
     dt = datetime.fromtimestamp(open_ms / 1000, timezone.utc)
     hour = dt.hour + dt.minute / 60.0
-    dow = dt.weekday()
+    # Match System.DayOfWeek used by WindowDatasetService: Sunday=0 ... Saturday=6.
+    # datetime.weekday() is Monday=0, so using it directly shifts every model input.
+    dow = (dt.weekday() + 1) % 7
     return [
         math.sin(2 * math.pi * hour / 24), math.cos(2 * math.pi * hour / 24),
         math.sin(2 * math.pi * dow / 7), math.cos(2 * math.pi * dow / 7),
-        1.0 if dow >= 5 else 0.0,
+        1.0 if dow in (0, 6) else 0.0,
     ]
 
 
 # ── Feature & Technical Indicator Extraction ────────────────────────────────
 
-def build_vector_at(cur, symbol: str, timeframe: str, window_size: int, tf_ms: int, end_open_time_ms: int):
+def build_vector_at(
+    cur,
+    symbol: str,
+    timeframe: str,
+    window_size: int,
+    tf_ms: int,
+    end_open_time_ms: int,
+    expected_feature_names: Optional[list[str]] = None,
+):
     """Build feature vector from MlFeatureStores for the window ending at end_open_time_ms."""
     cols = ", ".join(f'"{c}"' for c in FEATURE_COLS)
     cur.execute(
@@ -179,13 +208,26 @@ def build_vector_at(cur, symbol: str, timeframe: str, window_size: int, tf_ms: i
         if rows[i][0] - rows[i - 1][0] != tf_ms:
             return None
     vector = []
-    for r in rows:
+    named_values: dict[str, float] = {}
+    for bar_index, r in enumerate(rows):
         vals = r[1:]
         core_vals = vals[:28]
         if any(v is None for v in core_vals):
             return None
-        vector.extend(float(v) if v is not None else 0.0 for v in vals)
-        vector.extend(time_features(r[0]))
+        feature_values = [float(v) if v is not None else 0.0 for v in vals]
+        temporal_values = time_features(r[0])
+        vector.extend(feature_values)
+        vector.extend(temporal_values)
+        for name, value in zip(FEATURE_COLS + TIME_FEATURE_COLS, feature_values + temporal_values):
+            named_values[f"ws{window_size}_bar{bar_index}_{name}"] = value
+
+    if expected_feature_names is not None:
+        if len(expected_feature_names) != len(set(expected_feature_names)):
+            raise ValueError("model manifest feature names must be unique")
+        unknown = [name for name in expected_feature_names if name not in named_values]
+        if unknown:
+            raise ValueError(f"model manifest requests unavailable features: {unknown[:3]}")
+        vector = [named_values[name] for name in expected_feature_names]
     return rows[-1][0], np.array(vector, dtype=np.float32)
 
 
@@ -916,21 +958,217 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int, *, run_mode: str =
 
 # ── Explicit replay and prospective-paper run modes ─────────────────────────
 
-def run_forward_paper(symbols: List[str] | None = None) -> None:
-    """Fail closed until a timestamped, observable live fill path exists.
+def _latest_finalized_signal_bar(cur, symbol: str, timeframe: str, observed_ms: int):
+    cur.execute(
+        '''SELECT "OpenTimeMs", "CloseTimeMs"
+           FROM "Klines"
+           WHERE "Symbol"=%s AND "Timeframe"=%s AND "CloseTimeMs" <= %s
+           ORDER BY "OpenTimeMs" DESC
+           LIMIT 1''',
+        (symbol, timeframe, observed_ms),
+    )
+    return cur.fetchone()
 
-    Finalized candles are stored only after their next bar has already opened.
-    Reading that open from history later would be a replay, not forward paper
-    evidence.  The scheduled/default command therefore performs no database
-    connection and no trade write until a live quote/order-observation recorder
-    is implemented.
+
+def _prospective_decision(cur, symbol: str, signal_open_ms: int):
+    """Return decision evidence without consulting a future bar or historical fill."""
+    model, manifest, model_version = get_model_bundle_for_symbol(symbol)
+    if model is None or manifest is None:
+        return "abstain", None, None, "model-unavailable", {"featureVectorAvailable": False}
+
+    built = build_vector_at(
+        cur,
+        symbol,
+        FORWARD_PAPER_TIMEFRAME,
+        5,
+        FORWARD_PAPER_TIMEFRAME_MS,
+        signal_open_ms,
+        expected_feature_names=manifest["feature_names"],
+    )
+    if built is None:
+        return "abstain", None, model_version, "feature-window-unavailable", {"featureVectorAvailable": False}
+
+    feature_end_ms, feature_vector = built
+    threshold = float(ASSET_4H_THRESHOLDS.get(symbol, 0.58))
+    try:
+        probabilities = np.asarray(
+            model.predict_proba(feature_vector.reshape(1, -1))[0], dtype=np.float64
+        )
+        model_classes = np.asarray(getattr(model, "classes_", []))
+        if (
+            probabilities.ndim != 1
+            or probabilities.shape != model_classes.shape
+            or probabilities.size != 3
+            or not np.isfinite(probabilities).all()
+            or not np.isclose(probabilities.sum(), 1.0, atol=1e-6)
+        ):
+            raise ValueError("invalid model probability/class shape")
+        predicted_index = int(np.argmax(probabilities))
+        predicted_model_class = model_classes[predicted_index].item()
+        class_key = str(int(predicted_model_class))
+        class_mapping = manifest.get("class_mapping")
+        if not isinstance(class_mapping, dict) or class_key not in class_mapping:
+            raise ValueError("model class is absent from manifest class_mapping")
+        semantic_class = int(class_mapping[class_key])
+        if semantic_class not in {-1, 0, 1}:
+            raise ValueError("manifest class_mapping has an unsupported decision class")
+        confidence = float(probabilities[predicted_index])
+    except Exception as exc:
+        return "abstain", None, model_version, "model-inference-failed", {
+            "featureVectorAvailable": True,
+            "featureWindowEndTimeMs": feature_end_ms,
+            "inferenceErrorType": type(exc).__name__,
+        }
+
+    evidence = {
+        "featureVectorAvailable": True,
+        "featureWindowEndTimeMs": feature_end_ms,
+        "predictedClassIndex": predicted_index,
+        "predictedModelClass": int(predicted_model_class),
+        "predictedSemanticClass": semantic_class,
+        "probabilities": [float(value) for value in probabilities],
+    }
+    if semantic_class == 0:
+        return "abstain", confidence, model_version, "sideways-class", evidence
+    if confidence < threshold:
+        return "abstain", confidence, model_version, "below-confidence-threshold", evidence
+    return ("long" if semantic_class == 1 else "short"), confidence, model_version, None, evidence
+
+
+def _run_forward_paper_once(
+    symbols: List[str] | None = None,
+    *,
+    observed_at: datetime,
+    quote_fetcher,
+    is_prospective: bool,
+) -> Dict[str, str]:
+    """Shared recorder core; deterministic clocks are non-prospective test evidence.
+
+    This poll never reads the next bar's open and never creates a paper fill.
+    Failures are retained as abstentions so missing infrastructure cannot become
+    invisible selection bias.
     """
     checked_symbols = require_active_symbols(symbols or ACTIVE_SYMBOLS)
-    raise RuntimeError(
-        "Forward paper trading is unavailable: the project has no timestamped live fill "
-        f"recorder for {', '.join(checked_symbols)}. No trade was written. "
-        "Use --mode replay explicitly for historical simulation; replay rows are not "
-        "prospective paper evidence."
+    if observed_at.tzinfo is None:
+        raise ValueError("observed_at must be timezone-aware")
+    observed_at = observed_at.astimezone(timezone.utc)
+    observed_ms = int(observed_at.timestamp() * 1000)
+
+    conn = get_conn()
+    cur = conn.cursor()
+    results: Dict[str, str] = {}
+    try:
+        ensure_observation_schema(conn, cur)
+        for symbol in checked_symbols:
+            signal_bar = _latest_finalized_signal_bar(
+                cur, symbol, FORWARD_PAPER_TIMEFRAME, observed_ms
+            )
+            if signal_bar is None:
+                results[symbol] = "no-finalized-signal-bar"
+                log(f"[{symbol}] No finalized 4h signal bar; no observation key can be created.")
+                continue
+
+            signal_open_ms, signal_close_ms = map(int, signal_bar)
+            decision = "abstain"
+            confidence = None
+            model_version = None
+            abstention_reason: Optional[str] = None
+            evidence: Dict[str, Any] = {
+                "runMode": FORWARD_PAPER_MODE,
+                "isProspectivePaperEvidence": is_prospective,
+                "signalBarFinalizedAtDecision": signal_close_ms <= observed_ms,
+                "nextBarOpenRead": False,
+                "fillObserved": False,
+                "outcomeObserved": False,
+            }
+
+            quote = None
+            quote_error = None
+            try:
+                quote = quote_fetcher(symbol)
+            except Exception as exc:
+                quote_error = type(exc).__name__
+                evidence["quoteErrorType"] = quote_error
+
+            signal_age_ms = observed_ms - signal_close_ms
+            evidence["signalAgeMs"] = signal_age_ms
+            if signal_age_ms > FORWARD_PAPER_MAX_SIGNAL_AGE_MS:
+                abstention_reason = "signal-data-stale"
+            elif quote is None:
+                abstention_reason = "live-quote-unavailable"
+            else:
+                decision, confidence, model_version, abstention_reason, model_evidence = (
+                    _prospective_decision(cur, symbol, signal_open_ms)
+                )
+                evidence.update(model_evidence)
+
+            # Availability is the time at which every observed input was in
+            # hand.  In particular it must never predate the live quote.
+            completed_at = observed_at
+            if quote is not None and quote.received_at_utc > completed_at:
+                completed_at = quote.received_at_utc
+            if is_prospective:
+                completed_at = max(completed_at, datetime.now(timezone.utc))
+            available_ms = int(completed_at.timestamp() * 1000)
+
+            observation = PaperObservation(
+                decision_id=deterministic_decision_id(
+                    symbol,
+                    FORWARD_PAPER_TIMEFRAME,
+                    signal_open_ms,
+                    signal_close_ms,
+                ),
+                symbol=symbol,
+                timeframe=FORWARD_PAPER_TIMEFRAME,
+                signal_bar_open_ms=signal_open_ms,
+                signal_bar_close_ms=signal_close_ms,
+                observed_at_utc=completed_at,
+                available_time_ms=available_ms,
+                model_version=model_version,
+                decision=decision,
+                confidence=confidence,
+                abstention_reason=abstention_reason,
+                quote_source=(quote.source if quote else "binance-spot-bookTicker-unavailable"),
+                quote_price=(quote.price if quote else None),
+                quote_received_at_utc=(quote.received_at_utc if quote else None),
+                quote_received_time_ms=(quote.received_time_ms if quote else None),
+                config_provenance={
+                    "recorder": "forward-paper-observation-v1",
+                    "windowSize": 5,
+                    "horizon": "4h",
+                    "confidenceThreshold": float(ASSET_4H_THRESHOLDS.get(symbol, 0.58)),
+                    "maxSignalAgeMs": FORWARD_PAPER_MAX_SIGNAL_AGE_MS,
+                    "priceSourceMarket": PAPER_EXECUTION_CONTRACT.price_source_market,
+                    "executionMode": PAPER_EXECUTION_CONTRACT.mode.value,
+                    "costSpec": PAPER_EXECUTION_COSTS.to_dict(),
+                },
+                evidence_provenance=evidence,
+            )
+            inserted = insert_observation(conn, cur, observation)
+            results[symbol] = "inserted" if inserted else "duplicate"
+            action = decision.upper() if inserted else "IDEMPOTENT RETRY"
+            log(
+                f"[{symbol}] {action} for finalized bar {signal_open_ms}; "
+                f"reason={abstention_reason or 'eligible-signal'}, no fill written."
+            )
+        return results
+    finally:
+        cur.close()
+        conn.close()
+
+
+def run_forward_paper(symbols: List[str] | None = None) -> Dict[str, str]:
+    """Record a real-time BTC 4h observation using only the production clock/quote.
+
+    No caller-supplied timestamp or quote source is accepted at this public
+    boundary. PostgreSQL independently rejects observations backdated relative
+    to its own creation clock.
+    """
+    return _run_forward_paper_once(
+        symbols,
+        observed_at=datetime.now(timezone.utc),
+        quote_fetcher=fetch_binance_spot_quote,
+        is_prospective=True,
     )
 
 

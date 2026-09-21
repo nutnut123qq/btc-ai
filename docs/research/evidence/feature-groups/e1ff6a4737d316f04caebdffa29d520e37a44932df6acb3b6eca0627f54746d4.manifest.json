@@ -1,0 +1,184 @@
+{
+  "contractVersion": "btc-technical-research-v1",
+  "experiment": "btc-4h-feature-group-ablation",
+  "symbol": "BTCUSDT",
+  "timeframe": "4h",
+  "signalBarState": "closed",
+  "decisionTime": "after-signal-bar-close",
+  "outcomePriceBasis": "signal-close-to-future-close",
+  "costs": {
+    "feePerSideBps": 10.0,
+    "slippagePerSideBps": 5.0,
+    "totalPerSideBps": 15.0,
+    "roundTripBps": 30.0,
+    "roundTripReturnFraction": 0.003,
+    "roundTripPctPoints": 0.3,
+    "role": "classification-dead-zone-floor; no fill or net-PnL claim"
+  },
+  "parameters": {
+    "window_size": 5,
+    "min_fit_rows": 1000,
+    "test_rows": 240,
+    "step_rows": 240,
+    "minimum_test_rows": 60,
+    "laplace_alpha": 1.0,
+    "logistic_c": 1.0,
+    "max_iter": 1000,
+    "block_size_rows": 12,
+    "bootstrap_samples": 1000,
+    "familywise_alpha": 0.05,
+    "random_state": 42,
+    "evaluatorVersion": "btc-4h-feature-group-ablation-v1",
+    "label": "TargetDirection4h",
+    "featureObservation": "5 closed bars",
+    "storedFeatureNames": [
+      "CloseZscore",
+      "ClosePctChange1",
+      "ClosePctChange4",
+      "ClosePctChange24",
+      "HighLowRangePct",
+      "BodyPct",
+      "UpperWickPct",
+      "LowerWickPct",
+      "Rsi14",
+      "Rsi14Slope",
+      "MacdNorm",
+      "MacdSignalNorm",
+      "MacdHistogramNorm",
+      "Ema12Dist",
+      "Ema26Dist",
+      "Ema50Dist",
+      "Ema200Dist",
+      "Sma50Dist",
+      "Sma200Dist",
+      "BollingerWidth",
+      "BollingerPosition",
+      "Atr14Pct",
+      "ObvEmaDist",
+      "VwapDist",
+      "RollingVwapDist",
+      "VolumeZscore",
+      "VolumeSma20Ratio",
+      "TakerBuyRatio",
+      "RecentPatternEncoded",
+      "ActiveRuleCount",
+      "HourSin",
+      "HourCos",
+      "DayOfWeekSin",
+      "DayOfWeekCos",
+      "IsWeekend"
+    ],
+    "causalFeatureNames": [
+      "CloseZscore",
+      "ClosePctChange1",
+      "ClosePctChange4",
+      "ClosePctChange24",
+      "HighLowRangePct",
+      "BodyPct",
+      "UpperWickPct",
+      "LowerWickPct",
+      "Rsi14",
+      "Rsi14Slope",
+      "MacdNorm",
+      "MacdSignalNorm",
+      "MacdHistogramNorm",
+      "Ema12Dist",
+      "Ema26Dist",
+      "Ema50Dist",
+      "Ema200Dist",
+      "Sma50Dist",
+      "Sma200Dist",
+      "BollingerWidth",
+      "BollingerPosition",
+      "Atr14Pct",
+      "ObvEmaDist",
+      "VwapDist",
+      "RollingVwapDist",
+      "VolumeZscore",
+      "VolumeSma20Ratio",
+      "TakerBuyRatio",
+      "RecentPatternEncoded",
+      "HourSin",
+      "HourCos",
+      "DayOfWeekSin",
+      "DayOfWeekCos",
+      "IsWeekend"
+    ],
+    "featureGroups": {
+      "price_returns": [
+        "CloseZscore",
+        "ClosePctChange1",
+        "ClosePctChange4",
+        "ClosePctChange24"
+      ],
+      "candle_geometry": [
+        "HighLowRangePct",
+        "BodyPct",
+        "UpperWickPct",
+        "LowerWickPct"
+      ],
+      "trend": [
+        "Ema12Dist",
+        "Ema26Dist",
+        "Ema50Dist",
+        "Ema200Dist",
+        "Sma50Dist",
+        "Sma200Dist"
+      ],
+      "momentum": [
+        "Rsi14",
+        "Rsi14Slope",
+        "MacdNorm",
+        "MacdSignalNorm",
+        "MacdHistogramNorm"
+      ],
+      "volatility": [
+        "BollingerWidth",
+        "BollingerPosition",
+        "Atr14Pct"
+      ],
+      "volume": [
+        "ObvEmaDist",
+        "VwapDist",
+        "RollingVwapDist",
+        "VolumeZscore",
+        "VolumeSma20Ratio",
+        "TakerBuyRatio"
+      ],
+      "pattern": [
+        "RecentPatternEncoded"
+      ],
+      "time": [
+        "HourSin",
+        "HourCos",
+        "DayOfWeekSin",
+        "DayOfWeekCos",
+        "IsWeekend"
+      ]
+    },
+    "excludedStoredFeatures": {
+      "ActiveRuleCount": "mutable current rule-admin state without point-in-time rule-version lineage"
+    }
+  },
+  "dataProvenance": {
+    "source": "postgresql:WindowClassificationDatasets+PriceTargets",
+    "readOnly": true,
+    "decisionCutoffMs": 1789989222797,
+    "rows": 14319,
+    "firstDecisionMs": 1580774400000,
+    "lastDecisionMs": 1789891200000,
+    "datasetSha256": "4cd1bc3b412bbb2cae78dbca44808525b0461d53039290eb00cd2abf1c6c56f0"
+  },
+  "codeProvenance": {
+    "gitCommit": "a836562f4588055b43fd8e5df4954dde796c84f4",
+    "gitWorkingTree": "dirty",
+    "evaluatorSha256": "8c5ee376d449b47b5f2bc20816cbd59ce9da6d25e475cf0aee130eff231486fb",
+    "researchContractSha256": "670355c9f248bfcc389975b972873c5ab6b48c71295325584e6ed044b74877a5"
+  },
+  "runtimeDependencies": {
+    "python": "3.12.7",
+    "numpy": "2.5.2",
+    "scikitLearn": "1.9.0"
+  },
+  "manifestSha256": "e1ff6a4737d316f04caebdffa29d520e37a44932df6acb3b6eca0627f54746d4"
+}
