@@ -35,9 +35,11 @@ import zipfile
 from datetime import date, datetime, timedelta, timezone
 
 from db_config import get_db_connection, get_db_params
+from trading_config import ACTIVE_SYMBOLS, require_active_symbols
 
 FAPI = "https://fapi.binance.com"
 DUMP = "https://data.binance.vision/data/futures/um/daily/metrics"
+MARKET_TYPE = "usd-m-perpetual"
 
 # Schema is managed by EF Core migration (UnifyFuturesAndPaperTradingSchema).
 # Mỗi nguồn ghi một tập cột; COALESCE để merge nhiều nguồn vào cùng 1 row (5m grid)
@@ -76,20 +78,67 @@ def http_get_json(url, retries=4, timeout=30):
     return None
 
 
-def upsert_rows(cur, symbol, rows, col_map):
-    """rows: list[dict ms_timestamp -> values]; col_map: {json_key: db_col}"""
+def upsert_rows(
+    cur,
+    symbol,
+    rows,
+    col_map,
+    *,
+    source,
+    reconstructed,
+    received_at_utc=None,
+    live_max_lag_ms=None,
+):
+    """Upsert values with conservative point-in-time lineage.
+
+    ``AvailableTimeMs`` is the actual local receipt time, never the source event
+    timestamp. Historical backfills are explicitly reconstructed. If several
+    endpoints merge into one row, availability advances to the latest receipt
+    so an as-of consumer cannot see a later-arriving field too early.
+    """
     if not rows:
         return 0
-    cols = list(col_map.values())
+    received_at_utc = received_at_utc or datetime.now(timezone.utc)
+    available_time_ms = int(received_at_utc.timestamp() * 1000)
+    data_cols = list(col_map.values())
+    lineage_cols = [
+        "SourceEventTimeMs", "ReceivedAtUtc", "AvailableTimeMs",
+        "Source", "MarketType", "IsReconstructed",
+    ]
+    cols = data_cols + lineage_cols
     col_sql = ", ".join(f'"{c}"' for c in cols)
     placeholders = ", ".join(["%s"] * len(cols))
-    updates = ", ".join(f'"{c}" = COALESCE(EXCLUDED."{c}", "FuturesMetrics"."{c}")' for c in cols)
+    data_updates = [
+        f'"{c}" = COALESCE(EXCLUDED."{c}", "FuturesMetrics"."{c}")'
+        for c in data_cols
+    ]
+    new_data_arrives = " OR ".join(
+        f'("FuturesMetrics"."{c}" IS NULL AND EXCLUDED."{c}" IS NOT NULL)'
+        for c in data_cols
+    ) or "FALSE"
+    lineage_updates = [
+        '"SourceEventTimeMs" = COALESCE("FuturesMetrics"."SourceEventTimeMs", EXCLUDED."SourceEventTimeMs")',
+        f'"ReceivedAtUtc" = CASE WHEN "FuturesMetrics"."ReceivedAtUtc" IS NULL THEN EXCLUDED."ReceivedAtUtc" WHEN {new_data_arrives} THEN GREATEST("FuturesMetrics"."ReceivedAtUtc", EXCLUDED."ReceivedAtUtc") ELSE "FuturesMetrics"."ReceivedAtUtc" END',
+        f'"AvailableTimeMs" = CASE WHEN "FuturesMetrics"."AvailableTimeMs" IS NULL THEN EXCLUDED."AvailableTimeMs" WHEN {new_data_arrives} THEN GREATEST("FuturesMetrics"."AvailableTimeMs", EXCLUDED."AvailableTimeMs") ELSE "FuturesMetrics"."AvailableTimeMs" END',
+        f'"Source" = CASE WHEN "FuturesMetrics"."Source" IS NULL OR "FuturesMetrics"."Source" = \'legacy-unknown\' THEN EXCLUDED."Source" WHEN {new_data_arrives} AND "FuturesMetrics"."Source" <> EXCLUDED."Source" THEN \'multiple-binance-sources\' ELSE "FuturesMetrics"."Source" END',
+        '"MarketType" = COALESCE("FuturesMetrics"."MarketType", EXCLUDED."MarketType")',
+        f'"IsReconstructed" = CASE WHEN {new_data_arrives} THEN "FuturesMetrics"."IsReconstructed" OR EXCLUDED."IsReconstructed" ELSE "FuturesMetrics"."IsReconstructed" END',
+    ]
+    updates = ", ".join(data_updates + lineage_updates)
     sql = UPSERT_SQL.format(cols=col_sql, placeholders=placeholders, updates=updates)
 
     # Mỗi row là dữ liệu của 1 nguồn; ON CONFLICT + COALESCE merge vào row chung
     count = 0
     for r in rows:
-        cur.execute(sql, (symbol, *r))
+        event_time_ms = int(r[0])
+        row_reconstructed = bool(reconstructed)
+        if live_max_lag_ms is not None and event_time_ms < available_time_ms - live_max_lag_ms:
+            row_reconstructed = True
+        cur.execute(sql, (
+            symbol, *r,
+            event_time_ms, received_at_utc, available_time_ms,
+            source, MARKET_TYPE, row_reconstructed,
+        ))
         count += 1
     return count
 
@@ -107,7 +156,9 @@ def poll_once(symbol):
     if isinstance(data, list):
         rows = [(int(x["timestamp"]), float(x["sumOpenInterest"]), float(x["sumOpenInterestValue"]))
                 for x in data]
-        n = upsert_rows(cur, symbol, rows, {"a": "OpenInterest", "b": "OpenInterestValue"})
+        n = upsert_rows(cur, symbol, rows, {"a": "OpenInterest", "b": "OpenInterestValue"},
+                        source="binance-usdm-rest/openInterestHist", reconstructed=False,
+                        live_max_lag_ms=15 * 60 * 1000)
         total += n
         print(f"  openInterestHist: {n} rows", flush=True)
 
@@ -115,7 +166,9 @@ def poll_once(symbol):
     data = http_get_json(f"{FAPI}/futures/data/globalLongShortAccountRatio?symbol={symbol}&period=5m&limit=500")
     if isinstance(data, list):
         rows = [(int(x["timestamp"]), float(x["longShortRatio"])) for x in data]
-        n = upsert_rows(cur, symbol, rows, {"a": "GlobalLsRatio"})
+        n = upsert_rows(cur, symbol, rows, {"a": "GlobalLsRatio"},
+                        source="binance-usdm-rest/globalLongShortAccountRatio", reconstructed=False,
+                        live_max_lag_ms=15 * 60 * 1000)
         total += n
         print(f"  globalLongShortAccountRatio: {n} rows", flush=True)
 
@@ -123,7 +176,9 @@ def poll_once(symbol):
     data = http_get_json(f"{FAPI}/futures/data/topLongShortAccountRatio?symbol={symbol}&period=5m&limit=500")
     if isinstance(data, list):
         rows = [(int(x["timestamp"]), float(x["longShortRatio"])) for x in data]
-        n = upsert_rows(cur, symbol, rows, {"a": "TopTraderLsCountRatio"})
+        n = upsert_rows(cur, symbol, rows, {"a": "TopTraderLsCountRatio"},
+                        source="binance-usdm-rest/topLongShortAccountRatio", reconstructed=False,
+                        live_max_lag_ms=15 * 60 * 1000)
         total += n
         print(f"  topLongShortAccountRatio: {n} rows", flush=True)
 
@@ -131,7 +186,9 @@ def poll_once(symbol):
     data = http_get_json(f"{FAPI}/futures/data/topLongShortPositionRatio?symbol={symbol}&period=5m&limit=500")
     if isinstance(data, list):
         rows = [(int(x["timestamp"]), float(x["longShortRatio"])) for x in data]
-        n = upsert_rows(cur, symbol, rows, {"a": "TopTraderLsSumRatio"})
+        n = upsert_rows(cur, symbol, rows, {"a": "TopTraderLsSumRatio"},
+                        source="binance-usdm-rest/topLongShortPositionRatio", reconstructed=False,
+                        live_max_lag_ms=15 * 60 * 1000)
         total += n
         print(f"  topLongShortPositionRatio: {n} rows", flush=True)
 
@@ -139,7 +196,9 @@ def poll_once(symbol):
     data = http_get_json(f"{FAPI}/futures/data/takerlongshortRatio?symbol={symbol}&period=5m&limit=500")
     if isinstance(data, list):
         rows = [(int(x["timestamp"]), float(x["buySellRatio"])) for x in data]
-        n = upsert_rows(cur, symbol, rows, {"a": "TakerBuySellVolRatio"})
+        n = upsert_rows(cur, symbol, rows, {"a": "TakerBuySellVolRatio"},
+                        source="binance-usdm-rest/takerlongshortRatio", reconstructed=False,
+                        live_max_lag_ms=15 * 60 * 1000)
         total += n
         print(f"  takerlongshortRatio: {n} rows", flush=True)
 
@@ -148,7 +207,9 @@ def poll_once(symbol):
     if isinstance(data, list):
         rows = [(int(x["fundingTime"]), float(x["fundingRate"]), float(x.get("markPrice") or 0) or None)
                 for x in data]
-        n = upsert_rows(cur, symbol, rows, {"a": "FundingRate", "b": "MarkPrice"})
+        n = upsert_rows(cur, symbol, rows, {"a": "FundingRate", "b": "MarkPrice"},
+                        source="binance-usdm-rest/fundingRate", reconstructed=False,
+                        live_max_lag_ms=9 * 60 * 60 * 1000)
         total += n
         print(f"  fundingRate: {n} rows", flush=True)
 
@@ -176,7 +237,10 @@ def backfill_funding(symbol, start_date=date(2019, 9, 1)):
             break
         rows = [(int(x["fundingTime"]), float(x["fundingRate"]), float(x.get("markPrice") or 0) or None)
                 for x in data]
-        total += upsert_rows(cur, symbol, rows, {"a": "FundingRate", "b": "MarkPrice"})
+        total += upsert_rows(
+            cur, symbol, rows, {"a": "FundingRate", "b": "MarkPrice"},
+            source="binance-usdm-rest/fundingRate-backfill", reconstructed=True,
+        )
         conn.commit()
         last = int(data[-1]["fundingTime"])
         print(f"  funding ... {datetime.fromtimestamp(last/1000, timezone.utc):%Y-%m-%d} ({total} total)", flush=True)
@@ -249,7 +313,7 @@ def backfill_dump(symbol, from_d, to_d):
             "a": "OpenInterest", "b": "OpenInterestValue",
             "c": "TopTraderLsCountRatio", "d": "TopTraderLsSumRatio",
             "e": "GlobalLsRatio", "f": "TakerBuySellVolRatio",
-        })
+        }, source="binance-vision/usdm-daily-metrics", reconstructed=True)
         if (i + 1) % 50 == 0:
             conn.commit()
             print(f"  dump ... {d} ({i+1}/{len(days)} days, {total} rows)", flush=True)
@@ -264,13 +328,16 @@ def backfill_dump(symbol, from_d, to_d):
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("mode", choices=["poll", "loop", "backfill-funding", "backfill-dump"])
-    p.add_argument("--symbol", "--symbols", dest="symbols", default="BTCUSDT,ETHUSDT,SOLUSDT")
+    p.add_argument("--symbol", "--symbols", dest="symbols", default=",".join(ACTIVE_SYMBOLS))
     p.add_argument("--interval", type=int, default=1800, help="loop interval seconds")
     p.add_argument("--from", dest="from_date", default="2021-01-01")
     p.add_argument("--to", dest="to_date", default=None)
     args = p.parse_args()
 
-    symbol_list = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+    try:
+        symbol_list = require_active_symbols(args.symbols.split(","))
+    except ValueError as exc:
+        p.error(str(exc))
 
     if args.mode == "poll":
         for sym in symbol_list:

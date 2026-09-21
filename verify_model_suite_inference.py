@@ -2,7 +2,7 @@
 """
 Multi-Asset ML Model Suite Inference Verification & Acceptance Benchmark Matrix
 ===============================================================================
-Performs direct inference tests on latest features for BTCUSDT, ETHUSDT, SOLUSDT
+Performs direct inference tests on latest features for BTCUSDT
 across 1h, 4h, 1d timeframes.
 Verifies probability normalization (sum == 1.0) and model version alignment.
 Prints the complete benchmark matrix.
@@ -54,19 +54,6 @@ def main():
         ("BTCUSDT", "4h", 5, "1d", "XGB"),
         ("BTCUSDT", "1d", 5, "1d", "XGB"),
 
-        ("ETHUSDT", "1h", 5, "1h", "XGB"),
-        ("ETHUSDT", "1h", 10, "1h", "XGB"),
-        ("ETHUSDT", "1h", 5, "4h", "XGB"),
-        ("ETHUSDT", "4h", 5, "4h", "XGB"),
-        ("ETHUSDT", "4h", 5, "1d", "XGB"),
-        ("ETHUSDT", "1d", 5, "1d", "XGB"),
-
-        ("SOLUSDT", "1h", 5, "1h", "XGB"),
-        ("SOLUSDT", "1h", 10, "1h", "XGB"),
-        ("SOLUSDT", "1h", 5, "4h", "XGB"),
-        ("SOLUSDT", "4h", 5, "4h", "XGB"),
-        ("SOLUSDT", "4h", 5, "1d", "XGB"),
-        ("SOLUSDT", "1d", 5, "1d", "XGB"),
     ]
 
     benchmark_rows = []

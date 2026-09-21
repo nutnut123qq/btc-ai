@@ -373,15 +373,6 @@ def main():
     conn = psycopg2.connect(**get_db_params())
     
     tasks = [
-        # ETHUSDT
-        ("ETHUSDT", "1d"),
-        ("ETHUSDT", "4h"),
-        ("ETHUSDT", "1h"),
-        # SOLUSDT
-        ("SOLUSDT", "1d"),
-        ("SOLUSDT", "4h"),
-        ("SOLUSDT", "1h"),
-        # BTCUSDT
         ("BTCUSDT", "1d"),
         ("BTCUSDT", "4h"),
         ("BTCUSDT", "1h"),
@@ -392,7 +383,7 @@ def main():
         build_features_and_targets_for_timeframe(conn, sym, tf)
 
     conn.close()
-    print("\nDataset building completed for all active assets and timeframes!")
+    print("\nDataset building completed for BTC production timeframes!")
 
 if __name__ == "__main__":
     main()

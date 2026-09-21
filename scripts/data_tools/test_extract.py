@@ -65,5 +65,4 @@ def test_symbol(sym):
 
     print(f"[{sym}] Extracted valid windows: {valid_windows}")
 
-test_symbol("ETHUSDT")
-test_symbol("SOLUSDT")
+test_symbol("BTCUSDT")

@@ -11,7 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from graph import build_ta_graph
 from prediction_service import ModelArtifactIncompatibleError, list_available_models, predict_from_vector
-from trading_config import DEFAULT_TIMEFRAME
+from trading_config import DEFAULT_TIMEFRAME, require_active_symbol
 
 load_dotenv()
 
@@ -191,9 +191,10 @@ async def capabilities():
 @app.post("/api/predict")
 async def predict(request: PredictRequest):
     try:
+        symbol = require_active_symbol(request.symbol)
         result = predict_from_vector(
             feature_vector=request.feature_vector,
-            symbol=request.symbol,
+            symbol=symbol,
             timeframe=request.timeframe,
             window_size=request.window_size,
             horizon=request.horizon,

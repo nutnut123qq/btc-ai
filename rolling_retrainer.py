@@ -55,12 +55,13 @@ sys.path.insert(0, str(AI_DIR))
 
 from db_config import get_db_params
 from train_baseline_advanced import infer_feature_names
+from trading_config import ACTIVE_SYMBOLS, require_active_symbols, require_active_timeframe
 
 MODELS_DIR = AI_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 REGISTRY_PATH = MODELS_DIR / "model_registry.json"
 
-DEFAULT_SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+DEFAULT_SYMBOLS = ACTIVE_SYMBOLS
 LABEL_REMAP = {-1: 0, 0: 1, 1: 2}
 LABEL_INV = {0: -1, 1: 0, 2: 1}
 ARTIFACT_RUNTIME_PACKAGES = ("joblib", "scikit-learn", "xgboost")
@@ -769,7 +770,7 @@ def run_rolling_retrainer_suite(
 
 def main():
     parser = argparse.ArgumentParser(description="Walk-Forward Rolling Retrainer Pipeline")
-    parser.add_argument("--symbols", default="BTCUSDT,ETHUSDT,SOLUSDT", help="Comma-separated list of symbols")
+    parser.add_argument("--symbols", default=",".join(DEFAULT_SYMBOLS), help="Comma-separated list of symbols")
     parser.add_argument("--timeframe", default="4h", help="Timeframe (default: 4h)")
     parser.add_argument("--ws", type=int, default=5, help="Window size (default: 5)")
     parser.add_argument("--horizon", default="4h", help="Prediction horizon (default: 4h)")
@@ -780,7 +781,11 @@ def main():
     parser.add_argument("--force", action="store_true", help="Force retraining even if drift threshold is not exceeded")
     
     args = parser.parse_args()
-    symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
+    try:
+        symbols = require_active_symbols(args.symbols.split(","))
+        args.timeframe = require_active_timeframe(args.timeframe)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     run_rolling_retrainer_suite(
         symbols=symbols,

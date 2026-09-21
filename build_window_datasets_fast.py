@@ -14,7 +14,7 @@ if sys.stderr.encoding != 'utf-8':
 WINDOW_SIZES = [10, 15, 20, 25]
 HORIZONS = ["1h", "4h", "1d"]
 TIMEFRAMES = ["1h", "4h"]
-SYMBOLS = ["ETHUSDT", "SOLUSDT"]
+SYMBOLS = ["BTCUSDT"]
 
 def interval_to_ms(tf):
     if tf == "1h":

@@ -2,7 +2,7 @@
 """
 Multi-Asset Multi-Timeframe ML Model Training & Isotonic Calibration Suite
 ==========================================================================
-Trains and calibrates XGBoost & LightGBM models for BTCUSDT, ETHUSDT, SOLUSDT
+Trains and calibrates XGBoost & LightGBM models for BTCUSDT
 across 1h, 4h, and 1d timeframes with strict temporal partitions.
 Computes Brier Score, ECE, OOS Accuracy, F1-Score, and Honest OOS Win Rate.
 Saves .joblib and .json files into ai/models/.
@@ -262,7 +262,7 @@ def train_and_calibrate(symbol, timeframe, ws, horizon, model_type="XGB"):
 
 def main():
     print("=" * 110)
-    print("        STARTING MULTI-ASSET MULTI-TIMEFRAME ML TRAINING & ISOTONIC CALIBRATION")
+    print("        STARTING BTC MULTI-TIMEFRAME ML TRAINING & ISOTONIC CALIBRATION")
     print("=" * 110)
 
     configs = [
@@ -273,22 +273,6 @@ def main():
         ("BTCUSDT", "1h", 10, "1h", "XGB"),
         ("BTCUSDT", "1h", 5, "4h", "XGB"),
         ("BTCUSDT", "1d", 5, "1d", "XGB"),
-        
-        # ETHUSDT
-        ("ETHUSDT", "4h", 5, "4h", "XGB"),
-        ("ETHUSDT", "4h", 5, "1d", "XGB"),
-        ("ETHUSDT", "1h", 5, "1h", "XGB"),
-        ("ETHUSDT", "1h", 10, "1h", "XGB"),
-        ("ETHUSDT", "1h", 5, "4h", "XGB"),
-        ("ETHUSDT", "1d", 5, "1d", "XGB"),
-        
-        # SOLUSDT
-        ("SOLUSDT", "4h", 5, "4h", "XGB"),
-        ("SOLUSDT", "4h", 5, "1d", "XGB"),
-        ("SOLUSDT", "1h", 5, "1h", "XGB"),
-        ("SOLUSDT", "1h", 10, "1h", "XGB"),
-        ("SOLUSDT", "1h", 5, "4h", "XGB"),
-        ("SOLUSDT", "1d", 5, "1d", "XGB"),
     ]
 
     all_results = []

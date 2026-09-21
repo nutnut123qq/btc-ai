@@ -32,6 +32,14 @@ sys.path.insert(0, str(AI_DIR))
 
 from db_config import get_db_params, get_db_connection
 from prediction_service import load_model
+from execution_engine import (
+    ExecutionContract,
+    ExecutionCostSpec,
+    ExecutionMode,
+    calculate_round_trip,
+    evaluate_decision_gate,
+    resolve_tp_sl_bar,
+)
 from trading_config import (
     DEFAULT_SYMBOL,
     ACTIVE_SYMBOLS,
@@ -64,7 +72,8 @@ from trading_config import (
     VOLATILITY_HALT_THRESHOLD,
     MAX_CONSECUTIVE_LOSSES,
     CIRCUIT_BREAKER_COOLDOWN_HOURS,
-    ALTCOIN_VOLATILITY_HALT_BARS,
+    require_active_symbol,
+    require_active_symbols,
 )
 
 FEATURE_COLS = [
@@ -78,6 +87,14 @@ FEATURE_COLS = [
 ]
 
 _UNAVAILABLE_MODELS: set[str] = set()
+FORWARD_PAPER_MODE = "forward-paper"
+REPLAY_MODE = "replay"
+PAPER_EXECUTION_CONTRACT = ExecutionContract(
+    mode=ExecutionMode.SPOT_REFERENCE_DERIVATIVE_SIMULATION,
+    price_source_market="binance-spot-btcusdt",
+    capital_fraction_per_trade=1.0,
+)
+PAPER_EXECUTION_COSTS = ExecutionCostSpec(FEE_BPS, SLIPPAGE_BPS)
 
 
 def log(msg: str):
@@ -93,9 +110,16 @@ def get_conn():
 
 
 def ensure_schema(conn, cur):
-    """Ensure PaperTrades schema includes StrategyType and related columns."""
+    """Ensure raw-SQL paper records disclose their decision/fill semantics."""
     cur.execute("""
         ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "StrategyType" character varying(50);
+        ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "SignalAvailableTimeMs" bigint;
+        ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "ExecutionMode" character varying(80);
+        ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "PriceSourceMarket" character varying(80);
+        ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "CostSpecJson" text;
+        ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "AmbiguousExit" boolean NOT NULL DEFAULT FALSE;
+        ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "RunMode" character varying(40);
+        ALTER TABLE "PaperTrades" ADD COLUMN IF NOT EXISTS "ExecutionProvenanceJson" text;
     """)
     conn.commit()
 
@@ -113,6 +137,7 @@ def push_system_alert(cur, conn, alert_type: str, title: str, message: str, pric
 
 def get_model_for_symbol(symbol: str) -> Tuple[Optional[Any], str]:
     """Load only a registry-promoted, runtime-compatible model."""
+    symbol = require_active_symbol(symbol)
     if symbol in _UNAVAILABLE_MODELS:
         return None, "unavailable"
     try:
@@ -323,7 +348,7 @@ def get_ensemble_direction(symbol: str) -> Optional[str]:
 
 
 def check_btc_confluence(cur, bar_open_ms: int, target_side: str) -> Tuple[bool, str]:
-    """BTC Confluence Gatekeeper for Altcoin trades (ETH, SOL)."""
+    """BTC confluence gate for the BTC research strategy."""
     cur.execute(
         """SELECT "Rsi14" FROM "TechnicalIndicators"
            WHERE "Symbol"='BTCUSDT' AND "Timeframe"='4h' AND "OpenTimeMs"=%s""",
@@ -471,14 +496,14 @@ def trigger_circuit_breaker_halt(conn, cur, bar_open_ms: int, reason: str) -> in
         exit_price = float(kl[3]) if kl else float(ep)
         ep_val = float(ep)
         pos_val = float(pos_size)
-        fee = FEE_BPS / 1e4
-        slip = SLIPPAGE_BPS / 1e4
-
-        if side == "long":
-            gross_ret = (exit_price * (1 - slip) - ep_val * (1 + slip)) / (ep_val * (1 + slip))
-        else:
-            gross_ret = (ep_val * (1 - slip) - exit_price * (1 + slip)) / (ep_val * (1 + slip))
-        net_ret = gross_ret - 2 * fee
+        fill = calculate_round_trip(
+            side=side,
+            entry_reference_price=ep_val,
+            exit_reference_price=exit_price,
+            costs=PAPER_EXECUTION_COSTS,
+            contract=PAPER_EXECUTION_CONTRACT,
+        )
+        net_ret = fill.net_return
 
         cur.execute(
             """UPDATE "PaperTrades"
@@ -528,19 +553,95 @@ def check_btc_volatility_halt(cur, conn, bar_open_ms: int) -> Tuple[bool, str, f
     return False, "", max_vol
 
 
+def close_entry_bar_barrier_if_hit(
+    conn,
+    cur,
+    *,
+    trade_id: int,
+    symbol: str,
+    strategy_type: str,
+    side: str,
+    entry_price: float,
+    entry_time_ms: int,
+    position_size: float,
+    bar_high: float,
+    bar_low: float,
+    take_profit: float | None,
+    stop_loss: float | None,
+) -> bool:
+    """Resolve TP/SL after a next-open fill using the remainder of that bar."""
+    barrier = resolve_tp_sl_bar(
+        side=side,
+        bar_high=bar_high,
+        bar_low=bar_low,
+        take_profit=take_profit,
+        stop_loss=stop_loss,
+        scenario="conservative",
+    )
+    if not barrier.triggered:
+        return False
+    fill = calculate_round_trip(
+        side=side,
+        entry_reference_price=entry_price,
+        exit_reference_price=float(barrier.exit_price),
+        costs=PAPER_EXECUTION_COSTS,
+        contract=PAPER_EXECUTION_CONTRACT,
+    )
+    cur.execute(
+        """UPDATE "PaperTrades"
+           SET "Status"='closed', "ExitPrice"=%s, "ExitTimeMs"=%s,
+               "NetReturn"=%s, "ExitReason"=%s, "AmbiguousExit"=%s, "ClosedAtUtc"=NOW()
+           WHERE "Id"=%s""",
+        (barrier.exit_price, entry_time_ms, fill.net_return, barrier.reason, barrier.ambiguous, trade_id),
+    )
+    conn.commit()
+    balance_now = get_portfolio_balance(cur)
+    cur.execute('UPDATE "PaperTrades" SET "BalanceAfter"=%s WHERE "Id"=%s', (balance_now, trade_id))
+    conn.commit()
+    ambiguity = " AMBIGUOUS_CONSERVATIVE" if barrier.ambiguous else ""
+    log(
+        f"[{symbol}] CLOSED ENTRY BAR #{trade_id} ({strategy_type} {side.upper()}) | "
+        f"Exit=${float(barrier.exit_price):,.2f} ({barrier.reason}{ambiguity}) | "
+        f"Net={fill.net_return*100:+.2f}% | PnL=${position_size*fill.net_return:+.2f}"
+    )
+    return True
+
+
+def build_replay_execution_provenance(signal_bar_open_ms: int) -> str:
+    """Serialize durable evidence that a historical fill is not paper evidence."""
+    return json.dumps(
+        {
+            "runMode": REPLAY_MODE,
+            "decisionSource": "database-finalized-kline-replay",
+            "signalBarOpenTimeMs": signal_bar_open_ms,
+            "fillSource": "next-stored-bar-open",
+            "isProspectivePaperEvidence": False,
+        },
+        sort_keys=True,
+    )
+
+
 # ── Step Single Symbol Bar with Adaptive Strategy Routing ───────────────────
 
-def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
-    """Executes a single bar step for a symbol with trailing stops and strategy routing."""
+def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int, *, run_mode: str = REPLAY_MODE):
+    """Execute at this bar open using only the preceding finalized bar.
+
+    ``bar_open_ms`` is the fill-bar timestamp.  The decision bar is the prior
+    4h bar, whose close becomes knowable at exactly this timestamp.
+    """
     tf = "4h"
     tf_ms = 14_400_000
-    fee = FEE_BPS / 1e4
-    slip = SLIPPAGE_BPS / 1e4
+    if run_mode != REPLAY_MODE:
+        raise ValueError("Historical bar stepping is available only in explicit replay mode.")
+    signal_bar_open_ms = bar_open_ms - tf_ms
+    execution_provenance = build_replay_execution_provenance(signal_bar_open_ms)
 
     kl = get_kline(cur, symbol, tf, bar_open_ms)
-    if not kl:
+    signal_kl = get_kline(cur, symbol, tf, signal_bar_open_ms)
+    if not kl or not signal_kl:
         return
     bar_open, bar_high, bar_low, bar_close, bar_vol = [float(x) for x in kl]
+    signal_open, signal_high, signal_low, signal_close, signal_vol = [float(x) for x in signal_kl]
 
     # 1. Manage open trades for this symbol
     cur.execute(
@@ -558,45 +659,38 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
         pos_size = float(pos_size) if pos_size else 0.0
         trade_atr = float(atr_val) if (atr_val is not None and float(atr_val) > 0) else (compute_atr14(cur, symbol, tf, bar_open_ms) or 0.0)
 
-        # Dynamic Trailing Stop for TREND_MOMENTUM
-        if strat_type == "TREND_MOMENTUM" and trade_atr > 0:
-            if side == "long":
-                if bar_high >= entry_price + TRAILING_STOP_ATR_TRIGGER * trade_atr:
-                    candidate_sl = max(entry_price, bar_high - TRAILING_STOP_ATR_DIST * trade_atr)
-                    if sl_price is None or candidate_sl > sl_price:
-                        sl_price = candidate_sl
-                        cur.execute("""UPDATE "PaperTrades" SET "StopLossPrice"=%s WHERE "Id"=%s""", (sl_price, tid))
-                        conn.commit()
-                        log(f"[{symbol}] TRAILING SL UPDATED: #{tid} (LONG) -> ${sl_price:,.2f} (+1.0x ATR Profit Lock)")
-            elif side == "short":
-                if bar_low <= entry_price - TRAILING_STOP_ATR_TRIGGER * trade_atr:
-                    candidate_sl = min(entry_price, bar_low + TRAILING_STOP_ATR_DIST * trade_atr)
-                    if sl_price is None or candidate_sl < sl_price:
-                        sl_price = candidate_sl
-                        cur.execute("""UPDATE "PaperTrades" SET "StopLossPrice"=%s WHERE "Id"=%s""", (sl_price, tid))
-                        conn.commit()
-                        log(f"[{symbol}] TRAILING SL UPDATED: #{tid} (SHORT) -> ${sl_price:,.2f} (+1.0x ATR Profit Lock)")
+        barrier = resolve_tp_sl_bar(
+            side=side,
+            bar_high=bar_high,
+            bar_low=bar_low,
+            take_profit=tp_price,
+            stop_loss=sl_price,
+            scenario="conservative",
+        )
+        exit_price = barrier.exit_price
+        exit_reason = barrier.reason
+        if exit_reason == "SL" and sl_price is not None:
+            if (side == "long" and sl_price >= entry_price) or (side == "short" and sl_price <= entry_price):
+                exit_reason = "TRAILING_SL"
 
-        exit_price = None
-        exit_reason = None
-
-        # Check Stop Loss
-        if sl_price:
-            if side == "long" and bar_low <= sl_price:
-                exit_price = sl_price
-                exit_reason = "TRAILING_SL" if sl_price >= entry_price else "SL"
-            elif side == "short" and bar_high >= sl_price:
-                exit_price = sl_price
-                exit_reason = "TRAILING_SL" if sl_price <= entry_price else "SL"
-
-        # Check Take Profit
-        if exit_price is None and tp_price:
-            if side == "long" and bar_high >= tp_price:
-                exit_price = tp_price
-                exit_reason = "TP"
-            elif side == "short" and bar_low <= tp_price:
-                exit_price = tp_price
-                exit_reason = "TP"
+        # A trailing level inferred from this bar only becomes active on the
+        # next bar.  Updating it after barrier resolution avoids inventing an
+        # intrabar high-before-low (or low-before-high) path.
+        if exit_price is None and strat_type == "TREND_MOMENTUM" and trade_atr > 0:
+            candidate_sl = None
+            if side == "long" and bar_high >= entry_price + TRAILING_STOP_ATR_TRIGGER * trade_atr:
+                candidate_sl = max(entry_price, bar_high - TRAILING_STOP_ATR_DIST * trade_atr)
+                improves = sl_price is None or candidate_sl > sl_price
+            elif side == "short" and bar_low <= entry_price - TRAILING_STOP_ATR_TRIGGER * trade_atr:
+                candidate_sl = min(entry_price, bar_low + TRAILING_STOP_ATR_DIST * trade_atr)
+                improves = sl_price is None or candidate_sl < sl_price
+            else:
+                improves = False
+            if candidate_sl is not None and improves:
+                sl_price = candidate_sl
+                cur.execute("""UPDATE "PaperTrades" SET "StopLossPrice"=%s WHERE "Id"=%s""", (sl_price, tid))
+                conn.commit()
+                log(f"[{symbol}] TRAILING SL UPDATED: #{tid} ({side.upper()}) -> ${sl_price:,.2f} (active next bar)")
 
         # Time horizon timeout (6 bars = 24h)
         bars_held = (bar_open_ms - entry_ms) // tf_ms
@@ -605,19 +699,22 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
             exit_reason = "TIMEOUT"
 
         if exit_price is not None:
-            if side == "long":
-                gross_ret = (exit_price * (1 - slip) - entry_price * (1 + slip)) / (entry_price * (1 + slip))
-            else:
-                gross_ret = (entry_price * (1 - slip) - exit_price * (1 + slip)) / (entry_price * (1 + slip))
-            net_ret = gross_ret - 2 * fee
+            fill = calculate_round_trip(
+                side=side,
+                entry_reference_price=entry_price,
+                exit_reference_price=exit_price,
+                costs=PAPER_EXECUTION_COSTS,
+                contract=PAPER_EXECUTION_CONTRACT,
+            )
+            net_ret = fill.net_return
             pnl_usdt = pos_size * net_ret
 
             cur.execute(
                 """UPDATE "PaperTrades"
                    SET "Status"='closed', "ExitPrice"=%s, "ExitTimeMs"=%s,
-                       "NetReturn"=%s, "ExitReason"=%s, "ClosedAtUtc"=NOW()
+                       "NetReturn"=%s, "ExitReason"=%s, "AmbiguousExit"=%s, "ClosedAtUtc"=NOW()
                    WHERE "Id"=%s""",
-                (exit_price, bar_open_ms, net_ret, exit_reason, tid))
+                (exit_price, bar_open_ms, net_ret, exit_reason, barrier.ambiguous, tid))
             conn.commit()
 
             balance_now = get_portfolio_balance(cur)
@@ -638,14 +735,28 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
     cur.execute(
         """SELECT COUNT(*) FROM "PaperTrades"
            WHERE "Symbol"=%s AND "Timeframe"=%s AND "WindowEndMs"=%s""",
-        (symbol, tf, bar_open_ms))
+        (symbol, tf, signal_bar_open_ms))
     if cur.fetchone()[0] > 0:
         return
 
     # 3. Market Regime Classification
-    regime, regime_info = classify_market_regime(cur, symbol, tf, bar_open_ms)
+    decision_gate = evaluate_decision_gate(
+        model_available=True,
+        signal_bar_closed=True,
+        signal_available_ms=bar_open_ms,
+        decision_ms=bar_open_ms,
+        # The preceding bar's observation becomes available at this close/
+        # next-open boundary, not at its historical opening timestamp.
+        latest_observation_ms=bar_open_ms,
+        max_staleness_ms=tf_ms,
+    )
+    if not decision_gate.allowed:
+        log(f"[{symbol}] ABSTAIN at {bar_open_ms}: {decision_gate.reason}")
+        return
+
+    regime, regime_info = classify_market_regime(cur, symbol, tf, signal_bar_open_ms)
     tech = regime_info.get("tech")
-    atr = tech["atr14"] if (tech and tech.get("atr14", 0) > 0) else (compute_atr14(cur, symbol, tf, bar_open_ms) or 0.0)
+    atr = tech["atr14"] if (tech and tech.get("atr14", 0) > 0) else (compute_atr14(cur, symbol, tf, signal_bar_open_ms) or 0.0)
 
     # ═════════════════════════════════════════════════════════════════════════
     # STRATEGY 1: Momentum Trend-Following (Active in TRENDING_REGIME)
@@ -653,9 +764,10 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
     if regime == "TRENDING_REGIME":
         model, model_file = get_model_for_symbol(symbol)
         if model is None:
+            log(f"[{symbol}] ABSTAIN at {bar_open_ms}: model-unavailable")
             return
 
-        res = build_vector_at(cur, symbol, tf, 5, tf_ms, bar_open_ms)
+        res = build_vector_at(cur, symbol, tf, 5, tf_ms, signal_bar_open_ms)
         if not res:
             return
         _, feat_vec = res
@@ -678,16 +790,11 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
                 log(f"[{symbol}] [TREND_MOMENTUM] SKIP {side.upper()} at {bar_open_ms} -> BTC Confluence Block ({conf_reason})")
                 return
 
-        ens_dir = get_ensemble_direction(symbol)
-        if ens_dir:
-            if side == "long" and ens_dir == "Bearish":
-                log(f"[{symbol}] [TREND_MOMENTUM] SKIP LONG at {bar_open_ms} -> Bearish Ensemble")
-                return
-            if side == "short" and ens_dir == "Bullish":
-                log(f"[{symbol}] [TREND_MOMENTUM] SKIP SHORT at {bar_open_ms} -> Bullish Ensemble")
-                return
+        # The backend ensemble endpoint is current-state only and has no
+        # point-in-time lookup.  Historical replay must not query it.
+        ens_dir = None
 
-        entry_price = bar_close
+        entry_price = bar_open
         tp_mult = TREND_MOMENTUM_TP_ATR_MULT
         sl_mult = TREND_MOMENTUM_SL_ATR_MULT
 
@@ -708,16 +815,36 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
             """INSERT INTO "PaperTrades" (
                    "Symbol", "Timeframe", "WindowEndMs", "EntryTimeMs", "ExitTimeMs", "EntryPrice",
                    "Side", "Status", "Confidence", "ModelVersion", "PositionSizeUsdt",
-                   "TakeProfitPrice", "StopLossPrice", "Atr14", "EnsembleDirection", "StrategyType", "CreatedAtUtc"
-               ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                   "TakeProfitPrice", "StopLossPrice", "Atr14", "EnsembleDirection", "StrategyType",
+                   "SignalAvailableTimeMs", "ExecutionMode", "PriceSourceMarket", "CostSpecJson",
+                   "RunMode", "ExecutionProvenanceJson", "CreatedAtUtc"
+               ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                RETURNING "Id" """,
-            (symbol, tf, bar_open_ms, bar_open_ms, 0, entry_price, side, conf,
-             model_file, pos_size, tp_price, sl_price, atr, ens_dir, "TREND_MOMENTUM"))
+            (symbol, tf, signal_bar_open_ms, bar_open_ms, 0, entry_price, side, conf,
+             model_file, pos_size, tp_price, sl_price, atr, ens_dir, "TREND_MOMENTUM",
+             bar_open_ms, PAPER_EXECUTION_CONTRACT.mode.value,
+             PAPER_EXECUTION_CONTRACT.price_source_market, json.dumps(PAPER_EXECUTION_COSTS.to_dict()),
+             REPLAY_MODE, execution_provenance))
         new_id = cur.fetchone()[0]
         conn.commit()
 
         qty = pos_size / entry_price if entry_price > 0 else 0.0
         log(f"[{symbol}] OPENED [TREND_MOMENTUM] Trade #{new_id} ({side.upper()}) | Entry=${entry_price:,.2f} | Conf={conf*100:.1f}% | ADX={regime_info['adx14']:.1f} | Kelly={kelly_frac*100:.1f}% (${pos_size:,.2f}) | TP=${tp_price or 0:,.2f} | SL=${sl_price or 0:,.2f}")
+        close_entry_bar_barrier_if_hit(
+            conn,
+            cur,
+            trade_id=new_id,
+            symbol=symbol,
+            strategy_type="TREND_MOMENTUM",
+            side=side,
+            entry_price=entry_price,
+            entry_time_ms=bar_open_ms,
+            position_size=pos_size,
+            bar_high=bar_high,
+            bar_low=bar_low,
+            take_profit=tp_price,
+            stop_loss=sl_price,
+        )
 
     # ═════════════════════════════════════════════════════════════════════════
     # STRATEGY 2: Mean-Reversion Choppy Engine (Active in CHOPPY_SIDEWAYS_REGIME)
@@ -730,17 +857,17 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
         bb_upper = tech["bb_upper"]
         bb_middle = tech["bb_middle"]
         bb_lower = tech["bb_lower"]
-        entry_price = bar_close
+        entry_price = bar_open
 
         side = None
         # Mean Reversion Long: Price <= Lower BB and RSI < 30 (Oversold bounce)
-        if (bar_close <= bb_lower or bar_low <= bb_lower) and rsi < MEAN_REVERSION_RSI_OVERSOLD:
+        if (signal_close <= bb_lower or signal_low <= bb_lower) and rsi < MEAN_REVERSION_RSI_OVERSOLD:
             side = "long"
             tp_price = bb_middle if bb_middle > entry_price else (entry_price + MEAN_REVERSION_TP_ATR_MULT * atr if atr else entry_price * 1.02)
             sl_price = entry_price - MEAN_REVERSION_SL_ATR_MULT * atr if atr else entry_price * 0.98
 
         # Mean Reversion Short: Price >= Upper BB and RSI > 70 (Overbought reversal)
-        elif (bar_close >= bb_upper or bar_high >= bb_upper) and rsi > MEAN_REVERSION_RSI_OVERBOUGHT:
+        elif (signal_close >= bb_upper or signal_high >= bb_upper) and rsi > MEAN_REVERSION_RSI_OVERBOUGHT:
             side = "short"
             tp_price = bb_middle if bb_middle < entry_price else (entry_price - MEAN_REVERSION_TP_ATR_MULT * atr if atr else entry_price * 0.98)
             sl_price = entry_price + MEAN_REVERSION_SL_ATR_MULT * atr if atr else entry_price * 1.02
@@ -755,21 +882,60 @@ def step_symbol_bar(conn, cur, symbol: str, bar_open_ms: int):
             """INSERT INTO "PaperTrades" (
                    "Symbol", "Timeframe", "WindowEndMs", "EntryTimeMs", "ExitTimeMs", "EntryPrice",
                    "Side", "Status", "Confidence", "ModelVersion", "PositionSizeUsdt",
-                   "TakeProfitPrice", "StopLossPrice", "Atr14", "EnsembleDirection", "StrategyType", "CreatedAtUtc"
-               ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                   "TakeProfitPrice", "StopLossPrice", "Atr14", "EnsembleDirection", "StrategyType",
+                   "SignalAvailableTimeMs", "ExecutionMode", "PriceSourceMarket", "CostSpecJson",
+                   "RunMode", "ExecutionProvenanceJson", "CreatedAtUtc"
+               ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'open', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                RETURNING "Id" """,
-            (symbol, tf, bar_open_ms, bar_open_ms, 0, entry_price, side, 1.0,
-             "MeanReversionEngine", pos_size, tp_price, sl_price, atr, None, "MEAN_REVERSION"))
+            (symbol, tf, signal_bar_open_ms, bar_open_ms, 0, entry_price, side, 1.0,
+             "MeanReversionEngine", pos_size, tp_price, sl_price, atr, None, "MEAN_REVERSION",
+             bar_open_ms, PAPER_EXECUTION_CONTRACT.mode.value,
+             PAPER_EXECUTION_CONTRACT.price_source_market, json.dumps(PAPER_EXECUTION_COSTS.to_dict()),
+             REPLAY_MODE, execution_provenance))
         new_id = cur.fetchone()[0]
         conn.commit()
 
         qty = pos_size / entry_price if entry_price > 0 else 0.0
         log(f"[{symbol}] OPENED [MEAN_REVERSION] Trade #{new_id} ({side.upper()}) | Entry=${entry_price:,.2f} | RSI={rsi:.1f} | ADX={regime_info['adx14']:.1f} | Fixed NAV={MEAN_REVERSION_POSITION_PCT*100:.0f}% (${pos_size:,.2f}) | TP=${tp_price:,.2f} | SL=${sl_price:,.2f}")
+        close_entry_bar_barrier_if_hit(
+            conn,
+            cur,
+            trade_id=new_id,
+            symbol=symbol,
+            strategy_type="MEAN_REVERSION",
+            side=side,
+            entry_price=entry_price,
+            entry_time_ms=bar_open_ms,
+            position_size=pos_size,
+            bar_high=bar_high,
+            bar_low=bar_low,
+            take_profit=tp_price,
+            stop_loss=sl_price,
+        )
 
 
-# ── Multi-Asset Execution Loop with Circuit Breaker ─────────────────────────
+# ── Explicit replay and prospective-paper run modes ─────────────────────────
 
-def run_multi_asset_loop(symbols: List[str] = None, start_ms: Optional[int] = None, end_ms: Optional[int] = None):
+def run_forward_paper(symbols: List[str] | None = None) -> None:
+    """Fail closed until a timestamped, observable live fill path exists.
+
+    Finalized candles are stored only after their next bar has already opened.
+    Reading that open from history later would be a replay, not forward paper
+    evidence.  The scheduled/default command therefore performs no database
+    connection and no trade write until a live quote/order-observation recorder
+    is implemented.
+    """
+    checked_symbols = require_active_symbols(symbols or ACTIVE_SYMBOLS)
+    raise RuntimeError(
+        "Forward paper trading is unavailable: the project has no timestamped live fill "
+        f"recorder for {', '.join(checked_symbols)}. No trade was written. "
+        "Use --mode replay explicitly for historical simulation; replay rows are not "
+        "prospective paper evidence."
+    )
+
+
+def run_replay_loop(symbols: List[str] = None, start_ms: Optional[int] = None, end_ms: Optional[int] = None):
+    """Run historical simulation; never classify its rows as forward paper."""
     symbols = symbols or ACTIVE_SYMBOLS
     conn = get_conn()
     cur = conn.cursor()
@@ -800,8 +966,6 @@ def run_multi_asset_loop(symbols: List[str] = None, start_ms: Optional[int] = No
     log(f"Evaluating {len(bar_times)} 4h cycles across {len(symbols)} symbols from {datetime.fromtimestamp(start_ms/1000, timezone.utc)} to {datetime.fromtimestamp(end_ms/1000, timezone.utc)}")
 
     circuit_breaker_halt_until_ms = 0
-    altcoin_volatility_halt_until_ms = 0
-
     for t in bar_times:
         # Check active Circuit Breaker status
         if t < circuit_breaker_halt_until_ms:
@@ -810,13 +974,14 @@ def run_multi_asset_loop(symbols: List[str] = None, start_ms: Optional[int] = No
             log(f"⏸️ [HALTED_CIRCUIT_BREAKER] Bar {t_dt.strftime('%Y-%m-%d %H:%M')} skipped -> Circuit breaker cooldown active until {halt_dt.strftime('%Y-%m-%d %H:%M')}")
             continue
 
-        # Check BTC Volatility Flash Crash condition
-        is_flash_crash, flash_reason, vol_val = check_btc_volatility_halt(cur, conn, t)
+        # BTC volatility is an observed risk event. Keep trading decisions
+        # fail-closed for the current bar instead of carrying altcoin policy.
+        # At the fill-bar open only the preceding 4h candle is finalized.
+        is_flash_crash, flash_reason, vol_val = check_btc_volatility_halt(cur, conn, t - 14_400_000)
         if is_flash_crash:
-            altcoin_volatility_halt_until_ms = t + ALTCOIN_VOLATILITY_HALT_BARS * 14_400_000
-            halt_dt = datetime.fromtimestamp(altcoin_volatility_halt_until_ms / 1000, timezone.utc)
-            log(f"⚠️ [VOLATILITY HALT] {flash_reason}. Pausing all Altcoin entries until {halt_dt.strftime('%Y-%m-%d %H:%M')}")
+            log(f"⚠️ [VOLATILITY HALT] {flash_reason}. Skipping BTC entries for this bar.")
             push_system_alert(cur, conn, "VOLATILITY_HALT", "[VOLATILITY HALT TRIGGERED]", flash_reason, vol_val)
+            continue
 
         # Evaluate Portfolio Circuit Breaker
         cb_triggered, cb_reason = evaluate_portfolio_circuit_breaker(cur, conn, t)
@@ -826,21 +991,22 @@ def run_multi_asset_loop(symbols: List[str] = None, start_ms: Optional[int] = No
 
         # Execute symbol steps
         for sym in symbols:
-            # Check Altcoin halt during BTC flash crashes
-            if sym != "BTCUSDT" and t < altcoin_volatility_halt_until_ms:
-                log(f"[{sym}] SKIP BAR -> Altcoin entries suspended during BTC flash volatility cooldown")
-                continue
-
-            step_symbol_bar(conn, cur, sym, t)
+            step_symbol_bar(conn, cur, sym, t, run_mode=REPLAY_MODE)
 
     # Print Final Summary Report with Strategy Breakdown
-    print_portfolio_report(cur, symbols)
+    print_portfolio_report(cur, symbols, run_mode=REPLAY_MODE)
     conn.close()
 
 
-def print_portfolio_report(cur, symbols: List[str]):
+# Compatibility for importers only. Callers still have to pass an explicit
+# mode through the CLI; this alias remains truthfully named as replay behavior.
+run_btc_loop = run_replay_loop
+
+
+def print_portfolio_report(cur, symbols: List[str], *, run_mode: str = REPLAY_MODE):
     print("\n" + "=" * 96)
-    print("                 REGIME-ADAPTIVE MULTI-STRATEGY PAPER TRADING REPORT")
+    report_kind = "HISTORICAL REPLAY" if run_mode == REPLAY_MODE else "FORWARD PAPER"
+    print(f"                 REGIME-ADAPTIVE MULTI-STRATEGY {report_kind} REPORT")
     print("=" * 96)
 
     cur.execute("""
@@ -929,7 +1095,7 @@ def run_stress_test_mock():
     ensure_schema(conn, cur)
 
     # 1. Clear trades and seed a realistic initial portfolio
-    cur.execute('DELETE FROM "PaperTrades"')
+    cur.execute('DELETE FROM "PaperTrades" WHERE "Symbol" = %s', (DEFAULT_SYMBOL,))
     conn.commit()
 
     base_time_ms = int(datetime(2026, 8, 15, 0, 0, tzinfo=timezone.utc).timestamp() * 1000)
@@ -959,7 +1125,7 @@ def run_stress_test_mock():
                "Symbol", "Timeframe", "WindowEndMs", "EntryTimeMs", "ExitTimeMs", "EntryPrice",
                "ExitPrice", "Side", "Status", "Confidence", "ModelVersion", "PositionSizeUsdt",
                "NetReturn", "ExitReason", "StrategyType", "BalanceAfter", "CreatedAtUtc", "ClosedAtUtc"
-           ) VALUES ('SOLUSDT', '4h', %s, %s, %s, 80, 78, 'long', 'closed', 0.62,
+           ) VALUES ('BTCUSDT', '4h', %s, %s, %s, 60000, 58500, 'long', 'closed', 0.62,
                      'XGB_test', 2500, -0.025, 'SL', 'TREND_MOMENTUM', 9952.5, NOW(), NOW())""",
         (t2, t2, t2 + 14400000)
     )
@@ -969,7 +1135,7 @@ def run_stress_test_mock():
                "Symbol", "Timeframe", "WindowEndMs", "EntryTimeMs", "ExitTimeMs", "EntryPrice",
                "ExitPrice", "Side", "Status", "Confidence", "ModelVersion", "PositionSizeUsdt",
                "NetReturn", "ExitReason", "StrategyType", "BalanceAfter", "CreatedAtUtc", "ClosedAtUtc"
-           ) VALUES ('ETHUSDT', '4h', %s, %s, %s, 2200, 2107.6, 'long', 'closed', 0.64,
+           ) VALUES ('BTCUSDT', '4h', %s, %s, %s, 60000, 57480, 'long', 'closed', 0.64,
                      'XGB_test', 9000, -0.042, 'SL', 'TREND_MOMENTUM', 9574.5, NOW(), NOW())""",
         (t3, t3, t3 + 14400000)
     )
@@ -1019,34 +1185,61 @@ def run_stress_test_mock():
         log(f"  Type: {alert_row[0]} | Title: {alert_row[1]}")
         log(f"  Message: {alert_row[2]}")
 
-    print_portfolio_report(cur, ["BTCUSDT", "ETHUSDT", "SOLUSDT"])
+    print_portfolio_report(cur, ACTIVE_SYMBOLS, run_mode=REPLAY_MODE)
     conn.close()
 
 
-def main():
+def build_parser():
     import argparse
     parser = argparse.ArgumentParser(description="Regime-Adaptive Multi-Strategy Paper Trader with Circuit Breaker")
+    parser.add_argument(
+        "--mode",
+        choices=[FORWARD_PAPER_MODE, REPLAY_MODE],
+        default=FORWARD_PAPER_MODE,
+        help="Default is fail-closed prospective paper. Historical writes require explicit replay.",
+    )
     parser.add_argument("--symbols", default=",".join(ACTIVE_SYMBOLS), help="Comma-separated symbols")
     parser.add_argument("--start-ms", type=int, default=None, help="Start timestamp in ms")
     parser.add_argument("--end-ms", type=int, default=None, help="End timestamp in ms")
     parser.add_argument("--clear-previous", action="store_true", help="Clear previous paper trades before running")
     parser.add_argument("--mock-stress-test", action="store_true", help="Run Circuit Breaker Stress-Test Mock scenario")
-    args = parser.parse_args()
+    return parser
+
+
+def main(argv=None):
+    parser = build_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        symbols = require_active_symbols(args.symbols.split(","))
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.mock_stress_test:
+        if args.mode != REPLAY_MODE:
+            parser.error("--mock-stress-test requires --mode replay.")
         run_stress_test_mock()
+        return
+
+    if args.mode == FORWARD_PAPER_MODE:
+        if args.start_ms is not None or args.end_ms is not None or args.clear_previous:
+            parser.error("--start-ms, --end-ms and --clear-previous are replay-only options.")
+        run_forward_paper(symbols)
         return
 
     if args.clear_previous:
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute('DELETE FROM "PaperTrades"')
+        ensure_schema(conn, cur)
+        cur.execute(
+            'DELETE FROM "PaperTrades" WHERE "Symbol" = ANY(%s) AND "RunMode"=%s',
+            (symbols, REPLAY_MODE),
+        )
         conn.commit()
         conn.close()
         log("[INFO] Cleared previous PaperTrades records.")
 
-    symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
-    run_multi_asset_loop(symbols=symbols, start_ms=args.start_ms, end_ms=args.end_ms)
+    run_replay_loop(symbols=symbols, start_ms=args.start_ms, end_ms=args.end_ms)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Stage 2: Train and calibrate ML Champion (XGBoost Calibrated 4h, ws=5, horizon=4h)
-for BTCUSDT, ETHUSDT, and SOLUSDT.
+Train and calibrate the BTCUSDT ML candidate (XGBoost Calibrated 4h, ws=5,
+horizon=4h). The legacy filename is retained so existing local commands do not break.
 """
 import json
 import math
@@ -263,13 +263,13 @@ def train_and_calibrate(symbol: str):
     return meta
 
 def main():
-    print("Training ML Champion Models for Multi-Asset Ecosystem (BTC, ETH, SOL)")
+    print("Training ML Champion Model for BTC")
     results = {}
-    for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT"]:
+    for sym in ["BTCUSDT"]:
         results[sym] = train_and_calibrate(sym)
 
     print("\n" + "=" * 65)
-    print("ALL MODELS (BTC, ETH, SOL) TRAINED AND SAVED SUCCESSFULLY!")
+    print("BTC MODEL TRAINED AND SAVED SUCCESSFULLY!")
     print("=" * 65)
 
 if __name__ == "__main__":

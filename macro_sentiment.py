@@ -23,6 +23,7 @@ from typing import Dict, List, Optional, Tuple
 
 import psycopg2
 from db_config import get_db_connection, get_db_params
+from trading_config import ACTIVE_SYMBOLS, require_active_symbols
 
 if sys.stdout.encoding != "utf-8":
     try:
@@ -246,9 +247,10 @@ def save_sentiment_snapshot_db(
 
 
 def run_sentiment_analysis(
-    symbols: List[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+    symbols: Optional[List[str]] = None,
     save_db: bool = True,
 ) -> Dict[str, Dict]:
+    symbols = require_active_symbols(symbols or ACTIVE_SYMBOLS)
     conn = get_db_connection()
 
     print("\n" + "=" * 80)
@@ -340,10 +342,14 @@ def print_acceptance_report(results: Dict[str, Dict]):
 
 def main():
     parser = argparse.ArgumentParser(description="Macro Sentiment & Multi-Source Ingestion Engine")
-    parser.add_argument("--symbols", nargs="+", default=["BTCUSDT", "ETHUSDT", "SOLUSDT"], help="Symbols to analyze")
+    parser.add_argument("--symbols", nargs="+", default=ACTIVE_SYMBOLS, help="Symbols to analyze")
     parser.add_argument("--no-save", action="store_true", help="Do not save snapshots to database")
     parser.add_argument("--report", action="store_true", default=True, help="Print acceptance report")
     args = parser.parse_args()
+    try:
+        args.symbols = require_active_symbols(args.symbols)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     results = run_sentiment_analysis(
         symbols=args.symbols,

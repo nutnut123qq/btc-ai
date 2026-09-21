@@ -13,7 +13,7 @@ def test_pipeline_1d():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # 1. Fetch 1d ETHUSDT
+    # 1. Fetch 1d BTCUSDT
     session = requests.Session()
     adapter = requests.adapters.HTTPAdapter(pool_connections=10, pool_maxsize=10)
     session.mount('https://', adapter)
@@ -25,7 +25,7 @@ def test_pipeline_1d():
     start_times = list(range(start_ms, now_ms, chunk_span))
     raw_candles = []
     for st in start_times:
-        url = f"https://api.binance.com/api/v3/klines?symbol=ETHUSDT&interval=1d&startTime={st}&limit=1000"
+        url = f"https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1d&startTime={st}&limit=1000"
         resp = session.get(url, timeout=10)
         if resp.status_code == 200:
             raw_candles.extend(resp.json())
@@ -43,7 +43,7 @@ def test_pipeline_1d():
     kline_records = []
     for c in sorted_candles:
         kline_records.append((
-            "ETHUSDT", "1d", int(c[0]), int(c[6]),
+            "BTCUSDT", "1d", int(c[0]), int(c[6]),
             float(c[1]), float(c[2]), float(c[3]), float(c[4]), float(c[5]),
             float(c[7]), int(c[8]), float(c[9]), float(c[10])
         ))
@@ -61,11 +61,11 @@ def test_pipeline_1d():
     print("Inserted/Verified Klines in DB.")
 
     # 2. Compute Technical Indicators
-    # Load all klines for ETHUSDT 1d from DB
+    # Load all klines for BTCUSDT 1d from DB
     cur.execute("""
         SELECT "OpenTimeMs", "Open", "High", "Low", "Close", "Volume"
         FROM "Klines"
-        WHERE "Symbol" = 'ETHUSDT' AND "Timeframe" = '1d'
+        WHERE "Symbol" = 'BTCUSDT' AND "Timeframe" = '1d'
         ORDER BY "OpenTimeMs" ASC;
     """)
     rows = cur.fetchall()
@@ -85,7 +85,7 @@ def test_pipeline_1d():
     ti_records = []
     for i in range(n):
         ti_records.append((
-            "ETHUSDT", "1d", int(df['OpenTimeMs'].iloc[i]),
+            "BTCUSDT", "1d", int(df['OpenTimeMs'].iloc[i]),
             to_float_or_none(ti_dict['Rsi14'][i]),
             to_float_or_none(ti_dict['Ema12'][i]),
             to_float_or_none(ti_dict['Ema26'][i]),
@@ -125,11 +125,11 @@ def test_pipeline_1d():
     conn.commit()
     print("Inserted/Verified TechnicalIndicators in DB.")
 
-    cur.execute('SELECT COUNT(*) FROM "Klines" WHERE "Symbol" = \'ETHUSDT\' AND "Timeframe" = \'1d\'')
+    cur.execute('SELECT COUNT(*) FROM "Klines" WHERE "Symbol" = \'BTCUSDT\' AND "Timeframe" = \'1d\'')
     k_cnt = cur.fetchone()[0]
-    cur.execute('SELECT COUNT(*) FROM "TechnicalIndicators" WHERE "Symbol" = \'ETHUSDT\' AND "Timeframe" = \'1d\'')
+    cur.execute('SELECT COUNT(*) FROM "TechnicalIndicators" WHERE "Symbol" = \'BTCUSDT\' AND "Timeframe" = \'1d\'')
     ti_cnt = cur.fetchone()[0]
-    print(f"Final Count for ETHUSDT 1d: Klines = {k_cnt}, TechnicalIndicators = {ti_cnt}")
+    print(f"Final Count for BTCUSDT 1d: Klines = {k_cnt}, TechnicalIndicators = {ti_cnt}")
 
     cur.close()
     conn.close()

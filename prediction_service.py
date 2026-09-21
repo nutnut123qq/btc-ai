@@ -11,7 +11,7 @@ from typing import Any
 
 import joblib
 import numpy as np
-from trading_config import ACTIVE_PRODUCTION_TIMEFRAMES
+from trading_config import ACTIVE_PRODUCTION_TIMEFRAMES, require_active_symbol
 
 MODELS_DIR = Path(__file__).with_name("models")
 REGISTRY_PATH = MODELS_DIR / "model_registry.json"
@@ -66,6 +66,7 @@ def _resolve_active_artifact(
     horizon: str,
     model_name: str | None = None,
 ) -> tuple[Path, dict]:
+    symbol = require_active_symbol(symbol)
     if timeframe not in ACTIVE_PRODUCTION_TIMEFRAMES:
         allowed = ", ".join(ACTIVE_PRODUCTION_TIMEFRAMES)
         raise ValueError(f"Inactive production timeframe '{timeframe}'. Allowed: {allowed}.")

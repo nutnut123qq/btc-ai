@@ -15,13 +15,21 @@ Production-like runs must not use `--reload`. `LLM_PROVIDER=none` disables only
 LLM explanations. Model inference is reported available only when an `active`
 registry artifact has a complete manifest (artifact hash, feature-schema
 version/hash, class mapping, and exact runtime library versions). The current
-BTCUSDT, ETHUSDT, and SOLUSDT are currently quarantined. The rebuilt BTC
-artifact has technical lineage, but an independent temporal audit showed that
-it does not beat the recent majority baseline and collapses on the directional
-classes. ETH and SOL still lack provable local training provenance. A model is
+BTCUSDT is currently quarantined. The rebuilt BTC artifact has technical
+lineage, but an independent temporal audit showed that it does not beat the
+recent majority baseline and collapses on the directional classes. A model is
 servable only after its manifest contains complete dataset/label provenance and
 a passing independent-window promotion gate; `/api/predict` and the paper
 trader otherwise fail closed instead of guessing or loading a legacy fallback.
+
+`paper_trader.py` defaults to `--mode forward-paper`. That mode currently exits
+non-zero without opening the database or writing a trade because the service has
+no timestamped live-fill recorder. This prevents a stored finalized candle from
+being filled retroactively at an already elapsed bar open and mislabeled as
+prospective paper evidence. Historical simulation requires an explicit
+`--mode replay`; replay rows persist `RunMode=replay` plus provenance declaring
+that they are not prospective paper results. Scheduled tasks must use only
+`--mode forward-paper`.
 
 To update dependencies, create a clean Python 3.12 virtual environment, install
 `requirements.txt`, run all CI commands, then regenerate `requirements.lock.txt`

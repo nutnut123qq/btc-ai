@@ -10,8 +10,8 @@ if sys.stdout.encoding != 'utf-8':
 if sys.stderr.encoding != 'utf-8':
     sys.stderr.reconfigure(encoding='utf-8')
 
-TIMEFRAMES = ["1d", "4h", "1h", "15m", "5m"]
-SYMBOLS = ["ETHUSDT", "SOLUSDT"]
+TIMEFRAMES = ["1d", "4h", "1h"]
+SYMBOLS = ["BTCUSDT"]
 
 def mine_smc_for_symbol_tf(conn, symbol, timeframe, lookback=20000):
     cur = conn.cursor()

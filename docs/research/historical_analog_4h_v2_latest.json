@@ -1,0 +1,190 @@
+{
+  "symbol": "BTCUSDT",
+  "timeframe": "4h",
+  "manifest": {
+    "contractVersion": "btc-technical-research-v1",
+    "experiment": "historical-analog-walk-forward",
+    "symbol": "BTCUSDT",
+    "timeframe": "4h",
+    "signalBarState": "closed",
+    "decisionTime": "after-signal-bar-close",
+    "outcomePriceBasis": "signal-close-to-future-close",
+    "costs": {
+      "feePerSideBps": 10.0,
+      "slippagePerSideBps": 5.0,
+      "totalPerSideBps": 15.0,
+      "roundTripBps": 30.0,
+      "roundTripReturnFraction": 0.003,
+      "roundTripPctPoints": 0.3,
+      "role": "classification-dead-zone-floor; no fill or net-PnL claim"
+    },
+    "parameters": {
+      "windowSize": 15,
+      "neighbourCount": 50,
+      "candidateLookbackBars": 20000,
+      "evaluationPoints": 250,
+      "economicDeadZoneFloorPctPoints": 0.3,
+      "atrDeadZoneMultiplier": 0.25,
+      "representation": "returns_shape_v2_signed",
+      "minimumMeanSimilarity": 0.72,
+      "minimumEvidenceSamples": 200,
+      "minimumCoverage": 0.2,
+      "bootstrap": {
+        "method": "paired-circular-moving-block",
+        "repetitions": 1000,
+        "blockSizeQueries": 12,
+        "randomSeed": 17
+      }
+    },
+    "dataProvenance": {
+      "source": "PostgreSQL table \"Klines\"",
+      "orderedBy": "OpenTimeMs ASC",
+      "rowCount": 14730,
+      "firstOpenTimeMs": 1577836800000,
+      "lastOpenTimeMs": 1789948800000,
+      "decisionCutoffMs": 1789976217839,
+      "finalizedCandlePredicate": "CloseTimeMs <= decisionCutoffMs",
+      "contentSha256": "0b4e02d6bd59cbd02de77c4c8fdcd51c5c2ba0e9d6c54f3fb077c128c4972d99"
+    },
+    "codeProvenance": {
+      "gitCommit": "2914046abe9858b8dd68af64f6605838c4662076",
+      "dirtyRelativeToCommit": true,
+      "implementationContentSha256": "5d4304cf4faf40828d113388fbfbc0419a6a5ac87f1e034ae053f898b3ee3291",
+      "fileSha256": {
+        "historical_analog_walkforward.py": "67bdfea588315355df144deb033c772598b92485632370b3eab2847eeead719b",
+        "research_contract.py": "670355c9f248bfcc389975b972873c5ab6b48c71295325584e6ed044b74877a5",
+        "trading_config.py": "b8fd14b39d6f0c9f5f6a3f9077ff8c70be3d74977b02a6f8f66d06fc8ad9dfbc",
+        "db_config.py": "22fe55cb9fd02271a280ca26402a8534ed26d768eb61a87c17e926dec7142ddb"
+      }
+    },
+    "runtimeDependencies": {
+      "python": "3.12.7",
+      "numpy": "2.5.2",
+      "psycopg2-binary": "2.9.12"
+    },
+    "manifestSha256": "7603005ff27d6d7d31d296ec234834b167c5dcc7db6a797cf067b7bbc748fb28"
+  },
+  "method": "historical-analog-returns-shape-v2",
+  "representation": "returns_shape_v2_signed",
+  "declaredTrialFamily": [
+    "returns_shape_v1_legacy",
+    "returns_shape_v2_signed"
+  ],
+  "rankingMethod": "cosine-similarity-desc-point-in-time",
+  "evaluation": "chronological-walk-forward-fixed-parameters",
+  "parametersTunedOnEvaluationPeriod": false,
+  "querySpacingBars": 21,
+  "candidateFutureStrictlyBeforeQuery": true,
+  "maximumCandidateFutureOffsetBars": -1,
+  "selectedNeighboursNonOverlapping": true,
+  "minimumSelectedStartGapBars": 21,
+  "attemptedQueries": 250,
+  "evaluatedQueries": 36,
+  "abstainedLowQuality": 214,
+  "acceptedQueryCoverage": 0.144,
+  "meanAcceptedSimilarity": 0.7280941562188997,
+  "acceptedQueryEndTimesMs": [
+    1714867200000,
+    1716076800000,
+    1722124800000,
+    1723636800000,
+    1725451200000,
+    1726963200000,
+    1728475200000,
+    1731196800000,
+    1739664000000,
+    1741478400000,
+    1742688000000,
+    1744502400000,
+    1745107200000,
+    1747526400000,
+    1748433600000,
+    1752969600000,
+    1755388800000,
+    1762646400000,
+    1766880000000,
+    1768089600000,
+    1769601600000,
+    1771416000000,
+    1772625600000,
+    1773532800000,
+    1774137600000,
+    1775347200000,
+    1775649600000,
+    1776254400000,
+    1778371200000,
+    1779278400000,
+    1780185600000,
+    1780790400000,
+    1783209600000,
+    1783814400000,
+    1785931200000,
+    1787443200000
+  ],
+  "horizons": {
+    "1": {
+      "evaluated": 36,
+      "analogAccuracy": 0.4166666666666667,
+      "rollingCandidateMajorityAccuracy": 0.4722222222222222,
+      "baselineProvenance": "majority label among all eligible, contiguous candidates inside the configured rolling lookback; evaluated on the same accepted query timestamps",
+      "accuracyLift": -0.05555555555555555,
+      "accuracyLift95PctInterval": {
+        "method": "paired-circular-moving-block",
+        "pointEstimate": -0.05555555555555555,
+        "lower": -0.1111111111111111,
+        "upper": 0.0,
+        "samples": 36,
+        "repetitions": 1000,
+        "blockSize": 12
+      },
+      "directionalAccuracy": 0.2,
+      "directionalCoverageWithinAcceptedQueries": 0.1388888888888889,
+      "evidenceStatus": "insufficient_evidence"
+    },
+    "3": {
+      "evaluated": 36,
+      "analogAccuracy": 0.4166666666666667,
+      "rollingCandidateMajorityAccuracy": 0.3333333333333333,
+      "baselineProvenance": "majority label among all eligible, contiguous candidates inside the configured rolling lookback; evaluated on the same accepted query timestamps",
+      "accuracyLift": 0.08333333333333333,
+      "accuracyLift95PctInterval": {
+        "method": "paired-circular-moving-block",
+        "pointEstimate": 0.08333333333333333,
+        "lower": -0.027777777777777776,
+        "upper": 0.2222222222222222,
+        "samples": 36,
+        "repetitions": 1000,
+        "blockSize": 12
+      },
+      "directionalAccuracy": 0.4375,
+      "directionalCoverageWithinAcceptedQueries": 0.8888888888888888,
+      "evidenceStatus": "insufficient_evidence"
+    },
+    "6": {
+      "evaluated": 36,
+      "analogAccuracy": 0.3333333333333333,
+      "rollingCandidateMajorityAccuracy": 0.5,
+      "baselineProvenance": "majority label among all eligible, contiguous candidates inside the configured rolling lookback; evaluated on the same accepted query timestamps",
+      "accuracyLift": -0.16666666666666666,
+      "accuracyLift95PctInterval": {
+        "method": "paired-circular-moving-block",
+        "pointEstimate": -0.16666666666666666,
+        "lower": -0.2222222222222222,
+        "upper": -0.1111111111111111,
+        "samples": 36,
+        "repetitions": 1000,
+        "blockSize": 12
+      },
+      "directionalAccuracy": 0.34285714285714286,
+      "directionalCoverageWithinAcceptedQueries": 0.9722222222222222,
+      "evidenceStatus": "insufficient_evidence"
+    }
+  },
+  "passesAllReferenceGates": false,
+  "decision": "insufficient_evidence",
+  "limitations": [
+    "Cost is used only as a classification dead-zone floor; returns are not a fill simulation.",
+    "OHLC bars cannot establish intrabar execution ordering.",
+    "A supported interval is evidence for further validation, not live-trading approval."
+  ]
+}

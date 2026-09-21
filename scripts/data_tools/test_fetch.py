@@ -36,7 +36,7 @@ def fetch_chunk(symbol, interval, start_time_ms, limit=1000):
             time.sleep(0.5 * (attempt + 1))
     return []
 
-def test_fetch_parallel(symbol="ETHUSDT", interval="1d", start_ms=1577836800000):
+def test_fetch_parallel(symbol="BTCUSDT", interval="1d", start_ms=1577836800000):
     now_ms = int(time.time() * 1000)
     intv_ms = INTERVAL_MS[interval]
     chunk_span_ms = 1000 * intv_ms
@@ -57,4 +57,4 @@ def test_fetch_parallel(symbol="ETHUSDT", interval="1d", start_ms=1577836800000)
     print(f"Fetched {len(all_candles)} candles in {t1 - t0:.2f}s.")
 
 if __name__ == "__main__":
-    test_fetch_parallel("ETHUSDT", "1d")
+    test_fetch_parallel("BTCUSDT", "1d")

@@ -19,7 +19,7 @@ cur.execute("""
 bar_times = [r[0] for r in cur.fetchall()]
 
 print(f"Total 4h cycles from Aug 1: {len(bar_times)}")
-for sym, thr in [("BTCUSDT", 0.61), ("ETHUSDT", 0.50), ("SOLUSDT", 0.50)]:
+for sym, thr in [("BTCUSDT", 0.61)]:
     m, _ = get_model_for_symbol(sym)
     trigs = 0
     for t in bar_times:

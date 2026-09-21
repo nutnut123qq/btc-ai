@@ -30,6 +30,12 @@ import psycopg2
 from psycopg2.extras import execute_values
 
 from db_config import get_db_connection, get_db_params
+from trading_config import (
+    ACTIVE_SYMBOLS,
+    ACTIVE_PRODUCTION_TIMEFRAMES,
+    require_active_symbols,
+    require_active_timeframe,
+)
 
 if sys.stdout.encoding != "utf-8":
     try:
@@ -484,7 +490,7 @@ def save_liquidation_snapshot(
 # ==============================================================================
 
 def run_liquidation_analysis(
-    symbols: List[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+    symbols: Optional[List[str]] = None,
     timeframe: str = "1h",
     lookback: int = 500,
     bin_step_pct: float = 0.003,
@@ -493,6 +499,8 @@ def run_liquidation_analysis(
     """
     Chạy phân tích liquidation heatmap cho danh sách các symbols.
     """
+    symbols = require_active_symbols(symbols or ACTIVE_SYMBOLS)
+    timeframe = require_active_timeframe(timeframe)
     engine = LiquidationEngine(bin_step_pct=bin_step_pct)
     results = {}
 
@@ -621,8 +629,8 @@ def print_acceptance_report(results: Dict[str, Dict]):
 
 def main():
     parser = argparse.ArgumentParser(description="Liquidation Levels & Heatmap Engine")
-    parser.add_argument("--symbols", nargs="+", default=["BTCUSDT", "ETHUSDT", "SOLUSDT"], help="Symbols to analyze")
-    parser.add_argument("--timeframe", default="1h", choices=["15m", "1h", "4h", "1d"], help="Timeframe")
+    parser.add_argument("--symbols", nargs="+", default=ACTIVE_SYMBOLS, help="Symbols to analyze")
+    parser.add_argument("--timeframe", default="1h", choices=ACTIVE_PRODUCTION_TIMEFRAMES, help="Timeframe")
     parser.add_argument("--lookback", type=int, default=500, help="Lookback candles")
     parser.add_argument("--bin-step", type=float, default=0.003, help="Bin step pct (default 0.003 = 0.3%%)")
     parser.add_argument("--no-save", action="store_true", help="Do not save snapshots to database")
@@ -631,6 +639,10 @@ def main():
     parser.add_argument("--interval", type=int, default=3600, help="Interval in seconds for loop mode")
 
     args = parser.parse_args()
+    try:
+        args.symbols = require_active_symbols(args.symbols)
+    except ValueError as exc:
+        parser.error(str(exc))
 
     if args.loop:
         print(f"[*] Starting Liquidation Engine loop mode (interval: {args.interval}s)...")

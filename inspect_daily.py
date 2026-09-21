@@ -4,7 +4,7 @@ from db_config import get_db_params
 conn = psycopg2.connect(**get_db_params())
 cur = conn.cursor()
 
-for sym in ["BTCUSDT", "ETHUSDT", "SOLUSDT"]:
+for sym in ["BTCUSDT"]:
     cur.execute('SELECT COUNT(*), MIN("OpenTimeMs"), MAX("OpenTimeMs") FROM "Klines" WHERE "Symbol"=%s AND "Timeframe"=%s', (sym, "1d"))
     k = cur.fetchone()
     cur.execute('SELECT COUNT(*) FROM "TechnicalIndicators" WHERE "Symbol"=%s AND "Timeframe"=%s', (sym, "1d"))

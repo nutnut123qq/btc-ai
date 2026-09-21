@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import psycopg2
 from psycopg2.extras import execute_values
 from db_config import get_db_connection
+from trading_config import ACTIVE_SYMBOLS, require_active_symbol
 
 if sys.stdout.encoding != 'utf-8':
     sys.stdout.reconfigure(encoding='utf-8')
@@ -48,6 +49,7 @@ def download_and_parse_day(symbol, d):
         return []
 
 def backfill_futures_dump_fast(symbol, from_date=date(2021, 1, 1), to_date=None):
+    symbol = require_active_symbol(symbol)
     if to_date is None:
         to_date = datetime.now(timezone.utc).date() - timedelta(days=1)
     
@@ -118,5 +120,5 @@ def backfill_futures_dump_fast(symbol, from_date=date(2021, 1, 1), to_date=None)
     print(f"  > [{symbol}] Insert complete in {time.time() - t1:.2f}s.", flush=True)
 
 if __name__ == "__main__":
-    for sym in ["SOLUSDT", "ETHUSDT"]:
+    for sym in ACTIVE_SYMBOLS:
         backfill_futures_dump_fast(sym)

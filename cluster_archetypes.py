@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-Candle Archetype Clustering — Offline Script
+Candle Archetype Clustering — Legacy Descriptive Library Rebuild
 
 Reads WindowClassificationDatasets from PostgreSQL, clusters windows into archetypes
 using Mini-Batch K-Means, computes outcome statistics, and writes results to
 CandleArchetypes / ArchetypeOutcomes / ArchetypeOccurrences tables.
+
+This script refits on every loaded row and its outcome summaries are in-sample.  It
+must not be presented as predictive evidence.  Use ``archetype_temporal.py`` for a
+training-only frozen version and out-of-sample evaluation.
 
 Usage:
     python cluster_archetypes.py [--timeframe 1h] [--window-sizes 10,15,20,25] [--version 1]
@@ -571,7 +575,9 @@ def main():
     timeframes = [t.strip() for t in args.timeframes.split(",") if t.strip()]
     window_sizes = [int(w.strip()) for w in args.window_sizes.split(",") if w.strip()]
 
-    print(f"Candle Archetype Clustering")
+    print("Candle Archetype Clustering — DESCRIPTIVE REBUILD ONLY")
+    print("WARNING: refits all rows; in-sample outcomes are not predictive evidence.")
+    print("Use archetype_temporal.py for frozen temporal evaluation.")
     print(f"Symbol: {args.symbol}")
     print(f"Timeframes: {timeframes}")
     print(f"Window sizes: {window_sizes}")

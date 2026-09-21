@@ -36,7 +36,7 @@ from trading_config import (
     SPLIT_TIMESTAMP_MS,
     TIMEFRAME_THRESHOLDS,
     TOTAL_COST_PER_SIDE_BPS,
-    TOTAL_ROUNDTRIP_COST_PCT,
+    TOTAL_ROUNDTRIP_COST_FRACTION,
 )
 
 MODELS_DIR = Path(__file__).parent / "models"
@@ -557,7 +557,7 @@ def generate_markdown_report(results: Dict[str, Any]) -> str:
     md.append("# Bitcoin AI Analyst — Out-of-Sample (OOS) Blind Performance Audit\n")
     md.append(f"**Execution Timestamp:** {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S UTC}\n")
     md.append(f"**Out-Of-Sample Start Date:** `2025-01-01 00:00:00 UTC`\n")
-    md.append(f"**Transaction Costs Enforced:** Fee = `{FEE_BPS} bps/side`, Slippage = `{SLIPPAGE_BPS} bps/side` (Roundtrip = `{TOTAL_ROUNDTRIP_COST_PCT*100:.2f}%`)\n\n")
+    md.append(f"**Transaction Costs Enforced:** Fee = `{FEE_BPS} bps/side`, Slippage = `{SLIPPAGE_BPS} bps/side` (Roundtrip = `{TOTAL_ROUNDTRIP_COST_FRACTION*100:.2f}%`)\n\n")
 
     md.append("## 1. Engine B Architecture & Semantics Disclosure\n\n")
     md.append(

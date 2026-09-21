@@ -3,7 +3,7 @@
 Bayesian Hyperparameter Optimization via Optuna (Freqtrade-style Hyperopt)
 ========================================================================
 Performs automated hyperparameter tuning for trading threshold, ATR Take-Profit,
-ATR Stop-Loss, and Max-Hold-Bars across BTCUSDT, ETHUSDT, SOLUSDT on 4h timeframe.
+ATR Stop-Loss, and Max-Hold-Bars for BTCUSDT on the 4h timeframe.
 
 Objective Function:
     Maximize: Sharpe_Ratio * sqrt(Profit_Factor) - 2.0 * max(0, MDD - 0.10)
@@ -33,6 +33,7 @@ optuna.logging.set_verbosity(optuna.logging.WARNING)
 
 from db_config import get_db_params, get_db_connection
 from trading_config import (
+    ACTIVE_SYMBOLS,
     FEE_BPS,
     SLIPPAGE_BPS,
     INITIAL_BALANCE_USDT,
@@ -41,6 +42,7 @@ from trading_config import (
     MAX_KELLY_FRACTION,
     MIN_KELLY_FRACTION,
     KELLY_SAFETY_FACTOR,
+    require_active_symbols,
 )
 
 MODELS_DIR = Path(__file__).parent / "models"
@@ -378,12 +380,15 @@ def optimize_for_symbol(symbol: str, n_trials: int = 30) -> Dict[str, Any]:
 
 def main():
     parser = argparse.ArgumentParser(description="Optuna Hyperparameter Tuner for AIFinance")
-    parser.add_argument("--symbols", default="BTCUSDT,ETHUSDT,SOLUSDT", help="Comma-separated symbols")
+    parser.add_argument("--symbols", default=",".join(ACTIVE_SYMBOLS), help="Comma-separated symbols")
     parser.add_argument("--trials", type=int, default=30, help="Number of trials per symbol")
     parser.add_argument("--out", default=str(OUTPUT_FILE), help="Output JSON path")
     args = parser.parse_args()
 
-    symbols = [s.strip() for s in args.symbols.split(",") if s.strip()]
+    try:
+        symbols = require_active_symbols(args.symbols.split(","))
+    except ValueError as exc:
+        parser.error(str(exc))
     results = {}
 
     for sym in symbols:

@@ -1,7 +1,4 @@
-"""
-Centralized quantitative trading configuration, fee structure, slippage models,
-and data partitioning constants for the Bitcoin & Multi-Asset AI Analyst platform.
-"""
+"""Centralized quantitative trading configuration for the BTC-only platform."""
 
 from typing import Dict, List
 
@@ -9,11 +6,12 @@ from typing import Dict, List
 FEE_BPS: float = 10.0          # Standard exchange taker fee (0.10%)
 SLIPPAGE_BPS: float = 5.0      # Average market slippage for major pairs (0.05%)
 TOTAL_COST_PER_SIDE_BPS: float = FEE_BPS + SLIPPAGE_BPS  # 15.0 bps (0.15%)
-TOTAL_ROUNDTRIP_COST_PCT: float = (TOTAL_COST_PER_SIDE_BPS * 2.0) / 10_000.0  # 0.0030 (0.30%)
+TOTAL_ROUNDTRIP_COST_FRACTION: float = (TOTAL_COST_PER_SIDE_BPS * 2.0) / 10_000.0  # 0.0030 = 0.30%
 
-# Default Market Symbols & Production Candle Timeframes
+# Supported market scope. Keep this policy centralized so scheduled scripts cannot
+# silently recreate data that a database cleanup has removed.
 DEFAULT_SYMBOL: str = "BTCUSDT"
-ACTIVE_SYMBOLS: List[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+ACTIVE_SYMBOLS: List[str] = [DEFAULT_SYMBOL]
 ACTIVE_PRODUCTION_TIMEFRAMES: tuple[str, ...] = ("1h", "4h", "1d")
 DEFAULT_TIMEFRAME: str = "4h"
 # Backwards-compatible name for callers that expose production choices.
@@ -33,17 +31,41 @@ TIMEFRAME_THRESHOLDS: Dict[str, float] = {
 
 # Per-Asset Calibrated Thresholds for 4h (Sniper Calibration & Noise Filtering)
 ASSET_4H_THRESHOLDS: Dict[str, float] = {
-    "BTCUSDT": 0.61,   # Baseline Champion
-    "ETHUSDT": 0.58,   # Sniper Mode (Filters ~90% noise, pushes Win Rate to ~66.7%)
-    "SOLUSDT": 0.55,   # High-Conviction Mode
+    "BTCUSDT": 0.61,
 }
 
 # Asset-Specific Dynamic ATR Multipliers (Wick Buffers)
 ASSET_ATR_SETTINGS: Dict[str, Dict[str, float]] = {
     "BTCUSDT": {"tp_mult": 1.5, "sl_mult": 1.0},
-    "ETHUSDT": {"tp_mult": 1.8, "sl_mult": 1.2},  # Increased buffer against wicks
-    "SOLUSDT": {"tp_mult": 2.2, "sl_mult": 1.5},  # High volatility expansion buffer
 }
+
+
+def require_active_symbol(symbol: str) -> str:
+    """Normalize and reject symbols outside the production data scope."""
+    normalized = symbol.strip().upper()
+    if normalized not in ACTIVE_SYMBOLS:
+        raise ValueError(
+            f"Unsupported symbol '{normalized or symbol}'. Allowed: {', '.join(ACTIVE_SYMBOLS)}."
+        )
+    return normalized
+
+
+def require_active_symbols(symbols: List[str]) -> List[str]:
+    """Validate a CLI symbol list and reject empty lists."""
+    if not symbols:
+        raise ValueError("At least one symbol is required.")
+    return [require_active_symbol(symbol) for symbol in symbols]
+
+
+def require_active_timeframe(timeframe: str) -> str:
+    """Reject candle timeframes outside 1h/4h/1d production scope."""
+    normalized = timeframe.strip().lower()
+    if normalized not in ACTIVE_PRODUCTION_TIMEFRAMES:
+        raise ValueError(
+            f"Inactive production timeframe '{normalized or timeframe}'. "
+            f"Allowed: {', '.join(ACTIVE_PRODUCTION_TIMEFRAMES)}."
+        )
+    return normalized
 
 # Kelly Criterion Constraints (Quarter-Kelly Portfolio Sizing)
 MAX_KELLY_FRACTION: float = 0.25   # Max 25% NAV allocation per trade
@@ -78,5 +100,3 @@ MAX_DAILY_DRAWDOWN: float = 0.04              # 4.0% max loss in rolling 24h win
 VOLATILITY_HALT_THRESHOLD: float = 0.08       # 8.0% candle amplitude / body on 4h BTC bar
 MAX_CONSECUTIVE_LOSSES: int = 4               # Max consecutive losing trades
 CIRCUIT_BREAKER_COOLDOWN_HOURS: int = 24      # Cooldown duration after breaker trigger
-ALTCOIN_VOLATILITY_HALT_BARS: int = 2         # Altcoin entry halt (2 bars = 8h) on BTC flash crash
-

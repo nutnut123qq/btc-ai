@@ -305,8 +305,8 @@ def process_patterns_and_sequences(conn, symbol, timeframe):
 
 def main():
     conn = get_db_connection()
-    tfs = ["1d", "4h", "1h", "30m", "15m", "5m"]
-    for sym in ["ETHUSDT", "SOLUSDT"]:
+    tfs = ["1d", "4h", "1h"]
+    for sym in ["BTCUSDT"]:
         for tf in tfs:
             process_patterns_and_sequences(conn, sym, tf)
     conn.close()

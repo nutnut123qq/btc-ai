@@ -22,7 +22,7 @@ cur.execute("""
 """, (start_ms, end_ms))
 bar_times = [r[0] for r in cur.fetchall()]
 
-for sym in ["ETHUSDT", "SOLUSDT", "BTCUSDT"]:
+for sym in ["BTCUSDT"]:
     model, _ = get_model_for_symbol(sym)
     print(f"\n=== Predictions for {sym} (Threshold=0.61) ===")
     triggered = 0
