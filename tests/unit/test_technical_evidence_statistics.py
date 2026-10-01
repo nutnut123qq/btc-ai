@@ -95,6 +95,8 @@ def test_statistics_spec_is_versioned_deterministic_and_explicit_about_assumptio
     assert first_sha == second_sha
     assert first["specVersion"] == STATISTICS_SCHEMA
     assert first["multipleTesting"]["method"] == "Benjamini-Yekutieli"
+    assert first["multipleTesting"]["declaredQAlpha"] == 0.05
+    assert first["multipleTesting"]["minimumNonOverlappingPairs"] == 20
     assert first["multipleTesting"]["dependenceAssumption"]
     assert len(first["dependence"]["assumptions"]) >= 3
     assert first["sensitivity"]["outcomeDrivenSelectionAllowed"] is False
@@ -211,6 +213,8 @@ def test_empty_ledger_emits_every_declared_no_sample_hypothesis_without_fake_p_v
     assert all(item["status"] == "insufficient_or_no_matched_sample" for item in report["hypotheses"])
     assert all(item["effectSize"]["count"] == 0 for item in report["hypotheses"])
     assert all(item["rawPValue"] is None and item["adjustedQValue"] is None for item in report["hypotheses"])
+    assert all(item["sufficientSample"] is False for item in report["hypotheses"])
+    assert all(item["minimumNonOverlappingPairs"] == 20 for item in report["hypotheses"])
 
 
 def test_same_regime_null_and_summary_count_mismatches_fail_closed():
@@ -265,3 +269,69 @@ def test_benjamini_yekutieli_matches_hand_computed_example():
     assert by_id["a"]["passesDeclaredFdr"] is False
     assert "adjustedQValue" not in by_id["d"]
     assert "passesDeclaredFdr" not in by_id["d"]
+
+
+def test_declared_sufficiency_gate_blocks_tiny_sample_by_pass():
+    # Real-data bug class: a same-sign n=2 hypothesis hits the bootstrap
+    # add-one p-value floor and would inherit passesDeclaredFdr=true through
+    # BY suffix-min tie-sharing. The declared minimumNonOverlappingPairs floor
+    # must block the flag while rawPValue/adjustedQValue stay honest.
+    small_rows = [
+        _row("s1", "FVG_BULL", "causalSmc", 10, _milliseconds(2024, 1, 1), 0.05),
+        _row("s2", "FVG_BULL", "causalSmc", 30, _milliseconds(2024, 2, 1), 0.04),
+    ]
+    large_rows = [
+        _row(
+            f"b{index}", "EMA_BULL_CROSS", "technicalIndicators",
+            100 + 20 * index, _milliseconds(2024 + index // 12, 1 + index % 12, 1), 0.02,
+        )
+        for index in range(20)
+    ]
+    report = build_statistical_evidence(
+        small_rows + large_rows,
+        {
+            "FVG_BULL": _event_summary(2, 0.0005),
+            "EMA_BULL_CROSS": _event_summary(20, 0.0005),
+        },
+        timeframe="1h",
+        horizons=HORIZONS,
+        metrics=METRICS,
+        block_size_events=8,
+        bootstrap_samples=2_000,
+        random_seed=42,
+        sensitivity=_sensitivity(),
+    )
+    assert report["multipleTesting"]["minimumNonOverlappingPairs"] == 20
+    small = next(
+        item for item in report["hypotheses"]
+        if item["hypothesisId"] == "causalSmc:FVG_BULL:6:forwardReturn"
+    )
+    large = next(
+        item for item in report["hypotheses"]
+        if item["hypothesisId"] == "technicalIndicators:EMA_BULL_CROSS:6:forwardReturn"
+    )
+    assert small["status"] == "tested"
+    assert small["rawPValue"] == pytest.approx(0.0005)
+    assert small["adjustedQValue"] <= 0.05  # BY alone would pass this hypothesis
+    assert small["sampleDiagnostics"]["maximumGreedyNonOverlappingOutcomeWindows"] == 2
+    assert small["sufficientSample"] is False
+    assert small["minimumNonOverlappingPairs"] == 20
+    assert small["passesDeclaredFdr"] is False
+    assert large["status"] == "tested"
+    assert large["sampleDiagnostics"]["maximumGreedyNonOverlappingOutcomeWindows"] == 20
+    assert large["sufficientSample"] is True
+    assert large["minimumNonOverlappingPairs"] == 20
+    assert large["passesDeclaredFdr"] is True
+    # The gate applies at every horizon of the under-sampled family.
+    assert all(
+        item["sufficientSample"] is False and item["passesDeclaredFdr"] is False
+        for item in report["hypotheses"]
+        if item["eventType"] == "FVG_BULL" and item["status"] == "tested"
+    )
+    # Identities with no matched rows were never in the BY family: flag stays null.
+    empty = next(
+        item for item in report["hypotheses"]
+        if item["status"] == "insufficient_or_no_matched_sample"
+    )
+    assert empty["passesDeclaredFdr"] is None
+    assert empty["sufficientSample"] is False

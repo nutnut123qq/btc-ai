@@ -55,6 +55,8 @@
     "method": "Benjamini-Yekutieli",
     "target": "false discovery rate",
     "declaredQAlpha": 0.05,
+    "minimumNonOverlappingPairs": 20,
+    "passesDeclaredFdrGate": "passesDeclaredFdr is true only when the Benjamini-Yekutieli adjusted q-value is at or below declaredQAlpha AND sampleDiagnostics.maximumGreedyNonOverlappingOutcomeWindows is at or above minimumNonOverlappingPairs; a tested hypothesis below the declared sufficiency floor keeps its rawPValue and adjustedQValue but reports passesDeclaredFdr false",
     "dependenceAssumption": "valid under arbitrary dependence but conservative",
     "interpretation": "diagnostic only; never a promotion, trading, prediction, or parameter-selection gate"
   },
@@ -69,7 +71,8 @@
       "unique decision times",
       "maximum greedy non-overlapping outcome windows",
       "observations excluded to form the maximum greedy non-overlapping set",
-      "event-order autocorrelation effective sample size"
+      "event-order autocorrelation effective sample size",
+      "sufficientSample flag and the declared minimumNonOverlappingPairs floor it is evaluated against"
     ],
     "independenceClaimed": false
   },

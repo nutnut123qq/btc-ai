@@ -414,14 +414,16 @@ def _source_times_for_smc(row: Mapping[str, Any], interval_ms: int) -> list[int]
     return [origin]
 
 
-def _smc_lifecycle(row: Mapping[str, Any]) -> dict[str, Any] | None:
-    event_type = str(row.get("EventType") or "")
-    high = row.get("HighPrice")
-    low = row.get("LowPrice")
+def _smc_lifecycle(evidence: Mapping[str, Any]) -> dict[str, Any] | None:
+    # Lifecycle levels come from the hash-verified DecisionEvidenceJson so the
+    # zone cannot be altered by mutable row columns outside the decision hash.
+    event_type = str(evidence.get("eventType") or "")
+    high = evidence.get("highPrice")
+    low = evidence.get("lowPrice")
     if high is None or low is None or not event_type.startswith("FVG_"):
         return None
-    high_value = _finite(high, "SmartMoneyStructures.HighPrice")
-    low_value = _finite(low, "SmartMoneyStructures.LowPrice")
+    high_value = _finite(high, "CausalSmartMoneyEvents.DecisionEvidenceJson.highPrice")
+    low_value = _finite(low, "CausalSmartMoneyEvents.DecisionEvidenceJson.lowPrice")
     if low_value >= high_value:
         return None
     if event_type == "FVG_BULL":
@@ -559,7 +561,7 @@ def build_postgresql_snapshot_from_rows(
                 "contentSha256": evidence_sha,
             },
         }
-        lifecycle = _smc_lifecycle(row)
+        lifecycle = _smc_lifecycle(evidence)
         if lifecycle:
             event["lifecycle"] = lifecycle
         events.append(event)

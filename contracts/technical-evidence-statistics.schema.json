@@ -50,10 +50,14 @@
     "dependence": { "type": "object" },
     "multipleTesting": {
       "type": "object",
-      "required": ["method", "declaredQAlpha", "familySizeAllRetained", "testableFamilySize", "interpretation"],
+      "required": [
+        "method", "declaredQAlpha", "minimumNonOverlappingPairs",
+        "familySizeAllRetained", "testableFamilySize", "interpretation"
+      ],
       "properties": {
         "method": { "const": "Benjamini-Yekutieli" },
         "declaredQAlpha": { "type": "number", "minimum": 0, "maximum": 1 },
+        "minimumNonOverlappingPairs": { "type": "integer", "minimum": 1 },
         "familySizeAllRetained": { "type": "integer", "minimum": 0 },
         "testableFamilySize": { "type": "integer", "minimum": 0 },
         "interpretation": { "type": "string" }
@@ -87,7 +91,8 @@
       "required": [
         "hypothesisId", "module", "eventType", "horizonBars", "metric", "status",
         "nullBaseline", "effectSize", "blockBootstrap", "rawPValue", "adjustedQValue",
-        "passesDeclaredFdr", "sampleDiagnostics", "stability"
+        "passesDeclaredFdr", "sufficientSample", "minimumNonOverlappingPairs",
+        "sampleDiagnostics", "stability"
       ],
       "properties": {
         "hypothesisId": { "type": "string" },
@@ -138,6 +143,8 @@
         "rawPValue": { "$ref": "#/$defs/nullableNumber" },
         "adjustedQValue": { "$ref": "#/$defs/nullableNumber" },
         "passesDeclaredFdr": { "type": ["boolean", "null"] },
+        "sufficientSample": { "type": "boolean" },
+        "minimumNonOverlappingPairs": { "type": "integer", "minimum": 1 },
         "sampleDiagnostics": {
           "type": "object",
           "required": [

@@ -226,6 +226,13 @@ def build_statistical_evidence(
         or list(metrics) != spec["scope"]["metrics"]
     ):
         raise ValueError("evaluation configuration disagrees with statistical spec")
+    minimum_non_overlapping = spec["multipleTesting"].get("minimumNonOverlappingPairs")
+    if (
+        not isinstance(minimum_non_overlapping, int)
+        or isinstance(minimum_non_overlapping, bool)
+        or minimum_non_overlapping < 1
+    ):
+        raise ValueError("statistical spec minimumNonOverlappingPairs is missing or invalid")
     declared_families, module_contract_sha = declared_event_families()
     declared_identities = {
         (module, event_type)
@@ -277,6 +284,7 @@ def build_statistical_evidence(
                     not isinstance(raw_p, (int, float)) or not math.isfinite(float(raw_p)) or not 0 <= float(raw_p) <= 1
                 ):
                     raise ValueError("paired statistical summary p-value is invalid")
+                diagnostics = _sample_diagnostics(matched, values, horizon)
                 hypothesis = {
                     "hypothesisId": f"{module}:{event_type}:{horizon}:{metric}",
                     "module": module,
@@ -297,13 +305,22 @@ def build_statistical_evidence(
                     "rawPValue": raw_p,
                     "adjustedQValue": None,
                     "passesDeclaredFdr": None,
-                    "sampleDiagnostics": _sample_diagnostics(matched, values, horizon),
+                    "sufficientSample": diagnostics["maximumGreedyNonOverlappingOutcomeWindows"] >= minimum_non_overlapping,
+                    "minimumNonOverlappingPairs": minimum_non_overlapping,
+                    "sampleDiagnostics": diagnostics,
                     "stability": _stability(list(zip(matched, values)), effect["meanPairedDifference"]),
                 }
                 hypotheses.append(hypothesis)
 
     alpha = float(spec["multipleTesting"]["declaredQAlpha"])
     _benjamini_yekutieli(hypotheses, alpha)
+    # Apply the declared sufficiency gate on top of the BY verdict: a tested
+    # hypothesis below the non-overlapping-pair floor keeps its honest
+    # rawPValue/adjustedQValue but reports passesDeclaredFdr false. Untested
+    # hypotheses were never admitted to the BY family and keep None.
+    for item in hypotheses:
+        if item["status"] == "tested":
+            item["passesDeclaredFdr"] = bool(item["passesDeclaredFdr"]) and item["sufficientSample"]
     tested = [item for item in hypotheses if item["status"] == "tested"]
     return {
         "schema": STATISTICS_SCHEMA,

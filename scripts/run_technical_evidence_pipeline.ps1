@@ -8,6 +8,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $AiRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
+
+$OpsCommon = Join-Path $AiRoot "..\backend\ops\common.ps1"
 $Python = Join-Path $AiRoot "venv/Scripts/python.exe"
 if (-not (Test-Path -LiteralPath $Python)) {
     throw "AI virtual-environment Python was not found at $Python"
@@ -33,6 +35,11 @@ $StdErrPath = "$LogPath.stderr"
 $PlanJsonPath = "$LogPath.plan.tmp"
 try {
     try {
+        # Prefer the protected ops credential store over the plaintext ai/.env:
+        # after a DB password rotation only secrets.clixml is updated. Kept inside
+        # the try so a corrupt secret store lands in scheduler-status.json
+        # instead of dying silently before status is written.
+        if (Test-Path -LiteralPath $OpsCommon) { . $OpsCommon }
         # Native stderr must not touch the PowerShell error stream: under
         # ErrorActionPreference=Stop even a redirected warning becomes a
         # terminating RemoteException and masks the real exit code.

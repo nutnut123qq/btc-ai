@@ -784,6 +784,37 @@ def test_postgresql_mapping_builds_causal_context_lineage_and_fvg_lifecycle():
     assert report["counts"]["exclusionReasons"]["unknown_availability"] == 1
 
 
+def test_fvg_lifecycle_reads_hash_bound_evidence_not_mutable_row_columns():
+    interval = TIMEFRAME_MS["4h"]
+    klines = [
+        {
+            "OpenTimeMs": index * interval,
+            "CloseTimeMs": (index + 1) * interval - 1,
+            "Open": 100.0,
+            "High": 101.0,
+            "Low": 99.0,
+            "Close": 100.0,
+        }
+        for index in range(20)
+    ]
+    row = _canonical_smc_row(
+        "fvg-zone", "FVG_BULL", 5 * interval, 7 * interval - 1,
+        [4 * interval, 5 * interval, 6 * interval], high=102.0, low=101.0,
+    )
+    # HighPrice/LowPrice row columns sit outside the immutable-decision check;
+    # drifting them must not move the lifecycle zone bound by
+    # DecisionEvidenceJson (which still hashes and validates cleanly).
+    row["HighPrice"] = 250.0
+    row["LowPrice"] = 240.0
+    snapshot = build_postgresql_snapshot_from_rows(
+        "4h", klines[-1]["CloseTimeMs"], klines, [], smc_columns=[],
+        causal_smc_rows=[row], causal_smc_columns=list(row),
+    )
+    event = next(event for event in snapshot["events"] if event["eventId"] == "fvg-zone")
+    assert event["lifecycle"]["touchLevel"] == {"operator": "at_or_below", "price": 102.0}
+    assert event["lifecycle"]["mitigationLevel"] == {"operator": "at_or_below", "price": 101.0}
+
+
 def test_postgresql_mapping_bos_sources_include_full_confirmed_reference_pivot():
     interval = TIMEFRAME_MS["4h"]
     row = _canonical_smc_row(
