@@ -1,0 +1,192 @@
+{
+  "contractVersion": "btc-causal-technical-modules/v1",
+  "hashSemantics": {
+    "definitionsSha256": "SHA-256 of RFC-8259 JSON for the root object after removing goldenFixture, recursively sorting every object key, preserving array order, using compact separators, UTF-8, and rejecting NaN/Infinity",
+    "rawFileSha256": "SHA-256 of the exact UTF-8 file bytes; provenance only, never substituted for definitionsSha256"
+  },
+  "scope": {
+    "symbol": "BTCUSDT",
+    "timeframes": ["1h", "4h", "1d"],
+    "availability": "finalized_bar_close",
+    "gapPolicy": "reset_each_module_at_every_non_contiguous_interval",
+    "claimType": "descriptive_only",
+    "sourceRoles": {
+      "decision": "the candle whose close makes the event available",
+      "defining": "candles required to calculate the event",
+      "confirmation": "right-side candles required to confirm a pivot"
+    }
+  },
+  "sensitivityProtocol": {
+    "method": "one_axis_at_a_time",
+    "baseline": "the fixed parameters in each module.parameters object",
+    "execution": "execute every declared value including the baseline value; apply the same causal availability, overlap deduplication, horizons, and exclusions as the baseline family",
+    "comparison": "report stored, eligible, realized and excluded counts, eligible decision-time Jaccard versus baseline, and mean forwardReturn/MFE/MAE plus delta versus baseline for 1/3/6 bars",
+    "selection": "no winner selection, probability claim, predictive gate, promotion, PnL, or result-based parameter change"
+  },
+  "goldenFixture": {
+    "generator": {
+      "bars": 240,
+      "timeframe": "4h",
+      "intervalMs": 14400000,
+      "integerFormula": {
+        "base": "100000 + 13*i + ((i % 12) - 6)*200",
+        "open": "base",
+        "close": "base + ((i % 5) - 2)*40",
+        "high": "max(open,close) + 100 + (i % 3)*10",
+        "low": "min(open,close) - 110 - (i % 4)*10",
+        "volume": "(1000 + (i % 7)*100) * (4 if i % 29 == 0 else 1)",
+        "openTimeMs": "i*intervalMs",
+        "closeTimeMs": "(i+1)*intervalMs-1"
+      }
+    },
+    "expected": {
+      "definitionsSha256": "921f98700bc2afabdc4cf825563cd3ac23d9cefbf4f7c7c7bc59baf422a46057",
+      "totalEvents": 298,
+      "orderedEventLedgerSha256": "f2f3b8d6ad1106213f699d51e67c4d708af02359cc540ec1756fc711fda2c29d",
+      "crossLanguageSemanticLedgerSha256": "9e526822e3f0f325202b4723325c2a1ff08c9021a98904177045c19dec7cdeba",
+      "eventRowsByModule": {
+        "technicalIndicators": 60,
+        "candlePatterns": 48,
+        "volumeAnomaly": 16,
+        "marketRegime": 38,
+        "fibonacci": 37,
+        "volumeProfile": 63,
+        "confluence": 36
+      }
+    }
+  },
+  "modules": {
+    "technicalIndicators": {
+      "calculationVersion": "finite-window-indicator-events-v1",
+      "parameters": {
+        "emaFast": 12,
+        "emaSlow": 26,
+        "emaSourceBars": 60,
+        "rsiPeriod": 14,
+        "rsiLower": 30.0,
+        "rsiUpper": 70.0,
+        "smaPeriod": 50,
+        "emaSeed": "first close in each finite emaSourceBars window",
+        "emaUpdate": "ema = alpha*close + (1-alpha)*previous, alpha=2/(period+1)",
+        "rsiMethod": "simple mean gain and loss over exactly rsiPeriod close changes; loss zero maps to 100",
+        "crossingRule": "strict transition across the level using previous-window value and current-window value; equality belongs to the pre-cross side",
+        "sourceRule": "union of previous and current calculation windows: EMA 61 candles at emaSourceBars=60, RSI rsiPeriod+2 candles, SMA smaPeriod+1 candles",
+        "eventTypes": ["EMA_BULL_CROSS", "EMA_BEAR_CROSS", "RSI_ENTER_OVERSOLD", "RSI_EXIT_OVERSOLD", "RSI_ENTER_OVERBOUGHT", "RSI_EXIT_OVERBOUGHT", "CLOSE_ABOVE_SMA50", "CLOSE_BELOW_SMA50"]
+      },
+      "sensitivity": {
+        "rsiBands": [[25.0, 75.0], [30.0, 70.0], [35.0, 65.0]],
+        "emaSourceBars": [40, 60, 100]
+      }
+    },
+    "candlePatterns": {
+      "calculationVersion": "causal-candle-shapes-v1",
+      "parameters": {
+        "dojiMaxBodyToRange": 0.1,
+        "longWickToBody": 2.0,
+        "shortOppositeWickToBody": 1.0,
+        "engulfingRequiresOppositeColor": true,
+        "inequalities": {
+          "doji": "abs(close-open)/(high-low) <= dojiMaxBodyToRange",
+          "hammer": "lowerWick >= longWickToBody*max(body,range*1e-6) and upperWick <= shortOppositeWickToBody*max(body,range*1e-6)",
+          "shootingStar": "upperWick >= longWickToBody*max(body,range*1e-6) and lowerWick <= shortOppositeWickToBody*max(body,range*1e-6)",
+          "bullishEngulfing": "previous red, current green, current open <= previous close, current close >= previous open",
+          "bearishEngulfing": "previous green, current red, current open >= previous close, current close <= previous open"
+        },
+        "eventTypes": ["DOJI", "HAMMER_SHAPE", "SHOOTING_STAR_SHAPE", "BULLISH_ENGULFING", "BEARISH_ENGULFING"]
+      },
+      "sensitivity": {
+        "dojiMaxBodyToRange": [0.08, 0.1, 0.12],
+        "longWickToBody": [1.5, 2.0, 2.5]
+      }
+    },
+    "volumeAnomaly": {
+      "calculationVersion": "prior-volume-sma-ratio-v1",
+      "parameters": {
+        "priorBars": 20,
+        "thresholds": [1.5, 2.0],
+        "baseline": "arithmetic mean volume of the 20 immediately preceding contiguous finalized candles; current candle excluded",
+        "eventRule": "emit one event for every threshold whose currentVolume/priorMean >= threshold; nested threshold events are retained",
+        "eventTypes": ["VOLUME_ANOMALY_1_5X", "VOLUME_ANOMALY_2_0X"]
+      },
+      "sensitivity": {
+        "thresholds": [1.25, 1.5, 2.0, 2.5]
+      }
+    },
+    "marketRegime": {
+      "calculationVersion": "six-close-trend-range-volatility-v1",
+      "parameters": {
+        "trendLookbackChanges": 5,
+        "trendMinimumDirectionalChanges": 4,
+        "volatilityPriorBars": 20,
+        "volatilityMinimumPriorBars": 10,
+        "highVolatilityMultiplier": 1.5,
+        "lowVolatilityMultiplier": 0.67,
+        "trendRule": "over up to five prior close changes ending at decision: up when up>=4 and down<=1, down when down>=4 and up<=1, otherwise sideways; fewer than three changes is sideways",
+        "volatilityRule": "trueRange/close compared with median of up to 20 strictly prior contiguous values; fewer than 10 prior values is insufficient_history; high >=1.5*median, low <=0.67*median, otherwise normal",
+        "eventRule": "begin transition evaluation at current index volatilityMinimumPriorBars+1 so both current and previous contexts have sufficient volatility history; emit only when the ordered pair (trend,volatility) differs from the previous contiguous candle",
+        "sourceRule": "continuous union needed to recompute previous and current contexts, from max(segmentStart,currentIndex-volatilityPriorBars-1) through currentIndex inclusive; 12 candles at the first eligible comparison and at most 22 candles",
+        "eventTypes": ["REGIME_BULL_HIGH", "REGIME_BULL_NORMAL", "REGIME_BULL_LOW", "REGIME_BEAR_HIGH", "REGIME_BEAR_NORMAL", "REGIME_BEAR_LOW", "REGIME_SIDEWAYS_HIGH", "REGIME_SIDEWAYS_NORMAL", "REGIME_SIDEWAYS_LOW"],
+        "legacyComparability": "new causal reconstruction; not comparable to legacy ADX/ATR/Bollinger MarketRegimes rows"
+      },
+      "sensitivity": {
+        "volatilityMultipliers": [[1.35, 0.74], [1.5, 0.67], [1.75, 0.57]]
+      }
+    },
+    "fibonacci": {
+      "calculationVersion": "confirmed-alternating-pivot-leg-v1",
+      "parameters": {
+        "pivotRadiusBars": 2,
+        "levels": [0.236, 0.382, 0.5, 0.618, 0.786],
+        "pivotHighRule": "center high strictly greater than every high in center±radius excluding center",
+        "pivotLowRule": "center low strictly lower than every low in center±radius excluding center",
+        "tieRule": "equal extrema are not pivots; if one candle satisfies both strict high and strict low, pivot high wins",
+        "anchorRule": "retain latest confirmed pivot; emit a leg only when the next confirmed pivot has opposite type",
+        "availabilityRule": "pivot at center is available at close of center+radius; event uses that confirmation candle",
+        "sourceRule": "continuous range from priorPivotCenter-radius through currentPivotCenter+radius inclusive, proving both pivots and absence of an intervening confirmed opposite pivot",
+        "eventTypes": ["FIBONACCI_LEG_BULL", "FIBONACCI_LEG_BEAR"]
+      },
+      "sensitivity": {
+        "pivotRadiusBars": [1, 2, 3]
+      }
+    },
+    "volumeProfile": {
+      "calculationVersion": "rolling-typical-price-volume-profile-v1",
+      "parameters": {
+        "windowBars": 100,
+        "bins": 24,
+        "valueAreaFraction": 0.7,
+        "allocation": "full_bar_volume_at_typical_price",
+        "binRule": "uniform [windowLow,windowHigh] bins; typical=(high+low+close)/3; floor index with exact upper bound clamped to last bin; reported level is bin midpoint",
+        "pocTieRule": "lowest bin index wins equal volume",
+        "valueAreaRule": "rank all bins by descending volume then ascending bin index and include until cumulative volume >= valueAreaFraction*total; VAH=max selected midpoint, VAL=min selected midpoint",
+        "eventRule": "compare previous close to previous-window level and current close to current-window level; emit strict below-to-at-or-above or above-to-at-or-below transition",
+        "sourceRule": "union of previous and current rolling windows, exactly windowBars+1 contiguous finalized candles",
+        "eventTypes": ["VOLUME_PROFILE_CLOSE_ABOVE_POC", "VOLUME_PROFILE_CLOSE_BELOW_POC", "VOLUME_PROFILE_CLOSE_ABOVE_VAH", "VOLUME_PROFILE_CLOSE_BELOW_VAH", "VOLUME_PROFILE_CLOSE_ABOVE_VAL", "VOLUME_PROFILE_CLOSE_BELOW_VAL"],
+        "estimateDisclosure": "OHLCV approximation; full bar volume is not an observed price-by-volume distribution"
+      },
+      "sensitivity": {
+        "windowBars": [50, 100, 200],
+        "bins": [16, 24, 32]
+      }
+    },
+    "confluence": {
+      "calculationVersion": "same-close-causal-event-vote-v1",
+      "parameters": {
+        "minimumAlignedModules": 2,
+        "allowedInputs": ["technicalIndicators", "candlePatterns", "volumeAnomaly", "marketRegime", "fibonacci", "volumeProfile"],
+        "voteMapping": {
+          "bullishTokens": ["BULL", "ABOVE", "EXIT_OVERSOLD", "ENTER_OVERSOLD"],
+          "bearishTokens": ["BEAR", "BELOW", "EXIT_OVERBOUGHT", "ENTER_OVERBOUGHT"],
+          "neutralOtherwise": true
+        },
+        "eventRule": "at one finalized close, count distinct aligned module names after token mapping; emit when count >= minimumAlignedModules; no archetype, future outcome, predictive rate or model input is allowed",
+        "conflictRule": "aggregate direction within each module first; a module with both bullish and bearish events at the same close is neutral. If distinct-module bullish and bearish counts both meet the threshold, emit both events in BULL then BEAR order and label aggregate payload direction Conflict",
+        "sourceRule": "union of all source candles from aligned same-close input events",
+        "eventTypes": ["CONFLUENCE_BULL_2PLUS", "CONFLUENCE_BEAR_2PLUS"]
+      },
+      "sensitivity": {
+        "minimumAlignedModules": [2, 3, 4]
+      }
+    }
+  }
+}

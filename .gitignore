@@ -31,3 +31,5 @@ Thumbs.db
 pgvector_pg17.zip
 pgvector_extracted/
 live_snapshots/
+.ops/
+docs/research/evidence/

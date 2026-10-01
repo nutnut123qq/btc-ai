@@ -1,0 +1,81 @@
+{
+  "specVersion": "btc-technical-evidence-statistics/v1",
+  "scope": {
+    "symbol": "BTCUSDT",
+    "timeframes": ["1h", "4h", "1d"],
+    "horizonsBars": [1, 3, 6],
+    "metrics": ["forwardReturn", "mfe", "mae"],
+    "claimType": "descriptive_only"
+  },
+  "declaredEventFamilies": {
+    "technicalModuleSource": "technical-module-contract.json modules.*.parameters.eventTypes",
+    "external": {
+      "causalSmc": [
+        "SWING_HIGH", "SWING_LOW", "BOS_BULL", "BOS_BEAR",
+        "CHOCH_BULL", "CHOCH_BEAR", "FVG_BULL", "FVG_BEAR"
+      ]
+    },
+    "unknownObservedIdentityPolicy": "fail_closed",
+    "zeroEventPolicy": "emit every declared module:eventType identity with null inferential values"
+  },
+  "hypothesisFamily": {
+    "identity": "module:eventType:horizonBars:metric",
+    "null": "mean paired event-minus-control difference equals zero",
+    "familyBoundary": "all testable identities in one timeframe evidence bundle",
+    "retention": "retain positive, negative, non-significant, insufficient-sample, and no-sample identities"
+  },
+  "nullBaseline": {
+    "method": "strict-prior exact-regime matched control without replacement within each focal module:eventType family",
+    "regimeKeys": ["trend", "volatility"],
+    "focalEventExclusion": "exclude control decision bars within plus-or-minus the maximum declared horizon of the same module:eventType family; unrelated technical events do not invalidate the focal-event null",
+    "causality": "control outcome through the maximum declared horizon must be finalized strictly before the event decision",
+    "limitation": "historical regime matching is descriptive and is not a randomized counterfactual"
+  },
+  "dependence": {
+    "intervalMethod": "moving block bootstrap over chronological event-order paired differences",
+    "blockLengthSource": "manifest configuration blockSizeEvents",
+    "nullPValue": "two-sided centered moving-block bootstrap with add-one correction",
+    "assumptions": [
+      "dependence is predominantly local in chronological event order",
+      "paired differences are sufficiently stationary within each module/event family for block resampling",
+      "event-order blocks are not equal-duration calendar-time blocks",
+      "long-memory, sparse-regime, and structural-break effects can invalidate nominal intervals and p-values"
+    ]
+  },
+  "effectSizes": {
+    "reported": [
+      "mean paired difference",
+      "median paired difference",
+      "paired standardized mean difference using sample standard deviation",
+      "common-language positive/tie/negative fractions"
+    ],
+    "zeroVariancePolicy": "standardized effect is unavailable when paired-difference variance is zero"
+  },
+  "multipleTesting": {
+    "method": "Benjamini-Yekutieli",
+    "target": "false discovery rate",
+    "declaredQAlpha": 0.05,
+    "dependenceAssumption": "valid under arbitrary dependence but conservative",
+    "interpretation": "diagnostic only; never a promotion, trading, prediction, or parameter-selection gate"
+  },
+  "stability": {
+    "dimensions": ["yearUtc", "regime"],
+    "statistics": ["count", "mean", "median", "sign"],
+    "selection": "all observed groups retained without minimum-sample or sign filter"
+  },
+  "sampleDiagnostics": {
+    "reported": [
+      "nominal matched pairs",
+      "unique decision times",
+      "maximum greedy non-overlapping outcome windows",
+      "observations excluded to form the maximum greedy non-overlapping set",
+      "event-order autocorrelation effective sample size"
+    ],
+    "independenceClaimed": false
+  },
+  "sensitivity": {
+    "source": "technical-module-contract.json pre-declared one-axis-at-a-time grid",
+    "outcomeDrivenSelectionAllowed": false,
+    "allVariantsRetained": true
+  }
+}

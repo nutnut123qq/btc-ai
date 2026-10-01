@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "btc-technical-evidence-statistics/v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "specSha256", "scope", "claimType", "declaredFamily", "nullBaseline", "dependence",
+    "multipleTesting", "sampleDiagnosticsDefinition", "stabilityDefinition",
+    "sensitivityGrid", "retentionPolicy", "hypotheses"
+  ],
+  "properties": {
+    "schema": { "const": "btc-technical-evidence-statistics/v1" },
+    "specSha256": { "$ref": "#/$defs/sha256" },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["symbol", "timeframe"],
+      "properties": {
+        "symbol": { "const": "BTCUSDT" },
+        "timeframe": { "enum": ["1h", "4h", "1d"] }
+      }
+    },
+    "claimType": { "const": "descriptive_only" },
+    "declaredFamily": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "technicalModuleContractDefinitionsSha256", "moduleEventTypes",
+        "moduleEventTypeIdentityCount", "cartesianHypothesisCount",
+        "unknownObservedIdentityPolicy", "zeroEventPolicy"
+      ],
+      "properties": {
+        "technicalModuleContractDefinitionsSha256": { "$ref": "#/$defs/sha256" },
+        "moduleEventTypes": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" }
+          }
+        },
+        "moduleEventTypeIdentityCount": { "type": "integer", "minimum": 1 },
+        "cartesianHypothesisCount": { "type": "integer", "minimum": 1 },
+        "unknownObservedIdentityPolicy": { "const": "fail_closed" },
+        "zeroEventPolicy": { "const": "retain_with_null_inferential_values" }
+      }
+    },
+    "nullBaseline": { "type": "object" },
+    "dependence": { "type": "object" },
+    "multipleTesting": {
+      "type": "object",
+      "required": ["method", "declaredQAlpha", "familySizeAllRetained", "testableFamilySize", "interpretation"],
+      "properties": {
+        "method": { "const": "Benjamini-Yekutieli" },
+        "declaredQAlpha": { "type": "number", "minimum": 0, "maximum": 1 },
+        "familySizeAllRetained": { "type": "integer", "minimum": 0 },
+        "testableFamilySize": { "type": "integer", "minimum": 0 },
+        "interpretation": { "type": "string" }
+      }
+    },
+    "sampleDiagnosticsDefinition": { "type": "object" },
+    "stabilityDefinition": { "type": "object" },
+    "sensitivityGrid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["declaredGridSha256", "executedVariantIds", "allExecutedVariantsRetained", "outcomeDrivenSelectionAllowed"],
+      "properties": {
+        "declaredGridSha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "executedVariantIds": { "type": "array", "items": { "type": "string" } },
+        "allExecutedVariantsRetained": { "type": ["boolean", "null"] },
+        "outcomeDrivenSelectionAllowed": { "const": false }
+      }
+    },
+    "retentionPolicy": { "type": "string" },
+    "hypotheses": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/hypothesis" }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "nullableNumber": { "type": ["number", "null"] },
+    "hypothesis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "hypothesisId", "module", "eventType", "horizonBars", "metric", "status",
+        "nullBaseline", "effectSize", "blockBootstrap", "rawPValue", "adjustedQValue",
+        "passesDeclaredFdr", "sampleDiagnostics", "stability"
+      ],
+      "properties": {
+        "hypothesisId": { "type": "string" },
+        "module": { "type": "string" },
+        "eventType": { "type": "string" },
+        "horizonBars": { "enum": [1, 3, 6] },
+        "metric": { "enum": ["forwardReturn", "mfe", "mae"] },
+        "status": { "enum": ["tested", "insufficient_or_no_matched_sample"] },
+        "nullBaseline": { "type": "string" },
+        "effectSize": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count", "meanPairedDifference", "medianPairedDifference",
+            "pairedStandardizedMeanDifference", "positiveFraction", "tieFraction", "negativeFraction"
+          ],
+          "properties": {
+            "count": { "type": "integer", "minimum": 0 },
+            "meanPairedDifference": { "$ref": "#/$defs/nullableNumber" },
+            "medianPairedDifference": { "$ref": "#/$defs/nullableNumber" },
+            "pairedStandardizedMeanDifference": { "$ref": "#/$defs/nullableNumber" },
+            "positiveFraction": { "$ref": "#/$defs/nullableNumber" },
+            "tieFraction": { "$ref": "#/$defs/nullableNumber" },
+            "negativeFraction": { "$ref": "#/$defs/nullableNumber" }
+          }
+        },
+        "blockBootstrap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["samples", "blockSizeEvents", "meanDifferenceInterval", "centeredTwoSidedPValue"],
+          "properties": {
+            "samples": { "type": "integer", "minimum": 1 },
+            "blockSizeEvents": { "type": ["integer", "null"], "minimum": 1 },
+            "meanDifferenceInterval": {
+              "anyOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["lower", "upper"],
+                  "properties": { "lower": { "type": "number" }, "upper": { "type": "number" } }
+                }
+              ]
+            },
+            "centeredTwoSidedPValue": { "$ref": "#/$defs/nullableNumber" }
+          }
+        },
+        "rawPValue": { "$ref": "#/$defs/nullableNumber" },
+        "adjustedQValue": { "$ref": "#/$defs/nullableNumber" },
+        "passesDeclaredFdr": { "type": ["boolean", "null"] },
+        "sampleDiagnostics": {
+          "type": "object",
+          "required": [
+            "nominalMatchedPairs", "uniqueDecisionTimes", "maximumGreedyNonOverlappingOutcomeWindows",
+            "observationsExcludedForMaximumNonOverlappingSet", "eventOrderAutocorrelationEffectiveSampleSize", "independenceClaimed"
+          ]
+        },
+        "stability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["yearUtc", "regime"],
+          "properties": {
+            "yearUtc": { "$ref": "#/$defs/stabilityDimension" },
+            "regime": { "$ref": "#/$defs/stabilityDimension" }
+          }
+        }
+      }
+    },
+    "stabilityDimension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["groups", "availableGroupCount", "pooledSignAgreementFraction", "minimumSampleFilter"],
+      "properties": {
+        "groups": { "type": "object" },
+        "availableGroupCount": { "type": "integer", "minimum": 0 },
+        "pooledSignAgreementFraction": { "$ref": "#/$defs/nullableNumber" },
+        "minimumSampleFilter": { "type": "null" }
+      }
+    }
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "btc-technical-evidence-profiles/v1",
+  "title": "BTC technical descriptive evidence profiles",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "selectionPolicy",
+    "breakdowns",
+    "byModule",
+    "coverageAndMissingness",
+    "overlapAndDependence",
+    "negativeResultRetention",
+    "profileDefinitionsSha256"
+  ],
+  "properties": {
+    "schema": { "const": "btc-technical-evidence-profiles/v1" },
+    "profileDefinitionsSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "selectionPolicy": {
+      "type": "object",
+      "required": ["dimensionsDeclaredBeforeOutcomes", "minimumSampleFilter", "outcomeThresholdFilter", "rankingOrWinnerSelection"],
+      "properties": {
+        "dimensionsDeclaredBeforeOutcomes": {
+          "const": ["yearUtc", "timeframe", "regime"]
+        },
+        "minimumSampleFilter": { "type": "null" },
+        "outcomeThresholdFilter": { "type": "null" },
+        "rankingOrWinnerSelection": { "const": false }
+      }
+    },
+    "breakdowns": {
+      "type": "object",
+      "required": ["yearUtc", "timeframe", "regime"],
+      "properties": {
+        "yearUtc": { "$ref": "#/$defs/groupMap" },
+        "timeframe": { "$ref": "#/$defs/groupMap" },
+        "regime": { "$ref": "#/$defs/groupMap" }
+      }
+    },
+    "byModule": { "type": "object" },
+    "coverageAndMissingness": { "type": "object" },
+    "overlapAndDependence": { "type": "object" },
+    "negativeResultRetention": {
+      "type": "object",
+      "required": ["rule", "thresholdSelectionAllowed", "eventTypes", "sensitivityVariants"],
+      "properties": {
+        "rule": { "type": "string" },
+        "thresholdSelectionAllowed": { "const": false },
+        "eventTypes": { "type": "object" },
+        "sensitivityVariants": { "type": "object" }
+      }
+    }
+  },
+  "$defs": {
+    "metric": {
+      "type": "object",
+      "required": ["count", "mean", "median", "minimum", "maximum"],
+      "properties": {
+        "count": { "type": "integer", "minimum": 0 },
+        "mean": { "type": ["number", "null"] },
+        "median": { "type": ["number", "null"] },
+        "minimum": { "type": ["number", "null"] },
+        "maximum": { "type": ["number", "null"] }
+      }
+    },
+    "horizon": {
+      "type": "object",
+      "required": ["eligible", "realized", "unrealized", "nonPositiveForwardReturnCount", "positiveForwardReturnCount", "metrics"],
+      "properties": {
+        "eligible": { "type": "integer", "minimum": 0 },
+        "realized": { "type": "integer", "minimum": 0 },
+        "unrealized": { "type": "integer", "minimum": 0 },
+        "nonPositiveForwardReturnCount": { "type": "integer", "minimum": 0 },
+        "positiveForwardReturnCount": { "type": "integer", "minimum": 0 },
+        "metrics": {
+          "type": "object",
+          "required": ["forwardReturn", "mfe", "mae"],
+          "properties": {
+            "forwardReturn": { "$ref": "#/$defs/metric" },
+            "mfe": { "$ref": "#/$defs/metric" },
+            "mae": { "$ref": "#/$defs/metric" }
+          }
+        }
+      }
+    },
+    "group": {
+      "type": "object",
+      "required": ["stored", "eligible", "excluded", "exclusionReasons", "horizons"],
+      "properties": {
+        "stored": { "type": "integer", "minimum": 0 },
+        "eligible": { "type": "integer", "minimum": 0 },
+        "excluded": { "type": "integer", "minimum": 0 },
+        "exclusionReasons": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "horizons": {
+          "type": "object",
+          "required": ["1", "3", "6"],
+          "properties": {
+            "1": { "$ref": "#/$defs/horizon" },
+            "3": { "$ref": "#/$defs/horizon" },
+            "6": { "$ref": "#/$defs/horizon" }
+          }
+        }
+      }
+    },
+    "groupMap": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/group" }
+    }
+  }
+}

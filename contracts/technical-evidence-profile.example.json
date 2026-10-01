@@ -1,0 +1,55 @@
+{
+  "schema": "btc-technical-evidence-profiles/v1",
+  "selectionPolicy": {
+    "dimensionsDeclaredBeforeOutcomes": ["yearUtc", "timeframe", "regime"],
+    "minimumSampleFilter": null,
+    "outcomeThresholdFilter": null,
+    "rankingOrWinnerSelection": false
+  },
+  "breakdowns": {
+    "yearUtc": {
+      "2026": {
+        "stored": 12,
+        "eligible": 10,
+        "excluded": 2,
+        "exclusionReasons": { "non_contiguous_followup": 2 },
+        "horizons": {
+          "1": { "eligible": 10, "realized": 10, "unrealized": 0, "nonPositiveForwardReturnCount": 6, "positiveForwardReturnCount": 4, "metrics": { "forwardReturn": { "count": 10, "mean": -0.001, "median": -0.0005, "minimum": -0.03, "maximum": 0.02 }, "mfe": { "count": 10, "mean": 0.01, "median": 0.008, "minimum": 0.001, "maximum": 0.04 }, "mae": { "count": 10, "mean": -0.012, "median": -0.009, "minimum": -0.05, "maximum": -0.001 } } },
+          "3": { "eligible": 10, "realized": 9, "unrealized": 1, "nonPositiveForwardReturnCount": 5, "positiveForwardReturnCount": 4, "metrics": { "forwardReturn": { "count": 9, "mean": -0.002, "median": -0.001, "minimum": -0.04, "maximum": 0.03 }, "mfe": { "count": 9, "mean": 0.02, "median": 0.015, "minimum": 0.002, "maximum": 0.06 }, "mae": { "count": 9, "mean": -0.018, "median": -0.013, "minimum": -0.07, "maximum": -0.002 } } },
+          "6": { "eligible": 10, "realized": 8, "unrealized": 2, "nonPositiveForwardReturnCount": 5, "positiveForwardReturnCount": 3, "metrics": { "forwardReturn": { "count": 8, "mean": -0.003, "median": -0.002, "minimum": -0.05, "maximum": 0.04 }, "mfe": { "count": 8, "mean": 0.025, "median": 0.02, "minimum": 0.003, "maximum": 0.08 }, "mae": { "count": 8, "mean": -0.022, "median": -0.016, "minimum": -0.09, "maximum": -0.003 } } }
+        }
+      }
+    },
+    "timeframe": {},
+    "regime": {}
+  },
+  "byModule": {
+    "technicalIndicators": {
+      "breakdowns": { "yearUtc": {}, "timeframe": {}, "regime": {} },
+      "coverageAndMissingness": {},
+      "negativeResultRetention": { "rule": "retain all", "thresholdSelectionAllowed": false, "eventTypes": {}, "sensitivityVariants": {} }
+    }
+  },
+  "coverageAndMissingness": {
+    "candles": { "rows": 1000, "firstOpenTimeMs": 0, "lastOpenTimeMs": 3596400000, "gapCount": 1, "estimatedMissingBars": 2, "irregularSpacingCount": 0, "segmentCount": 2 },
+    "events": { "rows": 12, "withoutDecisionTime": 2, "withoutUsableContext": 0, "withoutKnownLineage": 0, "unmatchedHistoricalControls": 3, "horizonMissingness": { "1": 0, "3": 1, "6": 2 } },
+    "modules": { "technicalIndicators": { "status": "evaluable", "eventRowsInLedger": 12, "declaredEventRows": 12 } }
+  },
+  "overlapAndDependence": {
+    "unit": "distinct module presence at the same finalized decision close",
+    "eligibleDecisionCloses": 8,
+    "baseModuleCountPerClose": { "1": 5, "2": 3 },
+    "uniqueDecisionClosesByModule": { "technicalIndicators": 5 },
+    "pairwiseSameCloseCounts": { "candlePatterns|technicalIndicators": 3 },
+    "confluence": { "eligibleRows": 3, "coLocatedBaseModuleCount": { "2": 3 }, "rowsWithFewerThanTwoBaseModules": 0 },
+    "independenceClaimed": false,
+    "limitation": "same-close and forward-outcome overlap create dependence; counts are descriptive and are not independent trials"
+  },
+  "negativeResultRetention": {
+    "rule": "retain every declared event type and every pre-declared sensitivity variant regardless of sign, sample size, or availability",
+    "thresholdSelectionAllowed": false,
+    "eventTypes": { "technicalIndicators:EMA_BULL_CROSS": { "module": "technicalIndicators", "eventType": "EMA_BULL_CROSS", "stored": 12, "eligible": 10, "realizedAtMaxHorizon": 8, "meanForwardReturnAtMaxHorizon": -0.003, "retentionClassification": "non_positive_mean_retained" } },
+    "sensitivityVariants": { "technicalIndicators:rsiBands=30_70": { "eligible": 10, "realizedAtMaxHorizon": 8, "meanForwardReturnAtMaxHorizon": -0.004, "retentionClassification": "non_positive_mean_retained" } }
+  },
+  "profileDefinitionsSha256": "c69a4ca29db32d007da82d19562533d9f096b1398e367b3c1f608c657286bd91"
+}
