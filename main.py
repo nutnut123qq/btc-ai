@@ -15,7 +15,7 @@ from trading_config import DEFAULT_TIMEFRAME, require_active_symbol
 
 load_dotenv()
 
-# LLM_PROVIDER: "none" | "ollama" (default) | "gemini" | "blackbox"
+# LLM_PROVIDER: "none" | "ollama" (default) | "gemini" | "blackbox" | "openrouter"
 # Ollama: OLLAMA_MODEL (default qwen2.5:1.5b — fits ~3GB RAM), OLLAMA_BASE_URL, optional OLLAMA_NUM_CTX
 # Gemini: GOOGLE_API_KEY, optional GEMINI_MODEL (default gemini-3.8-flash)
 # Blackbox: BLACKBOX_API_KEY, optional BLACKBOX_BASE_URL (default https://api.blackbox.ai).
@@ -96,7 +96,9 @@ def _provider_capability() -> tuple[str, bool, str | None]:
         return provider, False, "Gemini API key is not configured."
     if provider == "blackbox" and not (os.getenv("BLACKBOX_API_KEY") or "").strip():
         return provider, False, "Blackbox API key is not configured."
-    if provider not in {"ollama", "gemini", "blackbox"}:
+    if provider == "openrouter" and not (os.getenv("OPENROUTER_API_KEY") or "").strip():
+        return provider, False, "OpenRouter API key is not configured."
+    if provider not in {"ollama", "gemini", "blackbox", "openrouter"}:
         return provider, False, "Configured LLM provider is not supported."
     return provider, True, None
 
@@ -119,7 +121,7 @@ class PredictRequest(BaseModel):
 def _build_llm():
     provider, available, _ = _provider_capability()
     if not available:
-        if provider in {"none", "gemini", "blackbox"}:
+        if provider in {"none", "gemini", "blackbox", "openrouter"}:
             raise _not_configured_error()
         raise _unavailable_error(retryable=False)
 
@@ -152,6 +154,16 @@ def _build_llm():
             return ChatOllama(**kwargs)
 
         from langchain_openai import ChatOpenAI
+
+        if provider == "openrouter":
+            return ChatOpenAI(
+                model_name=os.getenv("OPENROUTER_MODEL", "openai/gpt-4o-mini"),
+                openai_api_key=os.environ["OPENROUTER_API_KEY"],
+                openai_api_base=os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/"),
+                temperature=0.7,
+                max_retries=1,
+                request_timeout=float(os.getenv("OPENROUTER_TIMEOUT", "120")),
+            )
 
         return ChatOpenAI(
             model_name=os.getenv("BLACKBOX_MODEL", "blackboxai/openai/gpt-5.2"),
