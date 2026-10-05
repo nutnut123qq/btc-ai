@@ -33,3 +33,6 @@ pgvector_extracted/
 live_snapshots/
 .ops/
 docs/research/evidence/
+
+# ops backup artifacts
+ops-backups/
