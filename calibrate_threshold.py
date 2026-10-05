@@ -136,7 +136,12 @@ def main():
                               eval_metric="mlogloss", n_jobs=-1, random_state=42)
     model.fit(X[tr], y_map[tr])
 
-    calib = CalibratedClassifierCV(model, method="isotonic", cv="prefit")
+    try:
+        from sklearn.frozen import FrozenEstimator
+
+        calib = CalibratedClassifierCV(FrozenEstimator(model), method="isotonic")
+    except ImportError:
+        calib = CalibratedClassifierCV(model, method="isotonic", cv="prefit")
     calib.fit(X[cal], y_map[cal])
 
     klines = fetch_klines(args.symbol, args.timeframe, int(times[0]), int(times[-1]) + horizon_ms * 2)
