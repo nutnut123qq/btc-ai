@@ -31,7 +31,7 @@ from rolling_retrainer import (
     majority_baseline_metrics,
 )
 
-FROZEN_CUTOFF_MS = 1_791_151_530_514  # 2026-10-05T04:45:30Z — v3 snapshot cutoff
+FROZEN_CUTOFF_MS = 1_791_151_530_514  # 2026-10-04T22:05:30Z (2026-10-05 05:05 +07) — v3 snapshot cutoff
 CALIBRATION_ROWS = 120                # V3Config.calibration_rows default
 MIN_RESERVE_ROWS = 150                # protocol minimum
 STRICT_RESERVE_ROWS = 240             # stricter bound from evaluation-protocol
@@ -82,8 +82,12 @@ def _baseline_intervals(labels_map: np.ndarray, cand_probs: np.ndarray,
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--min-reserve", type=int, default=MIN_RESERVE_ROWS)
+    ap.add_argument("--strict", action="store_true",
+                    help="require the stricter 240-row reserve bound from evaluation-protocol")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
+    if args.strict:
+        args.min_reserve = STRICT_RESERVE_ROWS
 
     now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
     data = v2.load_btc_4h_benchmark(decision_cutoff_ms=now_ms, window_size=5)
