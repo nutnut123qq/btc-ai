@@ -50,6 +50,23 @@ from execution_engine import (
 
 LABEL_TO_SIDE = {1: "long", -1: "short", 0: "flat"}
 
+# Research-record provenance stamps (mirror backend ResearchVersions /
+# ValidityStatuses semantics, ResearchRecordMetadata.cs).
+# PipelineVersion = the data pipeline that produced this run's inputs. This
+# script reads WindowClassificationDatasets + Klines, both built by the C#
+# quant data pipeline (MlDatasetBuilder/WindowDatasetBuilder/
+# KlinesIngestionWorker) -> same semantics as ResearchVersions.DataPipeline.
+BACKTEST_PIPELINE_VERSION = "quant-pipeline-v3"
+# EvaluationVersion = the evaluation engine that produced this run's metrics.
+# C# "evaluation-v2" is the ensemble point-in-time re-evaluation lineage
+# (direction vs realized outcome), which this strategy simulator does not
+# implement -> honest distinct string. Any non-empty value other than
+# "legacy-unversioned" counts as versioned for ResearchRecordClassifier.
+BACKTEST_EVALUATION_VERSION = "py-backtest-strategy-v1"
+# Producer-side status matching the BacktestRun entity default; the C#
+# classifier stays the retrospective arbiter that can demote to Legacy/Invalid.
+BACKTEST_VALIDITY_STATUS = "Valid"
+
 
 def get_connection():
     return get_db_connection()
@@ -470,8 +487,9 @@ def save_backtest_to_db(run_info, trades):
             "StartTimeMs", "EndTimeMs", "FeeBps", "SlippageBps",
             "TotalTrades", "WinRate", "TotalReturnPct", "BuyHoldReturnPct",
             "MaxDrawdownPct", "SharpeRatio", "SortinoRatio", "ProfitFactor",
-            "FinalEquity", "MetricsJson", "EquityCurveJson", "CreatedAtUtc"
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            "FinalEquity", "MetricsJson", "EquityCurveJson",
+            "PipelineVersion", "EvaluationVersion", "ValidityStatus", "CreatedAtUtc"
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         RETURNING "Id"
         """,
         (
@@ -481,6 +499,7 @@ def save_backtest_to_db(run_info, trades):
             run_info["metrics"]["buy_hold_return_pct"], run_info["metrics"]["max_drawdown_pct"],
             run_info["metrics"]["sharpe_ratio"], run_info["metrics"]["sortino_ratio"], run_info["metrics"]["profit_factor"],
             run_info["metrics"]["final_equity"], json.dumps(run_info["metrics"]), json.dumps(run_info["metrics"]["equity_curve"]),
+            BACKTEST_PIPELINE_VERSION, BACKTEST_EVALUATION_VERSION, BACKTEST_VALIDITY_STATUS,
             datetime.now(timezone.utc),
         ),
     )
