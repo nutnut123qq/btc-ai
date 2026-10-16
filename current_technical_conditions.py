@@ -1,13 +1,20 @@
-"""Current technical conditions for the latest finalized contiguous BTCUSDT bar.
+"""Current technical conditions for the latest finalized contiguous bar.
 
 Implements the frozen ``current-conditions-v1`` contract
-(``docs/research/current-conditions-contract.md``).  Detector semantics are
-reused from ``technical_event_modules`` and
-``technical_event_descriptive_evidence`` — this module only filters the latest
-finalized contiguous Klines window, re-runs the contract detectors on it, and
-classifies each result into ``triggeredOnBar`` / ``state`` / ``activeZone`` /
-``operativeLeg`` conditions at ``asOfMs``.  No formulas are re-implemented here
-and no predictive claim is made anywhere in the payload.
+(``docs/research/current-conditions-contract.md``) for the declared instruments
+in ``trading_config.INSTRUMENTS``.  Detector semantics are reused from
+``technical_event_modules`` and ``technical_event_descriptive_evidence`` — this
+module only filters the latest finalized contiguous window, re-runs the
+contract detectors on it, and classifies each result into ``triggeredOnBar`` /
+``state`` / ``activeZone`` / ``operativeLeg`` conditions at ``asOfMs``.  No
+formulas are re-implemented here and no predictive claim is made anywhere in
+the payload.
+
+Bar source is per-instrument and never crosses: BTCUSDT reads the Binance
+``Klines`` store with exact-duration bars; MBB reads the provider-agnostic
+``InstrumentCandles`` store whose bar durations are session-aware (HOSE), so
+finalization is ``CloseTimeMs <= now`` only and contiguity follows the
+``vietnam_market_calendar`` expected-open sequence instead of a fixed interval.
 """
 
 from __future__ import annotations
@@ -15,8 +22,10 @@ from __future__ import annotations
 import json
 import time
 from bisect import bisect_right
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
+import trading_config
+import vietnam_market_calendar as vn_calendar
 from technical_event_modules import (
     _direction,
     _ema,
@@ -62,8 +71,12 @@ _FVG_EVENT_TYPES = frozenset({"FVG_BULL", "FVG_BEAR"})
 ACTIVE_ZONE_LIMIT_PER_TYPE = 25
 
 
+class UnknownSymbolError(ValueError):
+    """Raised when symbol is outside the shared instrument registry."""
+
+
 class UnknownTimeframeError(ValueError):
-    """Raised when timeframe is outside the contract scope (1h/4h/1d)."""
+    """Raised when timeframe is outside the requested instrument's contract."""
 
 
 class ConditionsUnavailableError(RuntimeError):
@@ -74,15 +87,46 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _load_inputs(
-    timeframe: str, now_ms: int
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], str | None]:
-    """Load klines + causal SMC rows inside one read-only snapshot.
+def _resolve_scope(symbol: str, timeframe: str) -> tuple[str, str]:
+    """Canonicalize + validate ``(symbol, timeframe)`` against the registry.
 
-    Returns ``(kline_rows_asc, causal_smc_rows, causal_smc_columns,
-    causal_smc_error)``.  Kline rows are the newest finalized, exact-duration
-    bars (ascending) capped at ``WINDOW_BARS + 1`` so the caller can detect
-    truncation at the window edge.  A failure of the causal-SMC read is
+    Known-but-disabled instruments (MBB) are accepted here — this is a catalog
+    check, not an enabled-traffic gate.  MBB's declared timeframes are exactly
+    1h and 1d, so ``4h`` fails closed for it.
+    """
+    try:
+        canonical = trading_config.require_known_symbol(symbol)
+    except ValueError as exc:
+        raise UnknownSymbolError(str(exc)) from exc
+    try:
+        normalized = trading_config.require_active_timeframe(str(timeframe), canonical)
+    except ValueError as exc:
+        raise UnknownTimeframeError(str(exc)) from exc
+    return canonical, normalized
+
+
+def _session_adjacency(
+    timeframe: str, non_trading_dates: frozenset
+) -> Callable[[int, int], bool]:
+    """HOSE expected-open adjacency predicate for equity (MBB) windows."""
+    return lambda prev_open, next_open: vn_calendar.opens_are_adjacent(
+        timeframe, prev_open, next_open, non_trading_dates
+    )
+
+
+def _load_inputs(
+    symbol: str, timeframe: str, now_ms: int
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], str | None]:
+    """Load bars + causal SMC rows inside one read-only snapshot.
+
+    Returns ``(candle_rows_asc, causal_smc_rows, causal_smc_columns,
+    causal_smc_error)``.  Candle rows are the newest finalized bars (ascending)
+    capped at ``WINDOW_BARS + 1`` so the caller can detect truncation at the
+    window edge.  BTCUSDT reads the Binance ``Klines`` store and keeps the
+    exact-duration predicate; other instruments read ``InstrumentCandles``
+    where bar duration is session-modeled, so only ``CloseTimeMs <= now``
+    (finalization) is enforced in SQL — the session-open filter runs in
+    ``build_conditions_payload``.  A failure of the causal-SMC read is
     reported through ``causal_smc_error`` instead of raising so the module is
     marked unavailable rather than failing the whole payload.
     """
@@ -99,13 +143,22 @@ def _load_inputs(
             isolation_level="REPEATABLE READ",
         )
         with connection.cursor() as cursor:
-            cursor.execute(
-                'SELECT "OpenTimeMs","CloseTimeMs","Open","High","Low","Close","Volume" '
-                'FROM "Klines" WHERE "Symbol"=%s AND "Timeframe"=%s '
-                'AND "CloseTimeMs"<=%s AND "CloseTimeMs"-"OpenTimeMs"+1=%s '
-                'ORDER BY "OpenTimeMs" DESC LIMIT %s',
-                (SYMBOL, timeframe, now_ms, interval, WINDOW_BARS + 1),
-            )
+            if symbol == SYMBOL:
+                cursor.execute(
+                    'SELECT "OpenTimeMs","CloseTimeMs","Open","High","Low","Close","Volume" '
+                    'FROM "Klines" WHERE "Symbol"=%s AND "Timeframe"=%s '
+                    'AND "CloseTimeMs"<=%s AND "CloseTimeMs"-"OpenTimeMs"+1=%s '
+                    'ORDER BY "OpenTimeMs" DESC LIMIT %s',
+                    (symbol, timeframe, now_ms, interval, WINDOW_BARS + 1),
+                )
+            else:
+                cursor.execute(
+                    'SELECT "OpenTimeMs","CloseTimeMs","Open","High","Low","Close","Volume" '
+                    'FROM "InstrumentCandles" WHERE "Symbol"=%s AND "Timeframe"=%s '
+                    'AND "CloseTimeMs"<=%s '
+                    'ORDER BY "OpenTimeMs" DESC LIMIT %s',
+                    (symbol, timeframe, now_ms, WINDOW_BARS + 1),
+                )
             names = ("OpenTimeMs", "CloseTimeMs", "Open", "High", "Low", "Close", "Volume")
             klines = [dict(zip(names, row)) for row in cursor.fetchall()]
             klines.reverse()
@@ -144,7 +197,7 @@ def _load_inputs(
                         f'SELECT {quoted} FROM "CausalSmartMoneyEvents" '
                         'WHERE "Symbol"=%s AND "Timeframe"=%s AND "AvailableTimeMs"<=%s '
                         'ORDER BY "AvailableTimeMs", "EventId"',
-                        (SYMBOL, timeframe, as_of_ms),
+                        (symbol, timeframe, as_of_ms),
                     )
                     causal_rows = [dict(zip(selected, row)) for row in cursor.fetchall()]
             except Exception as exc:  # module degradation, not a 503
@@ -443,42 +496,71 @@ def build_conditions_payload(
     causal_smc_columns: Sequence[str] = (),
     *,
     now_ms: int,
+    symbol: str = SYMBOL,
     causal_smc_error: str | None = None,
     window_bars: int = WINDOW_BARS,
 ) -> dict[str, Any]:
     """Pure computation of the current-conditions payload (no generatedAtMs).
 
     ``kline_rows`` is any superset of the latest contiguous finalized run —
-    the function re-applies finalization, exact-duration and contiguity rules,
-    so fixture rows and database rows share one code path.
+    the function re-applies finalization and contiguity rules, so fixture rows
+    and database rows share one code path.  BTCUSDT additionally requires
+    exact-duration bars; session-calendared instruments (MBB) instead require
+    each bar's open to be a declared session open and use expected-open
+    adjacency, so lunch/overnight/weekend breaks are not gaps.
     """
-    if timeframe not in TIMEFRAME_MS:
-        raise UnknownTimeframeError(f"timeframe must be one of {sorted(TIMEFRAME_MS)}")
-    interval = TIMEFRAME_MS[timeframe]
+    canonical, normalized = _resolve_scope(symbol, timeframe)
+    interval = TIMEFRAME_MS[normalized]
+    is_equity = canonical != SYMBOL
+    non_trading_dates = (
+        vn_calendar.non_trading_dates_from_env() if is_equity else frozenset()
+    )
+    adjacent = (
+        _session_adjacency(normalized, non_trading_dates) if is_equity else None
+    )
     warnings: list[str] = []
     unavailable: list[dict[str, str]] = []
 
-    # Keep only finalized, exact-duration bars and take the latest contiguous
-    # run ending at the newest finalized bar; stop at the first gap.
-    finalized = sorted(
-        (
-            row
-            for row in kline_rows
-            if int(row["CloseTimeMs"]) <= now_ms
-            and int(row["CloseTimeMs"]) - int(row["OpenTimeMs"]) + 1 == interval
-        ),
-        key=lambda row: int(row["OpenTimeMs"]),
-    )
+    # Keep only finalized bars and take the latest contiguous run ending at the
+    # newest finalized bar; stop at the first gap.  For equity the gap test is
+    # the HOSE expected-open sequence and bars at off-session opens (e.g. the
+    # 2024-06-20 12:00 provider anomaly) are excluded rather than treated as
+    # either regular bars or gaps.
+    excluded_off_session = 0
+    finalized: list[Mapping[str, Any]] = []
+    for row in kline_rows:
+        if int(row["CloseTimeMs"]) > now_ms:
+            continue
+        if not is_equity:
+            if int(row["CloseTimeMs"]) - int(row["OpenTimeMs"]) + 1 != interval:
+                continue
+        elif not vn_calendar.is_expected_open(
+            normalized, int(row["OpenTimeMs"]), non_trading_dates
+        ):
+            excluded_off_session += 1
+            continue
+        finalized.append(row)
+    finalized.sort(key=lambda row: int(row["OpenTimeMs"]))
+    if excluded_off_session:
+        warnings.append(
+            f"excluded {excluded_off_session} finalized bar(s) with off-session opens "
+            "(provider anomaly)"
+        )
     if not finalized:
         raise ConditionsUnavailableError(
-            f"no finalized contiguous Klines for {SYMBOL} {timeframe}"
+            f"no finalized contiguous bars for {canonical} {normalized}"
         )
     run_start = len(finalized) - 1
-    while (
-        run_start > 0
-        and int(finalized[run_start]["OpenTimeMs"]) - int(finalized[run_start - 1]["OpenTimeMs"])
-        == interval
-    ):
+    while run_start > 0:
+        prev_open = int(finalized[run_start - 1]["OpenTimeMs"])
+        next_open = int(finalized[run_start]["OpenTimeMs"])
+        contiguous = (
+            adjacent(prev_open, next_open)
+            if adjacent is not None
+            else next_open - prev_open == interval
+        )
+        if not contiguous:
+            break
         run_start -= 1
     run = finalized[run_start:]
     window = run[-window_bars:]
@@ -490,8 +572,10 @@ def build_conditions_payload(
     if run_start > 0:
         warnings.append("analysis-window-truncated-at-non-contiguous-gap")
 
-    contexts = _causal_contexts(window, interval)
-    events, metadata = build_causal_technical_events(timeframe, interval, window, contexts)
+    contexts = _causal_contexts(window, interval, adjacent=adjacent)
+    events, metadata = build_causal_technical_events(
+        normalized, interval, window, contexts, adjacent=adjacent
+    )
     contract_meta = metadata["contract"]
 
     conditions: list[dict[str, Any]] = []
@@ -548,7 +632,7 @@ def build_conditions_payload(
             context_by_close = {
                 candle.close_ms: contexts[index] for index, candle in enumerate(candles)
             }
-            level_index = _LifecycleLevelIndex(candles, interval)
+            level_index = _LifecycleLevelIndex(candles, interval, adjacent=adjacent)
             close_times = [candle.close_ms for candle in candles]
             zone_conditions: list[dict[str, Any]] = []
             for row, evidence, source_times in verified:
@@ -661,8 +745,8 @@ def build_conditions_payload(
 
     return {
         "schemaVersion": SCHEMA_VERSION,
-        "symbol": SYMBOL,
-        "timeframe": timeframe,
+        "symbol": canonical,
+        "timeframe": normalized,
         "asOfMs": as_of_ms,
         "latestClosedBar": {
             "openTimeMs": int(window[-1]["OpenTimeMs"]),
@@ -690,9 +774,9 @@ def build_conditions_payload(
     }
 
 
-# In-process cache keyed by (timeframe, asOfMs); a newly closed bar changes the
-# key and therefore invalidates automatically.
-_PAYLOAD_CACHE: dict[tuple[str, int], dict[str, Any]] = {}
+# In-process cache keyed by (symbol, timeframe, asOfMs); a newly closed bar
+# changes the key and therefore invalidates automatically.
+_PAYLOAD_CACHE: dict[tuple[str, str, int], dict[str, Any]] = {}
 _CACHE_MAX_ENTRIES = 16
 
 
@@ -700,26 +784,26 @@ def clear_cache() -> None:
     _PAYLOAD_CACHE.clear()
 
 
-def get_current_conditions(timeframe: str, *, now_ms: int | None = None) -> dict[str, Any]:
+def get_current_conditions(
+    timeframe: str, symbol: str = SYMBOL, *, now_ms: int | None = None
+) -> dict[str, Any]:
     """Contract payload for ``GET /api/current-conditions``."""
-    normalized = str(timeframe).strip().lower()
-    if normalized not in TIMEFRAME_MS:
-        raise UnknownTimeframeError(
-            f"timeframe must be one of {sorted(TIMEFRAME_MS)}"
-        )
+    canonical, normalized = _resolve_scope(symbol, timeframe)
     now = _now_ms() if now_ms is None else int(now_ms)
     try:
-        klines, causal_rows, causal_columns, causal_error = _load_inputs(normalized, now)
+        klines, causal_rows, causal_columns, causal_error = _load_inputs(
+            canonical, normalized, now
+        )
     except Exception as exc:
         raise ConditionsUnavailableError(
-            f"klines unavailable for {SYMBOL} {normalized}: {type(exc).__name__}"
+            f"bars unavailable for {canonical} {normalized}: {type(exc).__name__}"
         ) from exc
     if not klines:
         raise ConditionsUnavailableError(
-            f"no finalized contiguous Klines for {SYMBOL} {normalized}"
+            f"no finalized contiguous bars for {canonical} {normalized}"
         )
     as_of_ms = int(klines[-1]["CloseTimeMs"])
-    key = (normalized, as_of_ms)
+    key = (canonical, normalized, as_of_ms)
     cached = _PAYLOAD_CACHE.get(key)
     if cached is not None:
         return {**cached, "generatedAtMs": now}
@@ -729,6 +813,7 @@ def get_current_conditions(timeframe: str, *, now_ms: int | None = None) -> dict
         causal_rows,
         causal_columns,
         now_ms=now,
+        symbol=canonical,
         causal_smc_error=causal_error,
     )
     if len(_PAYLOAD_CACHE) >= _CACHE_MAX_ENTRIES:
@@ -743,6 +828,7 @@ __all__ = [
     "SCHEMA_VERSION",
     "SYMBOL",
     "TIMEFRAME_MS",
+    "UnknownSymbolError",
     "UnknownTimeframeError",
     "WINDOW_BARS",
     "build_conditions_payload",

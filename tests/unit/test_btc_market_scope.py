@@ -19,12 +19,14 @@ def test_production_scope_is_btc_hourly_and_daily_only():
     assert ACTIVE_SYMBOLS == ["BTCUSDT"]
     assert ACTIVE_PRODUCTION_TIMEFRAMES == ("1h", "4h", "1d")
     assert require_active_symbol(" btcusdt ") == "BTCUSDT"
+    assert require_active_symbol("BTC") == "BTCUSDT"  # BTC alias -> BTCUSDT
     assert require_active_symbols(["BTCUSDT"]) == ["BTCUSDT"]
     assert require_active_timeframe("4H") == "4h"
 
 
-@pytest.mark.parametrize("symbol", ["ETHUSDT", "SOLUSDT", "BTC", ""])
+@pytest.mark.parametrize("symbol", ["ETHUSDT", "SOLUSDT", "MBB", ""])
 def test_non_production_symbols_are_rejected(symbol):
+    # MBB is a known instrument but not enabled for the BTC crypto pipelines yet.
     with pytest.raises(ValueError, match="Unsupported symbol"):
         require_active_symbol(symbol)
 

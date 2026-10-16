@@ -14,7 +14,7 @@ import math
 import copy
 import statistics
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 
 CONTRACT_PATH = Path(__file__).with_name("contracts") / "technical-module-contract.json"
@@ -152,13 +152,29 @@ def _module_metadata(name: str, spec: Mapping[str, Any], contract_sha: str, even
     }
 
 
-def _segments(rows: Sequence[Mapping[str, Any]], interval_ms: int) -> list[tuple[int, int]]:
+def _segments(
+    rows: Sequence[Mapping[str, Any]],
+    interval_ms: int,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
+) -> list[tuple[int, int]]:
+    """Split rows at non-contiguous opens.
+
+    ``adjacent`` (if given) overrides the fixed-interval check — session-calendared
+    instruments (MBB) treat lunch/overnight/weekend boundaries as contiguous via
+    expected opens, not open-time deltas.
+    """
     if not rows:
         return []
+    is_adjacent = adjacent if adjacent is not None else (
+        lambda prev_open, next_open: next_open - prev_open == interval_ms
+    )
     result: list[tuple[int, int]] = []
     start = 0
     for index in range(1, len(rows)):
-        if int(rows[index]["OpenTimeMs"]) - int(rows[index - 1]["OpenTimeMs"]) != interval_ms:
+        if not is_adjacent(
+            int(rows[index - 1]["OpenTimeMs"]), int(rows[index]["OpenTimeMs"])
+        ):
             result.append((start, index))
             start = index
     result.append((start, len(rows)))
@@ -166,14 +182,26 @@ def _segments(rows: Sequence[Mapping[str, Any]], interval_ms: int) -> list[tuple
 
 
 def sensitivity_contexts(
-    rows: Sequence[Mapping[str, Any]], interval_ms: int, high_multiplier: float, low_multiplier: float
+    rows: Sequence[Mapping[str, Any]], interval_ms: int, high_multiplier: float, low_multiplier: float,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, str]]:
-    """Contract-exact contexts for regime sensitivity variants."""
+    """Contract-exact contexts for regime sensitivity variants.
+
+    ``adjacent`` (if given) overrides the fixed-interval contiguity check —
+    session-calendared instruments (MBB) use expected opens, so lunch/overnight/
+    weekend boundaries do not restart context segments.
+    """
+    is_adjacent = adjacent if adjacent is not None else (
+        lambda prev_open, next_open: next_open - prev_open == interval_ms
+    )
     result: list[dict[str, str]] = []
     segment_start = 0
     true_range_pct: list[float] = []
     for index, row in enumerate(rows):
-        if index and int(row["OpenTimeMs"]) - int(rows[index - 1]["OpenTimeMs"]) != interval_ms:
+        if index and not is_adjacent(
+            int(rows[index - 1]["OpenTimeMs"]), int(row["OpenTimeMs"])
+        ):
             segment_start = index
         close = float(row["Close"])
         high = float(row["High"])
@@ -289,6 +317,8 @@ def _rsi(values: Sequence[float], period: int) -> float | None:
 def _indicator_events(
     rows: Sequence[Mapping[str, Any]], contexts: Sequence[Mapping[str, str]], interval_ms: int,
     spec: Mapping[str, Any], contract_sha: str,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     params = spec["parameters"]
     version = str(spec["calculationVersion"])
@@ -296,7 +326,7 @@ def _indicator_events(
     rsi_period = int(params["rsiPeriod"])
     sma_period = int(params["smaPeriod"])
     events: list[dict[str, Any]] = []
-    for start, end in _segments(rows, interval_ms):
+    for start, end in _segments(rows, interval_ms, adjacent=adjacent):
         closes = [float(row["Close"]) for row in rows[start:end]]
         for local in range(max(window, sma_period, rsi_period + 2), len(closes)):
             index = start + local
@@ -341,11 +371,13 @@ def _indicator_events(
 def _pattern_events(
     rows: Sequence[Mapping[str, Any]], contexts: Sequence[Mapping[str, str]], interval_ms: int,
     spec: Mapping[str, Any], contract_sha: str,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     params = spec["parameters"]
     version = str(spec["calculationVersion"])
     events: list[dict[str, Any]] = []
-    for start, end in _segments(rows, interval_ms):
+    for start, end in _segments(rows, interval_ms, adjacent=adjacent):
         for index in range(start, end):
             row = rows[index]
             open_price, high, low, close = map(float, (row["Open"], row["High"], row["Low"], row["Close"]))
@@ -378,12 +410,14 @@ def _pattern_events(
 def _volume_events(
     rows: Sequence[Mapping[str, Any]], contexts: Sequence[Mapping[str, str]], interval_ms: int,
     spec: Mapping[str, Any], contract_sha: str,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     params = spec["parameters"]
     version = str(spec["calculationVersion"])
     prior = int(params["priorBars"])
     events: list[dict[str, Any]] = []
-    for start, end in _segments(rows, interval_ms):
+    for start, end in _segments(rows, interval_ms, adjacent=adjacent):
         for index in range(start + prior, end):
             history = [float(rows[position].get("Volume") or 0.0) for position in range(index - prior, index)]
             baseline = sum(history) / prior
@@ -401,11 +435,13 @@ def _volume_events(
 def _regime_events(
     rows: Sequence[Mapping[str, Any]], contexts: Sequence[Mapping[str, str]], interval_ms: int,
     spec: Mapping[str, Any], contract_sha: str,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     version = str(spec["calculationVersion"])
     params = spec["parameters"]
     events: list[dict[str, Any]] = []
-    for start, end in _segments(rows, interval_ms):
+    for start, end in _segments(rows, interval_ms, adjacent=adjacent):
         for index in range(start + int(params["volatilityMinimumPriorBars"]) + 1, end):
             if contexts[index] == contexts[index - 1]:
                 continue
@@ -423,12 +459,14 @@ def _regime_events(
 def _fibonacci_events(
     rows: Sequence[Mapping[str, Any]], contexts: Sequence[Mapping[str, str]], interval_ms: int,
     spec: Mapping[str, Any], contract_sha: str,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     params = spec["parameters"]
     version = str(spec["calculationVersion"])
     radius = int(params["pivotRadiusBars"])
     events: list[dict[str, Any]] = []
-    for start, end in _segments(rows, interval_ms):
+    for start, end in _segments(rows, interval_ms, adjacent=adjacent):
         last_pivot: tuple[str, int, float] | None = None
         for center in range(start + radius, end - radius):
             high = float(rows[center]["High"])
@@ -476,12 +514,14 @@ def _profile(rows: Sequence[Mapping[str, Any]], start: int, end: int, bins: int,
 def _volume_profile_events(
     rows: Sequence[Mapping[str, Any]], contexts: Sequence[Mapping[str, str]], interval_ms: int,
     spec: Mapping[str, Any], contract_sha: str,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     params = spec["parameters"]
     version = str(spec["calculationVersion"])
     window, bins, fraction = int(params["windowBars"]), int(params["bins"]), float(params["valueAreaFraction"])
     events: list[dict[str, Any]] = []
-    for start, end in _segments(rows, interval_ms):
+    for start, end in _segments(rows, interval_ms, adjacent=adjacent):
         previous_profile = None
         for index in range(start + window - 1, end):
             current_profile = _profile(rows, index - window + 1, index + 1, bins, fraction)
@@ -558,12 +598,17 @@ def build_sensitivity_variants(
     rows: Sequence[Mapping[str, Any]],
     contexts: Sequence[Mapping[str, str]],
     baseline_events: Sequence[Mapping[str, Any]],
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
 ) -> list[dict[str, Any]]:
     """Execute every declared one-axis-at-a-time sensitivity variant.
 
     The returned events are ephemeral inputs to the descriptive sensitivity
     audit.  They are never mixed into the baseline declared family and no
     outcome-dependent variant selection is performed.
+
+    ``adjacent`` must match the predicate used to build the baseline events so
+    variants and baseline segment rows identically (session calendars for MBB).
     """
     contract, contract_sha = load_contract()
     specs = contract["modules"]
@@ -578,7 +623,7 @@ def build_sensitivity_variants(
     ) -> None:
         spec = copy.deepcopy(specs[module])
         spec["parameters"].update(updates)
-        events = builder(rows, variant_contexts, interval_ms, spec, contract_sha)
+        events = builder(rows, variant_contexts, interval_ms, spec, contract_sha, adjacent=adjacent)
         result.append(
             {
                 "module": module,
@@ -631,7 +676,9 @@ def build_sensitivity_variants(
 
     regime = specs["marketRegime"]
     for high, low in regime["sensitivity"]["volatilityMultipliers"]:
-        variant_context = sensitivity_contexts(rows, interval_ms, float(high), float(low))
+        variant_context = sensitivity_contexts(
+            rows, interval_ms, float(high), float(low), adjacent=adjacent
+        )
         run(
             "marketRegime",
             f"volatilityMultipliers={float(high):g}_{float(low):g}",
@@ -686,6 +733,9 @@ def build_causal_technical_events(
     interval_ms: int,
     rows: Sequence[Mapping[str, Any]],
     contexts: Sequence[Mapping[str, str]],
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
+    source_label: str = "Klines",
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     if len(rows) != len(contexts):
         raise ValueError("rows and contexts must align")
@@ -702,14 +752,16 @@ def build_causal_technical_events(
     all_events: list[dict[str, Any]] = []
     metadata: dict[str, Any] = {}
     for name, builder in builders:
-        events = builder(rows, contexts, interval_ms, specs[name], contract_sha)
+        events = builder(
+            rows, contexts, interval_ms, specs[name], contract_sha, adjacent=adjacent
+        )
         all_events.extend(events)
         metadata[name] = _module_metadata(
             name,
             specs[name],
             contract_sha,
             len(events),
-            "reconstructed from finalized contiguous Klines; available at decision candle close",
+            f"reconstructed from finalized contiguous {source_label}; available at decision candle close",
         )
     confluence = _confluence_events(rows, contexts, all_events, specs["confluence"], contract_sha)
     all_events.extend(confluence)

@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
-"""Finite, lock-protected publisher for BTC technical descriptive evidence.
+"""Finite, lock-protected publisher for technical descriptive evidence.
 
 This is an operational wrapper, not a daemon.  A scheduler may invoke it; one
-invocation attempts exactly one 1h/4h/1d batch and exits.  Bundle manifests are
+invocation attempts exactly one batch of the selected instrument's declared
+timeframes (BTCUSDT: 1h/4h/1d; MBB: 1h/1d) and exits.  Bundle manifests are
 published only after the staged bundle passes semantic verification.
+
+BTCUSDT keeps the legacy top-level artifact layout; every other instrument
+is isolated under ``<output-dir>/<SYMBOL>/``.
 """
 
 from __future__ import annotations
@@ -17,7 +21,7 @@ import uuid
 import platform
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 from technical_event_descriptive_evidence import (
     EvaluationConfig,
@@ -30,10 +34,14 @@ from technical_event_descriptive_evidence import (
     verify_bundle,
     write_bundle,
 )
+import trading_config
 from technical_event_modules import verify_golden_fixture
 
 
 STATUS_SCHEMA = "btc-technical-evidence-pipeline-status/v1"
+DEFAULT_SYMBOL = "BTCUSDT"
+# BTCUSDT keeps its declared production trio; other registry instruments
+# resolve their own declared set (MBB: 1h + 1d, no synthetic 4h).
 TIMEFRAMES = ("1h", "4h", "1d")
 STATUS_FILE = "pipeline-status.json"
 LOCK_FILE = ".pipeline.lock"
@@ -95,10 +103,19 @@ def _write_json_atomic(path: Path, value: Mapping[str, Any]) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _publish_run_index(output_dir: Path, completed: datetime, published: list[dict[str, Any]]) -> tuple[Path, dict[str, Any]]:
-    ordered = sorted(published, key=lambda item: TIMEFRAMES.index(str(item["timeframe"])))
-    if [item["timeframe"] for item in ordered] != list(TIMEFRAMES):
-        raise ValueError("run index requires exact 1h, 4h and 1d bundle coverage")
+def _publish_run_index(
+    output_dir: Path,
+    completed: datetime,
+    published: list[dict[str, Any]],
+    *,
+    symbol: str = DEFAULT_SYMBOL,
+    timeframes: Sequence[str] = TIMEFRAMES,
+) -> tuple[Path, dict[str, Any]]:
+    ordered = sorted(published, key=lambda item: list(timeframes).index(str(item["timeframe"])))
+    if [item["timeframe"] for item in ordered] != list(timeframes):
+        raise ValueError(
+            f"run index requires exact {', '.join(timeframes)} bundle coverage"
+        )
     definitions = {item.get("definitionsSha256") for item in ordered}
     if len(definitions) != 1 or None in definitions:
         raise ValueError("run index contract definitions hash is inconsistent")
@@ -121,7 +138,7 @@ def _publish_run_index(output_dir: Path, completed: datetime, published: list[di
     index = {
         "schema": RUN_INDEX_SCHEMA,
         "claimType": "descriptive_technical_event_history",
-        "symbol": "BTCUSDT",
+        "symbol": symbol,
         "status": "succeeded",
         "completedAtUtc": _iso(completed),
         "contractDefinitionsSha256": next(iter(definitions)),
@@ -159,8 +176,19 @@ def _safe_child(directory: Path, file_name: Any) -> Path:
     return path
 
 
-def read_verified_success(output_dir: Path, *, verify_semantics: bool = True) -> dict[str, Any]:
-    """Fail-closed reader for the exact atomic trio referenced by latest-success."""
+def read_verified_success(
+    output_dir: Path,
+    *,
+    verify_semantics: bool = True,
+    symbol: str = DEFAULT_SYMBOL,
+    timeframes: Sequence[str] = TIMEFRAMES,
+) -> dict[str, Any]:
+    """Fail-closed reader for the atomic bundle set referenced by latest-success.
+
+    ``symbol``/``timeframes`` parameterize the required run-index scope — the
+    BTCUSDT caller keeps the exact 1h/4h/1d assertion, an MBB caller passes
+    ``symbol="MBB", timeframes=("1h", "1d")`` and reads the per-symbol dir.
+    """
     directory = output_dir.resolve()
     pointer_path = directory / RUN_POINTER_FILE
     pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
@@ -180,13 +208,15 @@ def read_verified_success(output_dir: Path, *, verify_semantics: bool = True) ->
     if (
         index.get("schema") != RUN_INDEX_SCHEMA
         or index.get("claimType") != "descriptive_technical_event_history"
-        or index.get("symbol") != "BTCUSDT"
+        or index.get("symbol") != symbol
         or index.get("status") != "succeeded"
     ):
         raise ValueError("unsupported or unsuccessful evidence run index")
     bundles = index.get("bundles")
-    if not isinstance(bundles, list) or [item.get("timeframe") for item in bundles] != list(TIMEFRAMES):
-        raise ValueError("evidence run index does not contain the exact 1h/4h/1d trio")
+    if not isinstance(bundles, list) or [item.get("timeframe") for item in bundles] != list(timeframes):
+        raise ValueError(
+            f"evidence run index does not contain the exact {'/'.join(timeframes)} bundle set"
+        )
 
     verified: list[dict[str, Any]] = []
     for item in bundles:
@@ -325,15 +355,22 @@ def recover_stale_lock(
     return recovered
 
 
-def latest_cutoffs() -> dict[str, int]:
-    """Return the latest finalized persisted candle close for each supported timeframe."""
+def latest_cutoffs(
+    symbol: str = DEFAULT_SYMBOL,
+    timeframes: Sequence[str] = TIMEFRAMES,
+) -> dict[str, int]:
+    """Return the latest finalized persisted candle close for each timeframe.
+
+    ``BTCUSDT`` reads ``Klines``; other registry instruments read
+    ``InstrumentCandles``.  All MAX queries stay on one database snapshot so
+    the chosen set describes one coherent persisted state.
+    """
     from db_config import get_db_connection
 
+    symbol = trading_config.require_known_symbol(symbol)
+    table = "Klines" if symbol == DEFAULT_SYMBOL else "InstrumentCandles"
     connection = get_db_connection()
     try:
-        # Keep all three MAX queries on one database snapshot.  The timeframes
-        # may legitimately have different latest closes, but the chosen trio
-        # must describe one coherent persisted state.
         connection.set_session(
             readonly=True,
             autocommit=False,
@@ -341,14 +378,14 @@ def latest_cutoffs() -> dict[str, int]:
         )
         with connection.cursor() as cursor:
             result: dict[str, int] = {}
-            for timeframe in TIMEFRAMES:
+            for timeframe in timeframes:
                 cursor.execute(
-                    'SELECT MAX("CloseTimeMs") FROM "Klines" WHERE "Symbol"=%s AND "Timeframe"=%s',
-                    ("BTCUSDT", timeframe),
+                    f'SELECT MAX("CloseTimeMs") FROM "{table}" WHERE "Symbol"=%s AND "Timeframe"=%s',
+                    (symbol, timeframe),
                 )
                 value = cursor.fetchone()[0]
                 if not isinstance(value, int) or value <= 0:
-                    raise RuntimeError(f"no finalized BTCUSDT {timeframe} candle available")
+                    raise RuntimeError(f"no finalized {symbol} {timeframe} candle available")
                 result[timeframe] = value
         connection.rollback()
         return result
@@ -400,20 +437,52 @@ def _publish_staged_bundle(staged: Mapping[str, Path], output_dir: Path) -> Path
 def run_pipeline(
     output_dir: Path,
     *,
+    symbol: str = DEFAULT_SYMBOL,
+    timeframes: Sequence[str] | None = None,
     forced_cutoff_ms: int | None = None,
     bootstrap_samples: int = 2_000,
     block_size_events: int = 8,
     dedup_bars: int = 6,
     now: Callable[[], datetime] = _utc_now,
-    cutoff_loader: Callable[[], Mapping[str, int]] = latest_cutoffs,
-    snapshot_loader: Callable[[str, int], Mapping[str, Any]] = load_postgresql_snapshot,
+    cutoff_loader: Callable[[], Mapping[str, int]] | None = None,
+    snapshot_loader: Callable[[str, int], Mapping[str, Any]] | None = None,
     bundle_publisher: Callable[[Mapping[str, Path], Path], Path] = _publish_staged_bundle,
-    run_index_publisher: Callable[[Path, datetime, list[dict[str, Any]]], tuple[Path, dict[str, Any]]] = _publish_run_index,
+    run_index_publisher: Callable[[Path, datetime, list[dict[str, Any]]], tuple[Path, dict[str, Any]]] | None = None,
 ) -> dict[str, Any]:
+    """Run one atomic bundle batch for one instrument.
+
+    ``BTCUSDT`` keeps the legacy top-level layout: artifacts, run index,
+    pointer, lock and status live directly under ``output_dir``.  Other
+    registry instruments are isolated under ``output_dir/<SYMBOL>/`` (e.g.
+    ``technical-descriptive/MBB/latest-success.json``) so the two pipelines
+    never share locks, status files or artifact namespaces.  The timeframe set
+    is the instrument's declared production list — MBB publishes exactly the
+    1h and 1d bundles.
+    """
+    canonical = trading_config.require_known_symbol(symbol)
+    declared = tuple(trading_config.active_timeframes_for(canonical))
+    if timeframes is not None and tuple(timeframes) != declared:
+        raise ValueError(
+            f"pipeline publishes exactly the declared timeframes for {canonical}: "
+            f"{', '.join(declared)}"
+        )
+    resolved_timeframes = declared
     output_dir = output_dir.resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    status_path = output_dir / STATUS_FILE
-    lock_path = output_dir / LOCK_FILE
+    run_dir = output_dir if canonical == DEFAULT_SYMBOL else output_dir / canonical
+    run_dir.mkdir(parents=True, exist_ok=True)
+    status_path = run_dir / STATUS_FILE
+    lock_path = run_dir / LOCK_FILE
+    if cutoff_loader is None:
+        cutoff_loader = lambda: latest_cutoffs(canonical, resolved_timeframes)
+    if snapshot_loader is None:
+        snapshot_loader = lambda tf, cut: load_postgresql_snapshot(
+            tf, cut, symbol=canonical
+        )
+    if run_index_publisher is None:
+        run_index_publisher = lambda directory, completed, published: _publish_run_index(
+            directory, completed, published,
+            symbol=canonical, timeframes=resolved_timeframes,
+        )
     with FileLock(lock_path, now):
         started = now()
         previous = read_verified_status(status_path) or {}
@@ -433,19 +502,22 @@ def run_pipeline(
             "goldenSemanticLedgerSha256": previous.get("goldenSemanticLedgerSha256"),
         }
         _write_status_atomic(status_path, base)
-        staging = output_dir / f".staging-{uuid.uuid4().hex}"
+        staging = run_dir / f".staging-{uuid.uuid4().hex}"
         staging.mkdir()
         try:
             golden = verify_golden_fixture()
             cutoffs = (
-                {timeframe: forced_cutoff_ms for timeframe in TIMEFRAMES}
+                {timeframe: forced_cutoff_ms for timeframe in resolved_timeframes}
                 if forced_cutoff_ms is not None
                 else dict(cutoff_loader())
             )
-            if set(cutoffs) != set(TIMEFRAMES) or any(not isinstance(value, int) or value <= 0 for value in cutoffs.values()):
-                raise ValueError("cutoffs must contain positive 1h, 4h and 1d timestamps")
+            if set(cutoffs) != set(resolved_timeframes) or any(not isinstance(value, int) or value <= 0 for value in cutoffs.values()):
+                raise ValueError(
+                    "cutoffs must contain positive timestamps for "
+                    + ", ".join(resolved_timeframes)
+                )
             staged_runs: list[tuple[str, Mapping[str, Path], Mapping[str, Any], Mapping[str, Any]]] = []
-            for timeframe in TIMEFRAMES:
+            for timeframe in resolved_timeframes:
                 cutoff = int(cutoffs[timeframe])
                 snapshot = snapshot_loader(timeframe, cutoff)
                 config = EvaluationConfig(
@@ -462,7 +534,7 @@ def run_pipeline(
 
             published: list[dict[str, Any]] = []
             for timeframe, paths, report, verification in staged_runs:
-                manifest = bundle_publisher(paths, output_dir)
+                manifest = bundle_publisher(paths, run_dir)
                 contract = report.get("modules", {}).get("contract", {})
                 published.append(
                     {
@@ -481,7 +553,7 @@ def run_pipeline(
                     }
                 )
             completed = now()
-            run_index_path, run_pointer = run_index_publisher(output_dir, completed, published)
+            run_index_path, run_pointer = run_index_publisher(run_dir, completed, published)
             success = {
                 **base,
                 "running": False,
@@ -512,13 +584,20 @@ def run_pipeline(
             _write_status_atomic(status_path, failure)
             raise
         finally:
-            if staging.parent == output_dir and staging.name.startswith(".staging-"):
+            if staging.parent == run_dir and staging.name.startswith(".staging-"):
                 shutil.rmtree(staging, ignore_errors=True)
 
 
+def _symbol_run_dir(output_dir: Path, symbol: str) -> Path:
+    """BTCUSDT keeps the legacy top-level layout; other instruments run in
+    ``<output_dir>/<SYMBOL>/`` so locks/status/artifacts never collide."""
+    return output_dir if symbol == DEFAULT_SYMBOL else output_dir / symbol
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Finite BTC technical descriptive evidence pipeline")
+    parser = argparse.ArgumentParser(description="Finite technical descriptive evidence pipeline")
     parser.add_argument("--output-dir", type=Path, default=Path("docs/research/evidence/technical-descriptive"))
+    parser.add_argument("--symbol", default=DEFAULT_SYMBOL)
     parser.add_argument("--cutoff-ms", type=int)
     parser.add_argument("--bootstrap-samples", type=int, default=2_000)
     parser.add_argument("--block-size-events", type=int, default=8)
@@ -526,9 +605,13 @@ def main() -> None:
     parser.add_argument("--recover-stale-lock", action="store_true")
     parser.add_argument("--max-lock-age-hours", type=float, default=12.0)
     args = parser.parse_args()
+    try:
+        symbol = trading_config.require_known_symbol(args.symbol)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.recover_stale_lock:
         recovered = recover_stale_lock(
-            args.output_dir.resolve() / LOCK_FILE,
+            _symbol_run_dir(args.output_dir.resolve(), symbol) / LOCK_FILE,
             max_age=timedelta(hours=args.max_lock_age_hours),
         )
         print(json.dumps({"recoveredLock": str(recovered)}, indent=2))
@@ -536,6 +619,7 @@ def main() -> None:
     try:
         status = run_pipeline(
             args.output_dir,
+            symbol=symbol,
             forced_cutoff_ms=args.cutoff_ms,
             bootstrap_samples=args.bootstrap_samples,
             block_size_events=args.block_size_events,

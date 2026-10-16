@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Causal, descriptive evidence bundle for BTCUSDT technical events.
+"""Causal, descriptive evidence bundle for technical events.
 
 The evaluator deliberately does not train, predict, tune, backtest trades, or
 calculate PnL.  It freezes finalized candles and causally available technical
 events, then describes what happened after each event.  Every aggregate can be
 recomputed from the row-level ledger by :func:`verify_bundle`.
+
+Instruments: ``BTCUSDT`` reads the Binance ``Klines`` store with fixed-interval
+contiguity.  Other registry instruments (``MBB``) read ``InstrumentCandles``
+and use HOSE expected-open adjacency from ``vietnam_market_calendar`` — lunch,
+overnight, weekend and configured non-trading boundaries are contiguous, and
+horizons/segmentation are measured in bars, not wall-clock milliseconds.
 """
 
 from __future__ import annotations
@@ -21,10 +27,12 @@ import uuid
 from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 import numpy as np
 
+import trading_config
+import vietnam_market_calendar as vn_calendar
 from technical_evidence_profiles import build_evidence_profiles
 from technical_evidence_statistics import (
     STATISTICS_OUTPUT_SCHEMA_PATH,
@@ -157,13 +165,22 @@ class _LifecycleLevelIndex:
         "_available_max",
     )
 
-    def __init__(self, candles: Sequence[Candle], interval_ms: int) -> None:
+    def __init__(
+        self,
+        candles: Sequence[Candle],
+        interval_ms: int,
+        *,
+        adjacent: Callable[[int, int], bool] | None = None,
+    ) -> None:
         self._candles = candles
+        is_adjacent = adjacent if adjacent is not None else (
+            lambda prev_open, next_open: next_open - prev_open == interval_ms
+        )
         count = len(candles)
         segment_ends = [count - 1] * count
         segment_start = 0
         for index in range(1, count):
-            if candles[index].open_ms - candles[index - 1].open_ms != interval_ms:
+            if not is_adjacent(candles[index - 1].open_ms, candles[index].open_ms):
                 for member in range(segment_start, index):
                     segment_ends[member] = index - 1
                 segment_start = index
@@ -251,6 +268,13 @@ class Dataset:
     lineage: Mapping[str, Any]
     modules: Mapping[str, Any]
     lifecycle_index: _LifecycleLevelIndex
+    symbol: str = "BTCUSDT"
+    # Resolved bar-adjacency predicate.  BTCUSDT uses the fixed open-time
+    # interval; session-calendared instruments (MBB) use HOSE expected opens so
+    # lunch/overnight/weekend/non-trading boundaries are contiguous.
+    adjacent: Callable[[int, int], bool] | None = None
+    # Expected opens strictly between two non-adjacent opens (equity only).
+    missing_between: Callable[[int, int], int] | None = None
 
 
 def _validate_lineage(lineage: Any, owner: str) -> dict[str, Any]:
@@ -276,14 +300,57 @@ def _validate_lineage(lineage: Any, owner: str) -> dict[str, Any]:
     return normalized
 
 
+def _session_adjacency(
+    timeframe: str, non_trading_dates: frozenset
+) -> Callable[[int, int], bool]:
+    """HOSE expected-open adjacency predicate (mirrors current_technical_conditions)."""
+    return lambda prev_open, next_open: vn_calendar.opens_are_adjacent(
+        timeframe, prev_open, next_open, non_trading_dates
+    )
+
+
+def _expected_opens_between(
+    timeframe: str,
+    prev_open_ms: int,
+    next_open_ms: int,
+    non_trading_dates: frozenset,
+    *,
+    limit: int = 10_000,
+) -> int:
+    """Count expected opens strictly between two non-adjacent equity opens."""
+    count = 0
+    probe = vn_calendar.next_expected_open_ms(timeframe, prev_open_ms, non_trading_dates)
+    while probe is not None and probe < next_open_ms and count < limit:
+        count += 1
+        probe = vn_calendar.next_expected_open_ms(timeframe, probe, non_trading_dates)
+    return count
+
+
 def parse_snapshot(raw: Mapping[str, Any], cutoff_ms: int) -> Dataset:
-    if raw.get("symbol") != SYMBOL:
-        raise ValueError("only BTCUSDT is supported")
-    timeframe = str(raw.get("timeframe", ""))
-    if timeframe not in TIMEFRAME_MS:
-        raise ValueError("timeframe must be one of 1h, 4h, 1d")
+    symbol = trading_config.require_known_symbol(str(raw.get("symbol") or ""))
+    timeframe = trading_config.require_active_timeframe(
+        str(raw.get("timeframe", "")), symbol
+    )
     lineage = _validate_lineage(raw.get("lineage"), "dataset")
     interval = TIMEFRAME_MS[timeframe]
+    is_equity = symbol != SYMBOL
+    non_trading_dates = (
+        vn_calendar.non_trading_dates_from_env() if is_equity else frozenset()
+    )
+    adjacent: Callable[[int, int], bool] = (
+        _session_adjacency(timeframe, non_trading_dates)
+        if is_equity
+        else (lambda prev_open, next_open: next_open - prev_open == interval)
+    )
+    missing_between = (
+        (
+            lambda prev_open, next_open: _expected_opens_between(
+                timeframe, prev_open, next_open, non_trading_dates
+            )
+        )
+        if is_equity
+        else None
+    )
     candles: list[Candle] = []
     for index, item in enumerate(raw.get("candles") or []):
         if item.get("finalized") is not True:
@@ -329,7 +396,18 @@ def parse_snapshot(raw: Mapping[str, Any], cutoff_ms: int) -> Dataset:
         if candles[index].available_ms < candles[index - 1].available_ms:
             raise ValueError("candle availability must be non-decreasing")
     for candle in candles:
-        if candle.close_ms - candle.open_ms + 1 != interval:
+        if is_equity:
+            # Session-aware bars: duration is modeled by the calendar (the
+            # HOSE 11:00 bar closes 11:30), so a fixed-interval check would
+            # reject every equity bar.  Bars must sit on declared session
+            # opens instead — off-session provider anomalies fail closed.
+            if not vn_calendar.is_expected_open(
+                timeframe, candle.open_ms, non_trading_dates
+            ):
+                raise ValueError(
+                    "candle open is not a declared session open for the instrument"
+                )
+        elif candle.close_ms - candle.open_ms + 1 != interval:
             raise ValueError("candle duration does not match timeframe")
     events = tuple(dict(item) for item in (raw.get("events") or []))
     event_ids = [str(event.get("eventId", "")) for event in events]
@@ -346,17 +424,30 @@ def parse_snapshot(raw: Mapping[str, Any], cutoff_ms: int) -> Dataset:
         events,
         lineage,
         dict(modules),
-        _LifecycleLevelIndex(frozen_candles, interval),
+        _LifecycleLevelIndex(frozen_candles, interval, adjacent=adjacent),
+        symbol=symbol,
+        adjacent=adjacent,
+        missing_between=missing_between,
     )
 
 
-def _causal_contexts(kline_rows: Sequence[Mapping[str, Any]], interval_ms: int) -> list[dict[str, str]]:
+def _causal_contexts(
+    kline_rows: Sequence[Mapping[str, Any]],
+    interval_ms: int,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
+) -> list[dict[str, str]]:
     closes = np.asarray([float(row["Close"]) for row in kline_rows], dtype=np.float64)
     highs = np.asarray([float(row["High"]) for row in kline_rows], dtype=np.float64)
     lows = np.asarray([float(row["Low"]) for row in kline_rows], dtype=np.float64)
+    is_adjacent = adjacent if adjacent is not None else (
+        lambda prev_open, next_open: next_open - prev_open == interval_ms
+    )
     true_range_pct = np.empty(len(closes), dtype=np.float64)
     for index in range(len(closes)):
-        contiguous = index > 0 and int(kline_rows[index]["OpenTimeMs"]) - int(kline_rows[index - 1]["OpenTimeMs"]) == interval_ms
+        contiguous = index > 0 and is_adjacent(
+            int(kline_rows[index - 1]["OpenTimeMs"]), int(kline_rows[index]["OpenTimeMs"])
+        )
         if not contiguous:
             true_range = highs[index] - lows[index]
         else:
@@ -365,7 +456,9 @@ def _causal_contexts(kline_rows: Sequence[Mapping[str, Any]], interval_ms: int) 
     contexts: list[dict[str, str]] = []
     segment_start = 0
     for end in range(len(kline_rows)):
-        if end > 0 and int(kline_rows[end]["OpenTimeMs"]) - int(kline_rows[end - 1]["OpenTimeMs"]) != interval_ms:
+        if end > 0 and not is_adjacent(
+            int(kline_rows[end - 1]["OpenTimeMs"]), int(kline_rows[end]["OpenTimeMs"])
+        ):
             segment_start = end
         start = max(segment_start, end - 5)
         changes = np.diff(closes[start : end + 1])
@@ -453,24 +546,62 @@ def build_postgresql_snapshot_from_rows(
     causal_smc_columns: Sequence[str] = (),
     causal_smc_checkpoint: Mapping[str, Any] | None = None,
     causal_smc_checkpoint_columns: Sequence[str] = (),
+    symbol: str = "BTCUSDT",
 ) -> dict[str, Any]:
-    """Pure mapping used by the read-only PostgreSQL loader and unit tests."""
-    if timeframe not in TIMEFRAME_MS:
-        raise ValueError("timeframe must be one of 1h, 4h, 1d")
+    """Pure mapping used by the read-only PostgreSQL loader and unit tests.
+
+    ``BTCUSDT`` requires exact-duration ``Klines`` bars and folds in the BTC-only
+    causal/legacy SMC tables.  Other registry instruments (``MBB``) read the
+    ``InstrumentCandles`` store: bar durations are session-modeled so the
+    duration check is replaced by the declared-session-open filter (off-session
+    provider anomalies such as the 2024-06-20 12:00 bar are excluded and
+    counted), and contiguity is defined by HOSE expected opens rather than a
+    fixed millisecond interval.  The BTC-only SMC tables hold no equity rows;
+    for non-BTC symbols they must be passed empty and the ``causalSmc`` module
+    degrades to ``unavailable`` exactly like a missing table.
+    """
+    symbol = trading_config.require_known_symbol(symbol)
+    timeframe = trading_config.require_active_timeframe(timeframe, symbol)
     interval = TIMEFRAME_MS[timeframe]
-    all_klines = sorted(kline_rows, key=lambda row: int(row["OpenTimeMs"]))
-    ordered_klines = [
-        row
-        for row in all_klines
-        if int(row["CloseTimeMs"]) <= cutoff_ms
-        and int(row["CloseTimeMs"]) - int(row["OpenTimeMs"]) + 1 == interval
-    ]
-    invalid_duration_count = sum(
-        int(row["CloseTimeMs"]) <= cutoff_ms
-        and int(row["CloseTimeMs"]) - int(row["OpenTimeMs"]) + 1 != interval
-        for row in all_klines
+    is_equity = symbol != SYMBOL
+    non_trading_dates = (
+        vn_calendar.non_trading_dates_from_env() if is_equity else frozenset()
     )
-    contexts = _causal_contexts(ordered_klines, interval) if ordered_klines else []
+    adjacent = (
+        _session_adjacency(timeframe, non_trading_dates) if is_equity else None
+    )
+    all_klines = sorted(kline_rows, key=lambda row: int(row["OpenTimeMs"]))
+    if is_equity:
+        finalized_rows = [
+            row for row in all_klines if int(row["CloseTimeMs"]) <= cutoff_ms
+        ]
+        ordered_klines = [
+            row
+            for row in finalized_rows
+            if vn_calendar.is_expected_open(
+                timeframe, int(row["OpenTimeMs"]), non_trading_dates
+            )
+        ]
+        off_session_count = len(finalized_rows) - len(ordered_klines)
+        invalid_duration_count = 0
+    else:
+        ordered_klines = [
+            row
+            for row in all_klines
+            if int(row["CloseTimeMs"]) <= cutoff_ms
+            and int(row["CloseTimeMs"]) - int(row["OpenTimeMs"]) + 1 == interval
+        ]
+        invalid_duration_count = sum(
+            int(row["CloseTimeMs"]) <= cutoff_ms
+            and int(row["CloseTimeMs"]) - int(row["OpenTimeMs"]) + 1 != interval
+            for row in all_klines
+        )
+        off_session_count = 0
+    contexts = (
+        _causal_contexts(ordered_klines, interval, adjacent=adjacent)
+        if ordered_klines
+        else []
+    )
     candles = [
         {
             "openTimeMs": int(row["OpenTimeMs"]),
@@ -494,7 +625,12 @@ def build_postgresql_snapshot_from_rows(
     }
     canonical_schema = canonical_required.issubset(set(causal_smc_columns))
     derived_events, derived_modules = build_causal_technical_events(
-        timeframe, interval, ordered_klines, contexts
+        timeframe,
+        interval,
+        ordered_klines,
+        contexts,
+        adjacent=adjacent,
+        source_label="InstrumentCandles" if is_equity else "Klines",
     )
     events: list[dict[str, Any]] = list(derived_events)
     causal_count = 0
@@ -592,7 +728,7 @@ def build_postgresql_snapshot_from_rows(
         raw_digest = sha256_bytes(canonical_json(immutable_core).encode())
         identity = {
             "rowId": row.get("Id"),
-            "symbol": SYMBOL,
+            "symbol": symbol,
             "timeframe": timeframe,
             "eventType": row.get("EventType"),
             "originTimeMs": row.get("OriginTimeMs") or row.get("TimeMs"),
@@ -640,7 +776,13 @@ def build_postgresql_snapshot_from_rows(
         and start_covered
         and end_covered
     )
-    if coverage_complete:
+    if is_equity:
+        module_status = "unavailable"
+        coverage_reason = (
+            "CausalSmartMoneyEvents is a BTCUSDT-only store; equity instruments "
+            "have no canonical causal SMC rows"
+        )
+    elif coverage_complete:
         module_status = "evaluable"
         coverage_reason = None
     elif canonical_schema and checkpoint:
@@ -649,13 +791,27 @@ def build_postgresql_snapshot_from_rows(
     else:
         module_status = "unavailable"
         coverage_reason = "canonical table, immutable decision schema, or versioned rebuild checkpoint is unavailable"
+    finalized_candles_module: dict[str, Any] = {
+        "status": "evaluable" if candles else "unavailable",
+        "includedRows": len(candles),
+        "excludedInvalidDurationRows": invalid_duration_count,
+        "availabilityBasis": (
+            "CloseTimeMs at or before cutoff; declared HOSE session opens only "
+            "(off-session provider anomalies excluded)"
+            if is_equity
+            else "CloseTimeMs at or before cutoff; exact timeframe duration"
+        ),
+    }
+    if is_equity:
+        finalized_candles_module["excludedOffSessionRows"] = off_session_count
+        finalized_candles_module["sessionCalendar"] = {
+            "basis": "HOSE expected opens via vietnam_market_calendar",
+            "nonTradingDates": sorted(
+                day.isoformat() for day in non_trading_dates
+            ),
+        }
     modules = {
-        "finalizedCandles": {
-            "status": "evaluable" if candles else "unavailable",
-            "includedRows": len(candles),
-            "excludedInvalidDurationRows": invalid_duration_count,
-            "availabilityBasis": "CloseTimeMs at or before cutoff; exact timeframe duration",
-        },
+        "finalizedCandles": finalized_candles_module,
         "causalSmc": {
             "status": module_status,
             "canonicalTable": "CausalSmartMoneyEvents",
@@ -687,10 +843,14 @@ def build_postgresql_snapshot_from_rows(
         "legacyAudit": sorted(set(smc_columns)),
     }).encode())
     return {
-        "symbol": SYMBOL,
+        "symbol": symbol,
         "timeframe": timeframe,
         "lineage": {
-            "source": "postgresql:Klines+CausalSmartMoneyEvents+SmartMoneyStructuresLegacyAudit",
+            "source": (
+                "postgresql:InstrumentCandles"
+                if is_equity
+                else "postgresql:Klines+CausalSmartMoneyEvents+SmartMoneyStructuresLegacyAudit"
+            ),
             "sourceVersion": schema_digest,
             "contentSha256": sha256_canonical(source_payload),
             "sourceCutoffMs": cutoff_ms,
@@ -709,14 +869,27 @@ def _table_columns(cursor: Any, table_name: str) -> set[str]:
     return {str(row[0]) for row in cursor.fetchall()}
 
 
-def load_postgresql_snapshot(timeframe: str, cutoff_ms: int) -> dict[str, Any]:
-    """Read a cutoff snapshot inside a PostgreSQL read-only transaction."""
+def load_postgresql_snapshot(
+    timeframe: str, cutoff_ms: int, *, symbol: str = SYMBOL
+) -> dict[str, Any]:
+    """Read a cutoff snapshot inside a PostgreSQL read-only transaction.
+
+    ``BTCUSDT`` reads ``Klines`` plus the BTC-only ``CausalSmartMoneyEvents`` /
+    ``SmartMoneyStructures`` lineage tables.  Other registry instruments (``MBB``)
+    read ``InstrumentCandles`` only: bar durations are session-aware so the
+    exact-duration predicate is dropped (the session-open filter runs inside the
+    snapshot builder), and the BTC-only tables are not queried — the ``causalSmc``
+    module degrades to ``unavailable`` exactly as if the tables were absent.
+    """
     from db_config import get_db_connection
 
+    symbol = trading_config.require_known_symbol(symbol)
+    timeframe = trading_config.require_active_timeframe(timeframe, symbol)
+    is_equity = symbol != SYMBOL
     connection = get_db_connection()
     try:
         # PostgreSQL's default READ COMMITTED isolation takes a fresh snapshot
-        # for every statement.  This loader reads Klines, table metadata and SMC
+        # for every statement.  This loader reads candles, table metadata and SMC
         # rows in separate statements, so an ingestion commit between them could
         # otherwise produce a bundle assembled from different database states.
         connection.set_session(
@@ -725,78 +898,91 @@ def load_postgresql_snapshot(timeframe: str, cutoff_ms: int) -> dict[str, Any]:
             isolation_level="REPEATABLE READ",
         )
         with connection.cursor() as cursor:
-            cursor.execute(
-                'SELECT "OpenTimeMs","CloseTimeMs","Open","High","Low","Close","Volume" FROM "Klines" '
-                'WHERE "Symbol"=%s AND "Timeframe"=%s AND "CloseTimeMs"<=%s ORDER BY "OpenTimeMs"',
-                (SYMBOL, timeframe, cutoff_ms),
-            )
             names = ("OpenTimeMs", "CloseTimeMs", "Open", "High", "Low", "Close", "Volume")
+            if is_equity:
+                cursor.execute(
+                    'SELECT "OpenTimeMs","CloseTimeMs","Open","High","Low","Close","Volume" FROM "InstrumentCandles" '
+                    'WHERE "Symbol"=%s AND "Timeframe"=%s AND "CloseTimeMs"<=%s ORDER BY "OpenTimeMs"',
+                    (symbol, timeframe, cutoff_ms),
+                )
+            else:
+                cursor.execute(
+                    'SELECT "OpenTimeMs","CloseTimeMs","Open","High","Low","Close","Volume" FROM "Klines" '
+                    'WHERE "Symbol"=%s AND "Timeframe"=%s AND "CloseTimeMs"<=%s ORDER BY "OpenTimeMs"',
+                    (symbol, timeframe, cutoff_ms),
+                )
             klines = [dict(zip(names, row)) for row in cursor.fetchall()]
-            causal_columns = _table_columns(cursor, "CausalSmartMoneyEvents")
-            causal_rows: list[dict[str, Any]] = []
-            if causal_columns:
-                causal_selected = [
-                    name
-                    for name in (
-                        "Id", "EventId", "EventType", "OriginTimeMs", "AvailableTimeMs",
-                        "ReferenceTimeMs", "Price", "HighPrice", "LowPrice", "State",
-                        "MitigatedAtMs", "MitigationSourceOpenTimeMs", "CalculationVersion",
-                        "SegmentStartOpenTimeMs", "DecisionSourceCandleCount",
-                        "DecisionSourceOpenTimeMsJson", "DecisionEvidenceJson",
-                        "DecisionEvidenceSha256",
-                    )
-                    if name in causal_columns
-                ]
-                causal_quoted = ",".join(f'"{name}"' for name in causal_selected)
-                cursor.execute(
-                    f'SELECT {causal_quoted} FROM "CausalSmartMoneyEvents" '
-                    'WHERE "Symbol"=%s AND "Timeframe"=%s AND "AvailableTimeMs"<=%s '
-                    'ORDER BY "AvailableTimeMs", "EventId"',
-                    (SYMBOL, timeframe, cutoff_ms),
-                )
-                causal_rows = [dict(zip(causal_selected, row)) for row in cursor.fetchall()]
-
-            checkpoint_columns = _table_columns(cursor, "CausalSmartMoneyRebuildCheckpoints")
+            causal_columns: set[str] = set()
+            checkpoint_columns: set[str] = set()
             causal_checkpoint: dict[str, Any] | None = None
-            if checkpoint_columns:
-                checkpoint_selected = [
-                    name
-                    for name in (
-                        "CalculationVersion", "LastProcessedOpenTimeMs", "CoverageStartOpenTimeMs",
-                        "ProcessedCandleCount", "MaterializedEventCount", "Status", "LastError",
-                    )
-                    if name in checkpoint_columns
-                ]
-                checkpoint_quoted = ",".join(f'"{name}"' for name in checkpoint_selected)
-                cursor.execute(
-                    f'SELECT {checkpoint_quoted} FROM "CausalSmartMoneyRebuildCheckpoints" '
-                    'WHERE "Symbol"=%s AND "Timeframe"=%s AND "CalculationVersion"=%s '
-                    'ORDER BY "UpdatedAtUtc" DESC LIMIT 1',
-                    (SYMBOL, timeframe, "smc-causal-v2"),
-                )
-                checkpoint_row = cursor.fetchone()
-                if checkpoint_row is not None:
-                    causal_checkpoint = dict(zip(checkpoint_selected, checkpoint_row))
-
-            columns = _table_columns(cursor, "SmartMoneyStructures")
+            columns: set[str] = set()
+            causal_rows: list[dict[str, Any]] = []
             smc_rows: list[dict[str, Any]] = []
-            if columns:
-                selected = [
-                    name
-                    for name in (
-                        "Id", "TimeMs", "OriginTimeMs", "ReferenceTimeMs", "AvailableTimeMs", "EventType",
-                        "CalculationVersion", "Price", "HighPrice", "LowPrice",
+            if not is_equity:
+                # BTC-only lineage tables: they carry no equity rows and must
+                # not be queried for other instruments.
+                causal_columns = _table_columns(cursor, "CausalSmartMoneyEvents")
+                if causal_columns:
+                    causal_selected = [
+                        name
+                        for name in (
+                            "Id", "EventId", "EventType", "OriginTimeMs", "AvailableTimeMs",
+                            "ReferenceTimeMs", "Price", "HighPrice", "LowPrice", "State",
+                            "MitigatedAtMs", "MitigationSourceOpenTimeMs", "CalculationVersion",
+                            "SegmentStartOpenTimeMs", "DecisionSourceCandleCount",
+                            "DecisionSourceOpenTimeMsJson", "DecisionEvidenceJson",
+                            "DecisionEvidenceSha256",
+                        )
+                        if name in causal_columns
+                    ]
+                    causal_quoted = ",".join(f'"{name}"' for name in causal_selected)
+                    cursor.execute(
+                        f'SELECT {causal_quoted} FROM "CausalSmartMoneyEvents" '
+                        'WHERE "Symbol"=%s AND "Timeframe"=%s AND "AvailableTimeMs"<=%s '
+                        'ORDER BY "AvailableTimeMs", "EventId"',
+                        (symbol, timeframe, cutoff_ms),
                     )
-                    if name in columns
-                ]
-                quoted = ",".join(f'"{name}"' for name in selected)
-                sql = (
-                    f'SELECT {quoted} FROM "SmartMoneyStructures" WHERE "Symbol"=%s AND "Timeframe"=%s '
-                    'AND "TimeMs"<=%s ORDER BY "TimeMs", "EventType"'
-                )
-                params: tuple[Any, ...] = (SYMBOL, timeframe, cutoff_ms)
-                cursor.execute(sql, params)
-                smc_rows = [dict(zip(selected, row)) for row in cursor.fetchall()]
+                    causal_rows = [dict(zip(causal_selected, row)) for row in cursor.fetchall()]
+
+                checkpoint_columns = _table_columns(cursor, "CausalSmartMoneyRebuildCheckpoints")
+                if checkpoint_columns:
+                    checkpoint_selected = [
+                        name
+                        for name in (
+                            "CalculationVersion", "LastProcessedOpenTimeMs", "CoverageStartOpenTimeMs",
+                            "ProcessedCandleCount", "MaterializedEventCount", "Status", "LastError",
+                        )
+                        if name in checkpoint_columns
+                    ]
+                    checkpoint_quoted = ",".join(f'"{name}"' for name in checkpoint_selected)
+                    cursor.execute(
+                        f'SELECT {checkpoint_quoted} FROM "CausalSmartMoneyRebuildCheckpoints" '
+                        'WHERE "Symbol"=%s AND "Timeframe"=%s AND "CalculationVersion"=%s '
+                        'ORDER BY "UpdatedAtUtc" DESC LIMIT 1',
+                        (symbol, timeframe, "smc-causal-v2"),
+                    )
+                    checkpoint_row = cursor.fetchone()
+                    if checkpoint_row is not None:
+                        causal_checkpoint = dict(zip(checkpoint_selected, checkpoint_row))
+
+                columns = _table_columns(cursor, "SmartMoneyStructures")
+                if columns:
+                    selected = [
+                        name
+                        for name in (
+                            "Id", "TimeMs", "OriginTimeMs", "ReferenceTimeMs", "AvailableTimeMs", "EventType",
+                            "CalculationVersion", "Price", "HighPrice", "LowPrice",
+                        )
+                        if name in columns
+                    ]
+                    quoted = ",".join(f'"{name}"' for name in selected)
+                    sql = (
+                        f'SELECT {quoted} FROM "SmartMoneyStructures" WHERE "Symbol"=%s AND "Timeframe"=%s '
+                        'AND "TimeMs"<=%s ORDER BY "TimeMs", "EventType"'
+                    )
+                    params: tuple[Any, ...] = (symbol, timeframe, cutoff_ms)
+                    cursor.execute(sql, params)
+                    smc_rows = [dict(zip(selected, row)) for row in cursor.fetchall()]
         connection.rollback()
         return build_postgresql_snapshot_from_rows(
             timeframe,
@@ -808,6 +994,7 @@ def load_postgresql_snapshot(timeframe: str, cutoff_ms: int) -> dict[str, Any]:
             causal_smc_columns=sorted(causal_columns),
             causal_smc_checkpoint=causal_checkpoint,
             causal_smc_checkpoint_columns=sorted(checkpoint_columns),
+            symbol=symbol,
         )
     finally:
         connection.close()
@@ -863,8 +1050,21 @@ def _event_exclusion(
     return None, decision_index
 
 
-def _is_contiguous(candles: Sequence[Candle], start: int, end: int, interval_ms: int) -> bool:
-    return all(candles[index].open_ms - candles[index - 1].open_ms == interval_ms for index in range(start + 1, end + 1))
+def _is_contiguous(
+    candles: Sequence[Candle],
+    start: int,
+    end: int,
+    interval_ms: int,
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
+) -> bool:
+    is_adjacent = adjacent if adjacent is not None else (
+        lambda prev_open, next_open: next_open - prev_open == interval_ms
+    )
+    return all(
+        is_adjacent(candles[index - 1].open_ms, candles[index].open_ms)
+        for index in range(start + 1, end + 1)
+    )
 
 
 def _level_hit(candle: Candle, level: Mapping[str, Any] | None) -> bool:
@@ -883,7 +1083,12 @@ def _horizon_metrics(dataset: Dataset, decision_index: int, horizon: int, cutoff
     end = decision_index + horizon
     if end >= len(dataset.candles):
         return None
-    if dataset.candles[end].available_ms > cutoff_ms or not _is_contiguous(dataset.candles, decision_index, end, dataset.interval_ms):
+    # Horizons are measured in bars (index distance); contiguity is the
+    # resolved adjacency predicate — session-aware for equity instruments.
+    if dataset.candles[end].available_ms > cutoff_ms or not _is_contiguous(
+        dataset.candles, decision_index, end, dataset.interval_ms,
+        adjacent=dataset.adjacent,
+    ):
         return None
     entry = dataset.candles[decision_index].close
     followup = dataset.candles[decision_index + 1 : end + 1]
@@ -909,8 +1114,10 @@ def _time_to_level(
     if (
         next_index >= len(dataset.candles)
         or dataset.candles[next_index].available_ms > cutoff_ms
-        or dataset.candles[next_index].open_ms - dataset.candles[decision_index].open_ms
-        != dataset.interval_ms
+        or not dataset.adjacent(
+            dataset.candles[decision_index].open_ms,
+            dataset.candles[next_index].open_ms,
+        )
     ):
         return None
     price = _finite(level.get("price"), "level.price")
@@ -1238,7 +1445,7 @@ def evaluate(snapshot: Mapping[str, Any], config: EvaluationConfig) -> tuple[dic
     }
     filtered_snapshot = {
         "schema": SCHEMA,
-        "symbol": SYMBOL,
+        "symbol": dataset.symbol,
         "timeframe": dataset.timeframe,
         "cutoffMs": config.cutoff_ms,
         "lineage": dict(dataset.lineage),
@@ -1305,6 +1512,7 @@ def _sensitivity_summary(
         kline_rows,
         contexts,
         baseline_events,
+        adjacent=dataset.adjacent,
     )
 
     def summarize(rows: Sequence[Mapping[str, Any]], seed_offset: int) -> dict[str, Any]:
@@ -1375,7 +1583,13 @@ def _sensitivity_summary(
                     else variant_mean - baseline_mean,
                 }
             horizon_comparison[key] = {
-                "elapsedTimeMs": horizon * dataset.interval_ms,
+                # Equity horizons are measured in bars; there is no fixed
+                # wall-clock interval to report.
+                "elapsedTimeMs": (
+                    horizon * dataset.interval_ms
+                    if dataset.symbol == SYMBOL
+                    else None
+                ),
                 "realized": summary["horizons"][key]["realized"],
                 "metrics": metrics,
             }
@@ -1451,7 +1665,11 @@ def recompute_report(rows: Sequence[Mapping[str, Any]], dataset: Dataset, config
                     ),
                 }
             horizons[key] = {
-                "elapsedTimeMs": horizon * dataset.interval_ms,
+                "elapsedTimeMs": (
+                    horizon * dataset.interval_ms
+                    if dataset.symbol == SYMBOL
+                    else None
+                ),
                 "eligible": len(group),
                 "realized": len(realized),
                 "matchedControls": len(controls),
@@ -1492,7 +1710,7 @@ def recompute_report(rows: Sequence[Mapping[str, Any]], dataset: Dataset, config
         "probabilityClaim": False,
         "economicClaim": False,
         "promotionAllowed": False,
-        "scope": {"symbol": SYMBOL, "timeframe": dataset.timeframe, "cutoffMs": config.cutoff_ms},
+        "scope": {"symbol": dataset.symbol, "timeframe": dataset.timeframe, "cutoffMs": config.cutoff_ms},
         "modules": dict(dataset.modules),
         "declaredFamily": {
             "eventTypes": sorted(groups),
@@ -1546,6 +1764,10 @@ def recompute_report(rows: Sequence[Mapping[str, Any]], dataset: Dataset, config
         modules=dataset.modules,
         horizons=HORIZONS,
         sensitivity=sensitivity,
+        # Equity coverage counts gaps on the expected-open sequence; BTC keeps
+        # the fixed-interval estimator (adjacent=None preserves that path).
+        adjacent=dataset.adjacent if dataset.symbol != SYMBOL else None,
+        missing_between=dataset.missing_between,
     )
     return report
 
@@ -1785,7 +2007,7 @@ def verify_bundle(manifest_path: Path) -> dict[str, Any]:
     )
     dataset = parse_snapshot(snapshot, config.cutoff_ms)
     if manifest.get("scope") != report.get("scope") or manifest.get("scope") != {
-        "symbol": SYMBOL,
+        "symbol": dataset.symbol,
         "timeframe": dataset.timeframe,
         "cutoffMs": config.cutoff_ms,
     }:
@@ -1797,6 +2019,8 @@ def verify_bundle(manifest_path: Path) -> dict[str, Any]:
         dataset.interval_ms,
         _dataset_rows(dataset),
         [dict(candle.context) for candle in dataset.candles],
+        adjacent=dataset.adjacent,
+        source_label="Klines" if dataset.symbol == SYMBOL else "InstrumentCandles",
     )
     stored_derived = [event for event in dataset.events if event.get("module") in DERIVED_MODULES]
     if stored_derived != reconstructed_events:
@@ -1811,7 +2035,7 @@ def verify_bundle(manifest_path: Path) -> dict[str, Any]:
             raise ValueError("unsupported stored event module")
         _validate_lineage(event.get("lineage"), f"stored event {event.get('eventId')}")
     if (
-        str(dataset.lineage.get("source", "")).startswith("postgresql:Klines+")
+        str(dataset.lineage.get("source", "")).startswith("postgresql:")
         and isinstance(dataset.lineage.get("sourceCutoffMs"), int)
     ):
         source_payload = {
@@ -1846,9 +2070,10 @@ def verify_bundle(manifest_path: Path) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="BTC technical-event descriptive evidence bundle")
+    parser = argparse.ArgumentParser(description="Technical-event descriptive evidence bundle")
     parser.add_argument("--input-json", type=Path)
     parser.add_argument("--from-postgresql", action="store_true")
+    parser.add_argument("--symbol", default=SYMBOL)
     parser.add_argument("--timeframe", choices=sorted(TIMEFRAME_MS))
     parser.add_argument("--verify-manifest", type=Path)
     parser.add_argument("--output-dir", type=Path, default=Path("docs/research/evidence/technical-descriptive"))
@@ -1868,7 +2093,9 @@ def main() -> None:
     if args.from_postgresql:
         if not args.timeframe:
             parser.error("--timeframe is required with --from-postgresql")
-        snapshot = load_postgresql_snapshot(args.timeframe, args.cutoff_ms)
+        snapshot = load_postgresql_snapshot(
+            args.timeframe, args.cutoff_ms, symbol=args.symbol
+        )
     else:
         snapshot = json.loads(args.input_json.read_text(encoding="utf-8"))
     config = EvaluationConfig(

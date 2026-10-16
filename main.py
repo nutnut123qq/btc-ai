@@ -11,7 +11,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 
 from graph import build_ta_graph
 from prediction_service import ModelArtifactIncompatibleError, list_available_models, predict_from_vector
-from trading_config import DEFAULT_TIMEFRAME, require_active_symbol
+from trading_config import DEFAULT_SYMBOL, DEFAULT_TIMEFRAME, require_active_symbol
 import current_technical_conditions
 
 load_dotenv()
@@ -229,10 +229,13 @@ async def get_available_models():
 
 
 @app.get("/api/current-conditions")
-def current_conditions(timeframe: str = "4h"):
+def current_conditions(timeframe: str = "4h", symbol: str = DEFAULT_SYMBOL):
     try:
-        return current_technical_conditions.get_current_conditions(timeframe)
-    except current_technical_conditions.UnknownTimeframeError as exc:
+        return current_technical_conditions.get_current_conditions(timeframe, symbol=symbol)
+    except (
+        current_technical_conditions.UnknownSymbolError,
+        current_technical_conditions.UnknownTimeframeError,
+    ) as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except current_technical_conditions.ConditionsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc))

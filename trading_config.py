@@ -1,6 +1,6 @@
-"""Centralized quantitative trading configuration for the BTC-only platform."""
+"""Centralized quantitative trading configuration for the production market scope."""
 
-from typing import Dict, List
+from typing import Any, Dict, List
 
 # Transaction Costs (basis points: 1 bps = 0.01% = 0.0001)
 FEE_BPS: float = 10.0          # Standard exchange taker fee (0.10%)
@@ -17,6 +17,66 @@ DEFAULT_TIMEFRAME: str = "4h"
 # Backwards-compatible name for callers that expose production choices.
 SUPPORTED_TIMEFRAMES: List[str] = list(ACTIVE_PRODUCTION_TIMEFRAMES)
 SUPPORTED_HORIZONS: List[str] = ["1h", "4h", "1d", "3d", "7d"]
+
+# Instrument registry — mirrors backend InstrumentCatalog (contract instrument-catalog-v1).
+# Membership means the instrument has a declared contract; ACTIVE_SYMBOLS above remains
+# the enabled production data scope, so crypto-only scripts (futures/liquidation/
+# sentiment collectors, paper trader) stay BTCUSDT-only until the MBB lanes land.
+# MBB: HOSE equity, VND, Asia/Ho_Chi_Minh, VCI primary + KBS cross-check, adjusted
+# price basis, production timeframes exactly 1h and 1d (no synthetic 4h).
+INSTRUMENTS: Dict[str, Dict[str, Any]] = {
+    "BTCUSDT": {
+        "symbol": "BTCUSDT",
+        "label": "BTC/USDT",
+        "venue": "Binance Spot",
+        "asset_class": "crypto",
+        "currency": "USDT",
+        "timezone": "UTC",
+        "data_provider": "Binance",
+        "cross_check_provider": None,
+        "price_basis": "raw",
+        "aliases": ("BTC",),
+        "timeframes": ACTIVE_PRODUCTION_TIMEFRAMES,
+        "default_timeframe": DEFAULT_TIMEFRAME,
+        "enabled": True,
+        "capabilities": {
+            "technical_analysis": True,
+            "news": True,
+            "sentiment": True,
+            "futures": True,
+            "liquidation": True,
+            "order_book": True,
+            "execution": True,
+            "paper_trading": True,
+        },
+    },
+    "MBB": {
+        "symbol": "MBB",
+        "label": "MBB (MB Bank)",
+        "venue": "HOSE",
+        "asset_class": "equity",
+        "currency": "VND",
+        "timezone": "Asia/Ho_Chi_Minh",
+        "data_provider": "VCI",
+        "cross_check_provider": "KBS",
+        "price_basis": "adjusted",
+        "aliases": (),
+        "timeframes": ("1h", "1d"),
+        "default_timeframe": "1d",
+        "enabled": False,
+        "capabilities": {
+            "technical_analysis": True,
+            "news": False,
+            "sentiment": False,
+            "futures": False,
+            "liquidation": False,
+            "order_book": False,
+            "execution": False,
+            "paper_trading": False,
+        },
+    },
+}
+KNOWN_SYMBOLS: tuple[str, ...] = tuple(INSTRUMENTS)
 
 # Dataset Partitioning & ML Validation
 TRAIN_TEST_SPLIT_RATIO: float = 0.80
@@ -40,9 +100,28 @@ ASSET_ATR_SETTINGS: Dict[str, Dict[str, float]] = {
 }
 
 
+def canonicalize_symbol(symbol: str) -> str:
+    """Uppercase/trim and resolve declared aliases (BTC -> BTCUSDT)."""
+    normalized = (symbol or "").strip().upper()
+    for descriptor in INSTRUMENTS.values():
+        if normalized == descriptor["symbol"] or normalized in descriptor["aliases"]:
+            return descriptor["symbol"]
+    return normalized
+
+
+def require_known_symbol(symbol: str) -> str:
+    """Reject symbols outside the shared instrument registry (fail closed)."""
+    canonical = canonicalize_symbol(symbol)
+    if canonical not in INSTRUMENTS:
+        raise ValueError(
+            f"Unknown symbol '{canonical or symbol}'. Known instruments: {', '.join(INSTRUMENTS)}."
+        )
+    return canonical
+
+
 def require_active_symbol(symbol: str) -> str:
-    """Normalize and reject symbols outside the production data scope."""
-    normalized = symbol.strip().upper()
+    """Normalize and reject symbols outside the enabled production data scope."""
+    normalized = canonicalize_symbol(symbol)
     if normalized not in ACTIVE_SYMBOLS:
         raise ValueError(
             f"Unsupported symbol '{normalized or symbol}'. Allowed: {', '.join(ACTIVE_SYMBOLS)}."
@@ -57,15 +136,35 @@ def require_active_symbols(symbols: List[str]) -> List[str]:
     return [require_active_symbol(symbol) for symbol in symbols]
 
 
-def require_active_timeframe(timeframe: str) -> str:
-    """Reject candle timeframes outside 1h/4h/1d production scope."""
+def require_active_timeframe(timeframe: str, symbol: str = DEFAULT_SYMBOL) -> str:
+    """Reject candle timeframes outside the instrument's declared contract.
+
+    Existing callers omit ``symbol`` and keep the BTCUSDT contract (1h/4h/1d).
+    MBB declares exactly 1h and 1d; its 4h requests must fail closed.
+
+    This is a catalog check only: it does not mean a known-but-disabled symbol is
+    enabled for production traffic. Callers that gate live pipelines must also use
+    ``require_active_symbol``.
+    """
+    canonical = require_known_symbol(symbol)
     normalized = timeframe.strip().lower()
-    if normalized not in ACTIVE_PRODUCTION_TIMEFRAMES:
+    allowed = INSTRUMENTS[canonical]["timeframes"]
+    if normalized not in allowed:
         raise ValueError(
-            f"Inactive production timeframe '{normalized or timeframe}'. "
-            f"Allowed: {', '.join(ACTIVE_PRODUCTION_TIMEFRAMES)}."
+            f"Inactive production timeframe '{normalized or timeframe}' for {canonical}. "
+            f"Allowed: {', '.join(allowed)}."
         )
     return normalized
+
+
+def active_timeframes_for(symbol: str) -> tuple[str, ...]:
+    """Declared production timeframes for a known instrument."""
+    return INSTRUMENTS[require_known_symbol(symbol)]["timeframes"]
+
+
+def default_timeframe_for(symbol: str) -> str:
+    """Declared default timeframe for a known instrument (MBB: 1d, BTCUSDT: 4h)."""
+    return INSTRUMENTS[require_known_symbol(symbol)]["default_timeframe"]
 
 # Kelly Criterion Constraints (Quarter-Kelly Portfolio Sizing)
 MAX_KELLY_FRACTION: float = 0.25   # Max 25% NAV allocation per trade

@@ -12,7 +12,7 @@ import json
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from itertools import combinations
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 
 PROFILE_SCHEMA = "btc-technical-evidence-profiles/v1"
@@ -120,12 +120,25 @@ def _coverage(
     interval_ms: int,
     modules: Mapping[str, Any],
     horizons: Sequence[int],
+    *,
+    adjacent: Callable[[int, int], bool] | None = None,
+    missing_between: Callable[[int, int], int] | None = None,
 ) -> dict[str, Any]:
     opens = sorted(int(candle["openTimeMs"]) for candle in candles)
     missing_bars = 0
     gap_count = 0
     irregular_spacing_count = 0
     for previous, current in zip(opens, opens[1:]):
+        if adjacent is not None:
+            # Session-calendared instruments (MBB): contiguity is the expected
+            # open sequence, not a fixed open-time delta.  Lunch, overnight and
+            # weekend boundaries are contiguous; a missing expected open is a
+            # real gap and ``missing_between`` counts expected opens skipped.
+            if adjacent(previous, current):
+                continue
+            gap_count += 1
+            missing_bars += missing_between(previous, current) if missing_between else 0
+            continue
         delta = current - previous
         if delta == interval_ms:
             continue
@@ -294,6 +307,8 @@ def build_evidence_profiles(
     modules: Mapping[str, Any],
     horizons: Sequence[int],
     sensitivity: Mapping[str, Any],
+    adjacent: Callable[[int, int], bool] | None = None,
+    missing_between: Callable[[int, int], int] | None = None,
 ) -> dict[str, Any]:
     """Build exhaustive, deterministic profiles without outcome-driven selection."""
     declared_dimensions = ["yearUtc", "timeframe", "regime"]
@@ -327,6 +342,8 @@ def build_evidence_profiles(
                 interval_ms,
                 {module: modules.get(module, {})},
                 horizons,
+                adjacent=adjacent,
+                missing_between=missing_between,
             ),
             "negativeResultRetention": _negative_result_retention(
                 module_rows,
@@ -345,7 +362,15 @@ def build_evidence_profiles(
         },
         "breakdowns": breakdowns,
         "byModule": by_module,
-        "coverageAndMissingness": _coverage(rows, candles, interval_ms, modules, horizons),
+        "coverageAndMissingness": _coverage(
+            rows,
+            candles,
+            interval_ms,
+            modules,
+            horizons,
+            adjacent=adjacent,
+            missing_between=missing_between,
+        ),
         "overlapAndDependence": _dependence(rows),
         "negativeResultRetention": _negative_result_retention(rows, horizons, sensitivity),
     }
