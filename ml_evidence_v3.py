@@ -1085,7 +1085,7 @@ def write_evidence_bundle(
     return paths
 
 
-def verify_evidence_bundle(bundle_path: Path) -> dict[str, Any]:
+def verify_evidence_bundle(bundle_path: Path, *, recompute_statistics: bool = True) -> dict[str, Any]:
     bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
     if set(bundle) != {
         "schemaVersion", "researchManifestSha256", "artifacts",
@@ -1170,7 +1170,7 @@ def verify_evidence_bundle(bundle_path: Path) -> dict[str, Any]:
         research_manifest,
         evaluation,
         prediction_rows,
-        recompute_statistics=True,
+        recompute_statistics=recompute_statistics,
     )
     return bundle
 

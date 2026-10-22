@@ -1,5 +1,13 @@
 # Holdout assessment — what is left that is honest
 
+> **Historical note (2026-10-23):** this assessment was written 2026-10-02
+> against the v3 cutoff **2026-09-20T16:00Z**. That cutoff is history. The
+> 2026-10-05 v3 freeze (Stage A re-run, cutoff 2026-10-04T22:05:30Z =
+> `1791151530514`) read every row up to that time, so the 2026-09-20 → 10-04
+> slice ("58 rows" below) is **spent**. The current reserve is decision >
+> 1791151530514; counts and ETAs below are superseded — see
+> `stage-b-handoff-2026-10-22.md` and `evaluation-protocol.md` §5.
+
 Which slices of the BTCUSDT `4h ws5 h4h` window dataset have already been
 consumed by fitting, calibration, selection, drift checks, or evaluation —
 and what could still serve as a holdout. All timestamps verified against the

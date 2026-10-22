@@ -1,5 +1,13 @@
 # Proposed evaluation protocol — BTCUSDT 4h direction model
 
+> **Status (2026-10-23):** §0–§4 are the original 2026-10-02 *proposal* and
+> are kept unchanged as history. The protocol that governs the current
+> confirmatory Stage B run is **§5 as revised by §5.1** (`btc-4h-stage-b-confirmatory/2026-10-23-v2`):
+> one pre-selected candidate (v3 causal HGB), 150 rows, frozen-snapshot
+> fit/calibration, label lineage checked before fit. Where §1–§2 differ
+> (four-candidate family, 240-row "worth waiting for", reserve from the
+> 2026-09-20 cutoff), §5 wins for this run.
+
 A review-first proposal for re-evaluating the quarantined artifact
 (`BTCUSDT_4h_ws5_h4h_XGB_v20260901025507.joblib`) and any successor candidate.
 No training or scoring run is implied by this document. It reuses the gate
@@ -50,6 +58,11 @@ On the frozen v3 snapshot this yields 114 folds / 13,680 OOS rows
 blocks.
 
 ### Candidates (declared family — nothing added after seeing results)
+
+> *Superseded for the Stage B confirmatory run (2026-10-23, §5):* this
+> four-candidate family belonged to the Stage A screening proposal. Stage B
+> scores only the HGB pre-selected by the v3 screen; it does not score four
+> models and keep the best.
 
 - `frozen_quarantined_xgb` — the artifact as-is; honest OOS only for rows
   after its fit data ends (~2026-07-25). Inside the frozen v3 snapshot that
@@ -109,6 +122,8 @@ log-loss, all paired intervals positive across block sizes, identical
 timestamp coverage. Passing yields status `retrospective_screen_passed` —
 same word as `ml_evidence_v3.py:578` — and `promotionAllowed = false`.
 
+*(2026-10-23: the Stage B paragraph below is the original proposal; the
+binding version is §5.)*
 Stage B (confirmatory, on the no-peek reserve defined in
 `holdout-assessment.md`): the same 9-check gate on the reserve window,
 scored **once**, plus `label_lineage.complete` on the snapshot used.
@@ -165,3 +180,64 @@ Derived estimates:
   window is spent. Best case for that artifact is a historical footnote; the
   protocol is aimed at the *next* candidate — or at confirming quarantine
   permanently.
+
+## 5. Confirmatory Stage B protocol — `btc-4h-stage-b-confirmatory/2026-10-23`
+
+Declared 2026-10-23, before any reserve scoring (reserve 99/150 at the time;
+no reserve label, prediction or metric had been read for this decision).
+Enforced in code by `stage_b_reserve_eval.py`; tests in
+`tests/unit/test_stage_b_reserve_eval.py`.
+
+| Item | Binding value |
+|---|---|
+| Minimum reserve | **150** rows, fixed (no CLI override; 240 = reference variant only) |
+| Candidate | **v3 causal HGB** (`hist_gradient_boosting`) + `PriorOnlyCalibrator`, `v3._fit_calibrated_hgb`, seed 42 — the only candidate |
+| Features | 170 causal columns = 5 bars × 34 (stored 35/bar minus `ActiveRuleCount`) |
+| Fit / calibration input | **only** the 2026-10-05 v3 freeze snapshot: bundle `7d662f64…`, dataset sha256 `e876003b…`, 14,674 rows; fit = first 14,554, calibration = last 120, time order kept |
+| Late rows | the 5 pre-cutoff rows materialized after the freeze (decisions 2026-10-04 00:00–16:00Z) are excluded from fit, calibration **and** baseline history; not deleted; not reserve |
+| Reserve | live rows with decision > 1791151530514 and label available by run time; not replaced by any other row set later |
+| Label | `PriceTargets.TargetDirection4h`: `r = (close[t+4h] − close[t]) / close[t] × 100`, `r > 0.6 → 1`, `r < −0.6 → −1`, else 0 (edge ±0.6 → 0); classes −1/0/1 remapped 0/1/2; decision = signal open + 4h, label available = decision + 4h |
+| Lineage | re-derived from `Klines` 4h closes (signal bar + the exact next 4h bar) for every frozen and reserve row before any fit; any missing bar or mismatch → `EVIDENCE_ERROR`, no verdict |
+| Drift | live pre-cutoff rows must reproduce the snapshot exactly (features + labels) |
+| Gate | unchanged: 9 `PROMOTION_THRESHOLDS` checks + paired block bootstrap (6/12/24, 1,000, Bonferroni over 6 baselines × 2 metrics) all positive |
+| Modes | `--count-only` never fits/scores/loads reserve labels; `--score` is explicit, one-shot (refuses if a report exists), exclusive-create report |
+
+Passing makes the candidate *eligible* for Stage C review only; nothing is
+served and the registry is not touched by the script.
+
+**State at declaration:** the frozen snapshot does **not** pass the lineage
+check (1 row whose next 4h Kline is missing — stored label is an 8 h move;
+5 rows whose stored label differs from the current Klines closes, cluster
+2026-09-14/15). Stage B is therefore BLOCKED on evidence, independent of the
+reserve count; resolving it is a separate decision (see
+`stage-b-handoff-2026-10-22.md` §8). The rule is not relaxed to fit the data.
+
+### 5.1 Revision v2 — `btc-4h-stage-b-confirmatory/2026-10-23-v2` (binding)
+
+Decided 2026-10-23 by the user (option B of three: keep-as-recorded /
+exclude / fix-and-refreeze), still before any reserve scoring (reserve
+99/150; no reserve label, prediction or metric read). Everything in §5 holds
+except the fit/calibration input:
+
+- **Exactly 10 frozen rows are excluded** from fit, calibration and baseline
+  history — the full list found by the lineage check, no more, no fewer
+  (decision times, UTC): 2020-02-19 12:00 (next 4h Kline missing → stored label
+  is an 8h move) and 2026-09-14 20:00 → 2026-09-16 04:00, nine consecutive bars
+  (stored `TargetReturn4h` ≠ current Klines; 5 of them change the label). The
+  list is pinned in code (`LABEL_EXCLUDED_DECISION_MS`); a timestamp missing
+  from the snapshot is an evidence error, not a silent shrink.
+- **Stage B input** = snapshot `e876003b…` minus those 10 = **14,664 rows,
+  sha256 `3e2e73b4…`** (pinned). Fit = first 14,544, calibration = last 120
+  (the window starts 9 rows earlier than in v1; one excluded row was in fit,
+  nine in calibration).
+- The snapshot file, the DB and the reserve are unchanged; drift is still
+  checked against all 14,674 snapshot rows.
+- Lineage on the Stage B input: 14,664/14,664 rows match the contract
+  (server, read-only, 2026-10-22T16:22Z). Reserve lineage stays strict and
+  runs only under `--score`; a reserve row with a missing next 4h Kline or a
+  mismatch stops the run with `EVIDENCE_ERROR` — no exclusion rule exists
+  for reserve rows.
+
+Not addressed by v2 (separate work, does not change this run): the backend
+labels a row against the next *existing* Kline instead of the exact next 4h
+bar, and the root cause of the 2026-09-14/16 return mismatch is unverified.
