@@ -28,8 +28,11 @@ evaluation rules):
   exceed every available baseline; ``supported`` otherwise.
 - All prices/PnL are adjusted basis (``priceBasis: "adjusted"`` is
   stamped on the report and every trade) — not real matched prices.
-- MBB-only tool: symbol must resolve to an equity instrument in
-  ``trading_config.INSTRUMENTS``; anything else fails closed.
+- Equity decision instruments only (MBB, BID): symbol must resolve to an
+  equity instrument with ``capabilities.decision`` in
+  ``trading_config.INSTRUMENTS``; indices and context-only peers fail
+  closed.  ``--strategy all`` runs only strategies bound to the symbol's
+  declared timeframes (BID: 1d only).
 """
 
 from __future__ import annotations
@@ -240,13 +243,41 @@ def dataset_sha256(bars: list[dict[str, Any]]) -> str:
 
 
 def _resolve_symbol(symbol: str) -> str:
+    """Equity decision instruments only (MBB, BID).
+
+    The replay applies VND lot/fee/tax/band costs, which the spec restricts to
+    ``capabilities.decision`` instruments: indices (VNINDEX) and context-only
+    peers (VCB, CTG) fail closed.
+    """
     canonical = trading_config.require_known_symbol(symbol)
-    if trading_config.INSTRUMENTS[canonical]["asset_class"] != "equity":
+    descriptor = trading_config.INSTRUMENTS[canonical]
+    if descriptor["asset_class"] != "equity":
         raise ValueError(
             f"run_mbb_replay is equity-only; '{canonical}' is "
-            f"{trading_config.INSTRUMENTS[canonical]['asset_class']}."
+            f"{descriptor['asset_class']}."
+        )
+    if not descriptor["capabilities"].get("decision", False):
+        raise ValueError(
+            f"run_mbb_replay requires the decision capability; '{canonical}' is "
+            "context-only."
         )
     return canonical
+
+
+def strategies_for_symbol(symbol: str, requested: str = "all") -> list[str]:
+    """Declared strategies runnable for ``symbol``.
+
+    ``all`` keeps only strategies bound to one of the symbol's declared
+    timeframes (BID is 1d-only, so the 1h RSI strategy is skipped); an
+    explicitly requested strategy on an undeclared timeframe fails closed.
+    """
+    canonical = _resolve_symbol(symbol)
+    allowed = trading_config.active_timeframes_for(canonical)
+    if requested == "all":
+        return [name for name in sorted(STRATEGIES) if STRATEGIES[name]["timeframe"] in allowed]
+    spec = _resolve_strategy(requested)
+    trading_config.require_active_timeframe(spec["timeframe"], canonical)
+    return [requested]
 
 
 def _resolve_strategy(strategy: str | StrategySpec) -> StrategySpec:
@@ -336,6 +367,7 @@ def run_replay(
     cutoff_ms: int | None = None,
     costs: VnEquityCostSpec | None = None,
     non_trading_dates: frozenset[date] | None = None,
+    calendar: vn_calendar.MarketCalendar | None = None,
 ) -> dict[str, Any]:
     """Chronological rule replay -> provenance-complete report dict.
 
@@ -352,11 +384,9 @@ def run_replay(
         )
     tf = trading_config.require_active_timeframe(tf, canonical)
     costs = costs or VnEquityCostSpec()
-    ntd = (
-        frozenset(non_trading_dates)
-        if non_trading_dates is not None
-        else vn_calendar.non_trading_dates_from_env()
-    )
+    # calendar > non_trading_dates > MBB_NON_TRADING_DATES; none ⇒ CalendarUnavailableError.
+    market_calendar = vn_calendar.require_calendar(non_trading_dates, calendar)
+    ntd = market_calendar.non_trading_dates
     cutoff = int(cutoff_ms if cutoff_ms is not None else time.time() * 1000)
     if min_trades < 1:
         raise ValueError("min_trades must be at least 1.")
@@ -368,6 +398,14 @@ def run_replay(
         if vn_calendar.is_expected_open(tf, b["open_ms"], ntd)
     ]
     excluded_anomalies = len(raw_bars) - len(bars)
+    if bars:
+        # Fills walk to the next expected session: unknown after coverage end ⇒ fail closed.
+        market_calendar.require_covered(
+            vn_calendar.to_local(bars[-1]["open_ms"]).date(), "latest replay bar"
+        )
+    bars_before_coverage = sum(
+        market_calendar.is_before_coverage(vn_calendar.to_local(b["open_ms"]).date()) for b in bars
+    )
 
     report: dict[str, Any] = {
         "schema": SCHEMA_NAME,
@@ -393,6 +431,8 @@ def run_replay(
             "positionModel": "single-position-all-in-settled-cash",
         },
         "calendar": {
+            **market_calendar.provenance(),
+            "barsBeforeCoverage": bars_before_coverage,
             "nonTradingDatesEnv": vn_calendar.NON_TRADING_DATES_ENV,
             "nonTradingDates": sorted(d.isoformat() for d in ntd),
         },
@@ -613,7 +653,30 @@ def main(argv: list[str] | None = None) -> int:
     else:
         tf_for_load = args.timeframe
         reports = []
-        names = sorted(STRATEGIES) if args.strategy == "all" else [args.strategy]
+        names = strategies_for_symbol(canonical, args.strategy)
+        calendar_failed = False
+        # DB-backed run: HOSE calendar from MarketCalendarDays (env overrides);
+        # empty/unreadable ⇒ every strategy is reported unavailable, never run blind.
+        try:
+            market_calendar = vn_calendar.load_calendar_db()
+        except vn_calendar.CalendarUnavailableError as exc:
+            for name in names:
+                spec = _resolve_strategy(name)
+                reports.append(
+                    {
+                        "schema": SCHEMA_NAME,
+                        "generatedAtUtc": datetime.now(timezone.utc).isoformat(),
+                        "symbol": canonical,
+                        "timeframe": tf_for_load or spec["timeframe"],
+                        "priceBasis": PRICE_BASIS,
+                        "strategy": {"name": spec["name"], "params": spec["params"]},
+                        "verdict": {"value": "unavailable", "reason": exc.reason},
+                        "calendarError": str(exc),
+                        "dataset": {"cutoffMs": cutoff},
+                    }
+                )
+            _emit(reports, args)
+            return 2
         # Each strategy binds its own timeframe; load per strategy inside the loop.
         for name in names:
             spec = _resolve_strategy(name)
@@ -635,35 +698,60 @@ def main(argv: list[str] | None = None) -> int:
                 }
                 reports.append(report)
                 continue
-            reports.append(
-                run_replay(
-                    candles=candles_db,
-                    strategy=spec,
-                    symbol=canonical,
-                    timeframe=tf,
-                    initial_cash_vnd=args.initial_capital_vnd,
-                    min_trades=args.min_trades,
-                    cutoff_ms=cutoff,
-                    costs=costs,
+            try:
+                reports.append(
+                    run_replay(
+                        candles=candles_db,
+                        strategy=spec,
+                        symbol=canonical,
+                        timeframe=tf,
+                        initial_cash_vnd=args.initial_capital_vnd,
+                        min_trades=args.min_trades,
+                        cutoff_ms=cutoff,
+                        costs=costs,
+                        calendar=market_calendar,
+                    )
                 )
-            )
+            except vn_calendar.CalendarUnavailableError as exc:
+                calendar_failed = True
+                reports.append(
+                    {
+                        "schema": SCHEMA_NAME,
+                        "generatedAtUtc": datetime.now(timezone.utc).isoformat(),
+                        "symbol": canonical,
+                        "timeframe": tf,
+                        "priceBasis": PRICE_BASIS,
+                        "strategy": {"name": spec["name"], "params": spec["params"]},
+                        "verdict": {"value": "unavailable", "reason": exc.reason},
+                        "calendar": market_calendar.provenance(),
+                        "calendarError": str(exc),
+                        "dataset": {"cutoffMs": cutoff},
+                    }
+                )
         _emit(reports, args)
-        return 0
+        return 2 if calendar_failed else 0
 
-    names = sorted(STRATEGIES) if args.strategy == "all" else [args.strategy]
-    reports = [
-        run_replay(
-            candles=candles,
-            strategy=_resolve_strategy(name),
-            symbol=canonical,
-            timeframe=args.timeframe,
-            initial_cash_vnd=args.initial_capital_vnd,
-            min_trades=args.min_trades,
-            cutoff_ms=cutoff,
-            costs=costs,
-        )
-        for name in names
-    ]
+    names = strategies_for_symbol(canonical, args.strategy)
+    try:
+        # Fixture runs never read the DB: calendar comes from MBB_NON_TRADING_DATES.
+        fixture_calendar = vn_calendar.require_calendar()
+        reports = [
+            run_replay(
+                candles=candles,
+                strategy=_resolve_strategy(name),
+                symbol=canonical,
+                timeframe=args.timeframe,
+                initial_cash_vnd=args.initial_capital_vnd,
+                min_trades=args.min_trades,
+                cutoff_ms=cutoff,
+                costs=costs,
+                calendar=fixture_calendar,
+            )
+            for name in names
+        ]
+    except vn_calendar.CalendarUnavailableError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     _emit(reports, args)
     return 0
 

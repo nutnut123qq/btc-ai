@@ -18,7 +18,43 @@ DEFAULT_TIMEFRAME: str = "4h"
 SUPPORTED_TIMEFRAMES: List[str] = list(ACTIVE_PRODUCTION_TIMEFRAMES)
 SUPPORTED_HORIZONS: List[str] = ["1h", "4h", "1d", "3d", "7d"]
 
-# Instrument registry — mirrors backend InstrumentCatalog (contract instrument-catalog-v1).
+_NO_CRYPTO_CAPABILITIES: Dict[str, bool] = {
+    "news": False,
+    "sentiment": False,
+    "futures": False,
+    "liquidation": False,
+    "order_book": False,
+    "execution": False,
+    "paper_trading": False,
+}
+
+
+def _equity(symbol: str, label: str, timeframes: tuple[str, ...], *, decision: bool) -> Dict[str, Any]:
+    """HOSE equity on the VCI adjusted series (mirrors backend InstrumentCatalog.Equity).
+
+    ``decision`` instruments (MBB, BID) carry the position/decision/base-rates lane and
+    technical analysis; context-only peers (VCB, CTG) are ingestion-only.
+    """
+    return {
+        "symbol": symbol,
+        "label": label,
+        "venue": "HOSE",
+        "asset_class": "equity",
+        "currency": "VND",
+        "timezone": "Asia/Ho_Chi_Minh",
+        "data_provider": "VCI",
+        "cross_check_provider": "KBS",
+        "price_basis": "adjusted",
+        "aliases": (),
+        "timeframes": timeframes,
+        "default_timeframe": "1d",
+        "enabled": False,
+        "capabilities": {**_NO_CRYPTO_CAPABILITIES, "technical_analysis": decision,
+                         "ingestion": True, "decision": decision},
+    }
+
+
+# Instrument registry — mirrors backend InstrumentCatalog (contract instrument-catalog-v2).
 # Membership means the instrument has a declared contract; ACTIVE_SYMBOLS above remains
 # the enabled production data scope, so crypto-only scripts (futures/liquidation/
 # sentiment collectors, paper trader) stay BTCUSDT-only until the MBB lanes land.
@@ -48,32 +84,31 @@ INSTRUMENTS: Dict[str, Dict[str, Any]] = {
             "order_book": True,
             "execution": True,
             "paper_trading": True,
+            "ingestion": False,
+            "decision": False,
         },
     },
-    "MBB": {
-        "symbol": "MBB",
-        "label": "MBB (MB Bank)",
+    "MBB": _equity("MBB", "MBB (MB Bank)", ("1h", "1d"), decision=True),
+    "BID": _equity("BID", "BID (BIDV)", ("1d",), decision=True),
+    "VCB": _equity("VCB", "VCB (Vietcombank)", ("1d",), decision=False),
+    "CTG": _equity("CTG", "CTG (VietinBank)", ("1d",), decision=False),
+    # Market index: quoted in points (not VND), raw basis, never traded — no lot/fee/tax.
+    "VNINDEX": {
+        "symbol": "VNINDEX",
+        "label": "VN-Index",
         "venue": "HOSE",
-        "asset_class": "equity",
-        "currency": "VND",
+        "asset_class": "index",
+        "currency": "index-points",
         "timezone": "Asia/Ho_Chi_Minh",
         "data_provider": "VCI",
-        "cross_check_provider": "KBS",
-        "price_basis": "adjusted",
+        "cross_check_provider": None,
+        "price_basis": "raw",
         "aliases": (),
-        "timeframes": ("1h", "1d"),
+        "timeframes": ("1d",),
         "default_timeframe": "1d",
         "enabled": False,
-        "capabilities": {
-            "technical_analysis": True,
-            "news": False,
-            "sentiment": False,
-            "futures": False,
-            "liquidation": False,
-            "order_book": False,
-            "execution": False,
-            "paper_trading": False,
-        },
+        "capabilities": {**_NO_CRYPTO_CAPABILITIES, "technical_analysis": False,
+                         "ingestion": True, "decision": False},
     },
 }
 KNOWN_SYMBOLS: tuple[str, ...] = tuple(INSTRUMENTS)

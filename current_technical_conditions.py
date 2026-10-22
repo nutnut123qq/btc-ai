@@ -79,6 +79,14 @@ class UnknownTimeframeError(ValueError):
     """Raised when timeframe is outside the requested instrument's contract."""
 
 
+class UnsupportedCapabilityError(ValueError):
+    """Raised when a known instrument lacks the technical-analysis capability.
+
+    Context-only peers (VCB, CTG) and the VNINDEX benchmark are ingested but do
+    not carry technical conditions (spec instrument scope).
+    """
+
+
 class ConditionsUnavailableError(RuntimeError):
     """Raised when finalized klines cannot be loaded for the timeframe."""
 
@@ -98,6 +106,10 @@ def _resolve_scope(symbol: str, timeframe: str) -> tuple[str, str]:
         canonical = trading_config.require_known_symbol(symbol)
     except ValueError as exc:
         raise UnknownSymbolError(str(exc)) from exc
+    if not trading_config.INSTRUMENTS[canonical]["capabilities"].get("technical_analysis", False):
+        raise UnsupportedCapabilityError(
+            f"Instrument '{canonical}' does not carry the technical-analysis capability."
+        )
     try:
         normalized = trading_config.require_active_timeframe(str(timeframe), canonical)
     except ValueError as exc:
@@ -499,6 +511,8 @@ def build_conditions_payload(
     symbol: str = SYMBOL,
     causal_smc_error: str | None = None,
     window_bars: int = WINDOW_BARS,
+    non_trading_dates: frozenset | None = None,
+    calendar: "vn_calendar.MarketCalendar | None" = None,
 ) -> dict[str, Any]:
     """Pure computation of the current-conditions payload (no generatedAtMs).
 
@@ -512,8 +526,13 @@ def build_conditions_payload(
     canonical, normalized = _resolve_scope(symbol, timeframe)
     interval = TIMEFRAME_MS[normalized]
     is_equity = canonical != SYMBOL
+    # HOSE calendar: explicit (DB-loaded by get_current_conditions, or a fixture
+    # set) > MBB_NON_TRADING_DATES override; nothing ⇒ fail closed.
+    market_calendar = (
+        vn_calendar.require_calendar(non_trading_dates, calendar) if is_equity else None
+    )
     non_trading_dates = (
-        vn_calendar.non_trading_dates_from_env() if is_equity else frozenset()
+        market_calendar.non_trading_dates if market_calendar is not None else frozenset()
     )
     adjacent = (
         _session_adjacency(normalized, non_trading_dates) if is_equity else None
@@ -550,10 +569,26 @@ def build_conditions_payload(
         raise ConditionsUnavailableError(
             f"no finalized contiguous bars for {canonical} {normalized}"
         )
+    if market_calendar is not None:
+        # After the coverage end the session set is unknown: fail closed.
+        try:
+            market_calendar.require_covered(
+                vn_calendar.to_local(int(finalized[-1]["OpenTimeMs"])).date(), "latest finalized bar"
+            )
+        except vn_calendar.CalendarCoverageError as exc:
+            raise ConditionsUnavailableError(str(exc)) from exc
     run_start = len(finalized) - 1
+    below_coverage = False
     while run_start > 0:
         prev_open = int(finalized[run_start - 1]["OpenTimeMs"])
         next_open = int(finalized[run_start]["OpenTimeMs"])
+        if market_calendar is not None and market_calendar.is_before_coverage(
+            vn_calendar.to_local(prev_open).date()
+        ):
+            # Contiguity before the calendar's coverage start is unknowable:
+            # stop explicitly instead of treating an unlisted holiday as a gap.
+            below_coverage = True
+            break
         contiguous = (
             adjacent(prev_open, next_open)
             if adjacent is not None
@@ -569,7 +604,9 @@ def build_conditions_payload(
 
     if len(run) > len(window) or run_start > 0:
         warnings.append("fibonacci-anchor-may-predate-window")
-    if run_start > 0:
+    if below_coverage:
+        warnings.append(vn_calendar.BELOW_CALENDAR_COVERAGE)
+    elif run_start > 0:
         warnings.append("analysis-window-truncated-at-non-contiguous-gap")
 
     contexts = _causal_contexts(window, interval, adjacent=adjacent)
@@ -743,7 +780,7 @@ def build_conditions_payload(
                         f"showing {len(kept)} nearest to the as-of close"
                     )
 
-    return {
+    payload: dict[str, Any] = {
         "schemaVersion": SCHEMA_VERSION,
         "symbol": canonical,
         "timeframe": normalized,
@@ -772,11 +809,20 @@ def build_conditions_payload(
         "warnings": warnings,
         "unavailableModules": unavailable,
     }
+    if market_calendar is not None:
+        # Additive provenance: which non-trading set decided session contiguity.
+        payload["calendar"] = market_calendar.provenance()
+    return payload
+
+
+def _load_calendar(symbol: str) -> "vn_calendar.MarketCalendar":
+    """HOSE calendar for a DB-backed conditions call (env override, else MarketCalendarDays)."""
+    return vn_calendar.load_calendar_db()
 
 
 # In-process cache keyed by (symbol, timeframe, asOfMs); a newly closed bar
 # changes the key and therefore invalidates automatically.
-_PAYLOAD_CACHE: dict[tuple[str, str, int], dict[str, Any]] = {}
+_PAYLOAD_CACHE: dict[tuple[str, str, int, str], dict[str, Any]] = {}
 _CACHE_MAX_ENTRIES = 16
 
 
@@ -790,6 +836,12 @@ def get_current_conditions(
     """Contract payload for ``GET /api/current-conditions``."""
     canonical, normalized = _resolve_scope(symbol, timeframe)
     now = _now_ms() if now_ms is None else int(now_ms)
+    market_calendar = None
+    if canonical != SYMBOL:
+        try:
+            market_calendar = _load_calendar(canonical)
+        except vn_calendar.CalendarUnavailableError as exc:
+            raise ConditionsUnavailableError(str(exc)) from exc
     try:
         klines, causal_rows, causal_columns, causal_error = _load_inputs(
             canonical, normalized, now
@@ -803,7 +855,12 @@ def get_current_conditions(
             f"no finalized contiguous bars for {canonical} {normalized}"
         )
     as_of_ms = int(klines[-1]["CloseTimeMs"])
-    key = (canonical, normalized, as_of_ms)
+    key = (
+        canonical,
+        normalized,
+        as_of_ms,
+        market_calendar.sha256 if market_calendar is not None else "",
+    )
     cached = _PAYLOAD_CACHE.get(key)
     if cached is not None:
         return {**cached, "generatedAtMs": now}
@@ -815,6 +872,7 @@ def get_current_conditions(
         now_ms=now,
         symbol=canonical,
         causal_smc_error=causal_error,
+        calendar=market_calendar,
     )
     if len(_PAYLOAD_CACHE) >= _CACHE_MAX_ENTRIES:
         _PAYLOAD_CACHE.pop(next(iter(_PAYLOAD_CACHE)))
@@ -830,6 +888,7 @@ __all__ = [
     "TIMEFRAME_MS",
     "UnknownSymbolError",
     "UnknownTimeframeError",
+    "UnsupportedCapabilityError",
     "WINDOW_BARS",
     "build_conditions_payload",
     "clear_cache",

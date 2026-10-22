@@ -29,7 +29,14 @@ from technical_event_descriptive_evidence import (
 )
 
 
-FIXED = datetime(2026, 10, 16, 1, 2, 3, tzinfo=timezone.utc)
+@pytest.fixture(autouse=True)
+def _explicit_fixture_calendar(monkeypatch):
+    """EQX v2 A1: pure runs without a calendar fail closed, so every fixture here
+    declares one explicitly via the env override (a date outside all fixture ranges)."""
+    monkeypatch.setenv(vn.NON_TRADING_DATES_ENV, "2000-01-03")
+
+
+FIXED =datetime(2026, 10, 16, 1, 2, 3, tzinfo=timezone.utc)
 HASH = "b" * 64
 CANDLE_COLUMNS = ("OpenTimeMs", "CloseTimeMs", "Open", "High", "Low", "Close", "Volume")
 

@@ -25,6 +25,7 @@ import subprocess
 import sys
 import uuid
 from dataclasses import dataclass
+from datetime import date
 from itertools import chain
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
@@ -326,7 +327,43 @@ def _expected_opens_between(
     return count
 
 
-def parse_snapshot(raw: Mapping[str, Any], cutoff_ms: int) -> Dataset:
+def _embedded_calendar(raw: Mapping[str, Any]) -> "vn_calendar.MarketCalendar | None":
+    """Calendar a snapshot was built with (modules.finalizedCandles.sessionCalendar)."""
+    modules = raw.get("modules")
+    finalized = modules.get("finalizedCandles") if isinstance(modules, Mapping) else None
+    session = finalized.get("sessionCalendar") if isinstance(finalized, Mapping) else None
+    if not isinstance(session, Mapping) or not isinstance(session.get("nonTradingDates"), list):
+        return None
+    if not session["nonTradingDates"]:
+        # An empty embedded list is what pre-v2 bundles recorded with the env unset
+        # ("every weekday trades"). A HOSE calendar is never legitimately empty, so
+        # treat it as missing and fail closed instead of re-verifying blind.
+        return None
+    dates = [date.fromisoformat(str(day)) for day in session["nonTradingDates"]]
+    provenance = session.get("provenance") if isinstance(session.get("provenance"), Mapping) else {}
+
+    def _day(key: str) -> date | None:
+        value = provenance.get(key)
+        return date.fromisoformat(value) if isinstance(value, str) else None
+
+    return vn_calendar.MarketCalendar(
+        frozenset(dates), "snapshot:sessionCalendar",
+        coverage_from=_day("coverageFrom"), coverage_to=_day("coverageTo"),
+    )
+
+
+def parse_snapshot(
+    raw: Mapping[str, Any],
+    cutoff_ms: int,
+    *,
+    calendar: "vn_calendar.MarketCalendar | None" = None,
+) -> Dataset:
+    """Parse a cutoff snapshot.
+
+    Equity calendar precedence (EQX v2 A1): explicit ``calendar`` > the calendar
+    embedded by the snapshot builder (so a bundle re-verifies with the set it was
+    built with) > MBB_NON_TRADING_DATES override; none ⇒ CalendarUnavailableError.
+    """
     symbol = trading_config.require_known_symbol(str(raw.get("symbol") or ""))
     timeframe = trading_config.require_active_timeframe(
         str(raw.get("timeframe", "")), symbol
@@ -334,9 +371,10 @@ def parse_snapshot(raw: Mapping[str, Any], cutoff_ms: int) -> Dataset:
     lineage = _validate_lineage(raw.get("lineage"), "dataset")
     interval = TIMEFRAME_MS[timeframe]
     is_equity = symbol != SYMBOL
-    non_trading_dates = (
-        vn_calendar.non_trading_dates_from_env() if is_equity else frozenset()
+    parse_calendar = (
+        vn_calendar.require_calendar(None, calendar or _embedded_calendar(raw)) if is_equity else None
     )
+    non_trading_dates = parse_calendar.non_trading_dates if parse_calendar is not None else frozenset()
     adjacent: Callable[[int, int], bool] = (
         _session_adjacency(timeframe, non_trading_dates)
         if is_equity
@@ -390,6 +428,8 @@ def parse_snapshot(raw: Mapping[str, Any], cutoff_ms: int) -> Dataset:
     if not candles:
         raise ValueError("snapshot has no finalized candles available by cutoff")
     candles.sort(key=lambda candle: candle.open_ms)
+    if parse_calendar is not None:
+        parse_calendar.require_covered(vn_calendar.to_local(candles[-1].open_ms).date(), "latest candle")
     if len({candle.open_ms for candle in candles}) != len(candles):
         raise ValueError("candle open times must be unique")
     for index in range(1, len(candles)):
@@ -547,8 +587,13 @@ def build_postgresql_snapshot_from_rows(
     causal_smc_checkpoint: Mapping[str, Any] | None = None,
     causal_smc_checkpoint_columns: Sequence[str] = (),
     symbol: str = "BTCUSDT",
+    non_trading_dates: frozenset | None = None,
+    calendar: "vn_calendar.MarketCalendar | None" = None,
 ) -> dict[str, Any]:
     """Pure mapping used by the read-only PostgreSQL loader and unit tests.
+
+    Equity calendar: ``calendar`` > ``non_trading_dates`` > MBB_NON_TRADING_DATES;
+    none ⇒ CalendarUnavailableError (never "every weekday trades").
 
     ``BTCUSDT`` requires exact-duration ``Klines`` bars and folds in the BTC-only
     causal/legacy SMC tables.  Other registry instruments (``MBB``) read the
@@ -564,8 +609,11 @@ def build_postgresql_snapshot_from_rows(
     timeframe = trading_config.require_active_timeframe(timeframe, symbol)
     interval = TIMEFRAME_MS[timeframe]
     is_equity = symbol != SYMBOL
+    market_calendar = (
+        vn_calendar.require_calendar(non_trading_dates, calendar) if is_equity else None
+    )
     non_trading_dates = (
-        vn_calendar.non_trading_dates_from_env() if is_equity else frozenset()
+        market_calendar.non_trading_dates if market_calendar is not None else frozenset()
     )
     adjacent = (
         _session_adjacency(timeframe, non_trading_dates) if is_equity else None
@@ -584,6 +632,10 @@ def build_postgresql_snapshot_from_rows(
         ]
         off_session_count = len(finalized_rows) - len(ordered_klines)
         invalid_duration_count = 0
+        if ordered_klines:
+            market_calendar.require_covered(
+                vn_calendar.to_local(int(ordered_klines[-1]["OpenTimeMs"])).date(), "latest finalized bar"
+            )
     else:
         ordered_klines = [
             row
@@ -809,6 +861,13 @@ def build_postgresql_snapshot_from_rows(
             "nonTradingDates": sorted(
                 day.isoformat() for day in non_trading_dates
             ),
+            "provenance": market_calendar.provenance(),
+            # Flagged: adjacency before coverage start used an unknown holiday set
+            # (unlisted holidays there break segments — conservative, never bridged).
+            "barsBeforeCoverage": sum(
+                market_calendar.is_before_coverage(vn_calendar.to_local(int(row["OpenTimeMs"])).date())
+                for row in ordered_klines
+            ),
         }
     modules = {
         "finalizedCandles": finalized_candles_module,
@@ -899,6 +958,13 @@ def load_postgresql_snapshot(
         )
         with connection.cursor() as cursor:
             names = ("OpenTimeMs", "CloseTimeMs", "Open", "High", "Low", "Close", "Volume")
+            # HOSE calendar inside the same snapshot: env override, else
+            # MarketCalendarDays; empty/unreadable ⇒ CalendarUnavailableError.
+            market_calendar = (
+                vn_calendar.calendar_from_env() or vn_calendar.load_calendar_from_cursor(cursor)
+                if is_equity
+                else None
+            )
             if is_equity:
                 cursor.execute(
                     'SELECT "OpenTimeMs","CloseTimeMs","Open","High","Low","Close","Volume" FROM "InstrumentCandles" '
@@ -995,6 +1061,7 @@ def load_postgresql_snapshot(
             causal_smc_checkpoint=causal_checkpoint,
             causal_smc_checkpoint_columns=sorted(checkpoint_columns),
             symbol=symbol,
+            calendar=market_calendar,
         )
     finally:
         connection.close()

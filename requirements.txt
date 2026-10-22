@@ -13,6 +13,22 @@ yfinance>=0.2.0,<2.0.0
 pydantic>=2.10.0,<3.0.0
 httpx>=0.27.0,<1.0.0
 requests>=2.31.0,<3.0.0
+# Pure-Python PDF text reader for issuer documents (equity_documents.py); pinned exactly.
+pypdf==6.14.2
+# Official Claude SDK for the equity LLM layer (equity_llm.py); pinned exactly.
+anthropic==1.11.0
+# Scanned-statement OCR stack (V3-B0, evidence/equity-expansion/v3/b0-ocr-eval.md); pinned exactly.
+# PDF -> image rendering (BSD-3/Apache-2.0; preferred over AGPL PyMuPDF).
+pypdfium2==5.14.0
+pillow==12.3.0
+# Numeric-cell OCR: PP-OCRv6 small det/rec ONNX models bundled in the wheel, CPU onnxruntime.
+# Label/heading OCR uses the portable Tesseract 5.5.3 binary under tools/tesseract (see tools/README.md).
+rapidocr==3.9.2
+onnxruntime==1.30.0
+opencv-python==4.14.0.94
+shapely==2.1.2
+pyclipper==1.4.0
+omegaconf==2.3.1
 
 # ML baseline / data utilities
 numpy>=1.26.0,<3.0.0

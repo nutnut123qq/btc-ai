@@ -18,6 +18,13 @@ import vietnam_market_calendar as vn
 from vn_execution_model import PRICE_BASIS
 
 
+@pytest.fixture(autouse=True)
+def _explicit_fixture_calendar(monkeypatch):
+    """EQX v2 A1: pure runs without a calendar fail closed, so every fixture here
+    declares one explicitly via the env override (a date outside all fixture ranges)."""
+    monkeypatch.setenv(vn.NON_TRADING_DATES_ENV, "2000-01-03")
+
+
 def _trading_days(start: date, count: int) -> list[date]:
     days, cursor = [], start
     while len(days) < count:
@@ -205,3 +212,61 @@ def test_deterministic_dataset_hash_and_declared_strategies():
         "oversold": 30.0,
         "exitLevel": 50.0,
     }
+
+
+# --- EQX: BID (1d-only decision equity) and capability gating ---------------
+
+
+def test_bid_replay_runs_on_daily_fixture():
+    bars = _fixture_bars()
+    report = replay.run_replay(
+        candles=bars,
+        strategy=_buy_first_sell_fifth(),
+        symbol="bid",
+        initial_cash_vnd=5_000_000,
+        cutoff_ms=bars[-1]["CloseTimeMs"] + 1,
+    )
+    assert report["symbol"] == "BID"
+    assert report["timeframe"] == "1d"
+    assert report["priceBasis"] == "adjusted"
+    assert report["trades"]["closedRoundTrips"] == 1
+    assert report["trades"]["roundTrips"][0]["entryPrice"] == 20_200.0
+
+
+def test_bid_rejects_hourly_strategy_and_all_skips_it():
+    bars = _fixture_bars()
+    with pytest.raises(ValueError, match="Inactive production timeframe"):
+        replay.run_replay(candles=bars, strategy="rsi-mean-revert-14", symbol="BID")
+    assert replay.strategies_for_symbol("BID") == ["sma-cross-20-50"]
+    assert replay.strategies_for_symbol("MBB") == sorted(replay.STRATEGIES)
+    with pytest.raises(ValueError, match="Inactive production timeframe"):
+        replay.strategies_for_symbol("BID", "rsi-mean-revert-14")
+
+
+@pytest.mark.parametrize(
+    ("symbol", "message"),
+    [("VNINDEX", "equity-only"), ("VCB", "decision capability"), ("CTG", "decision capability")],
+)
+def test_index_and_context_only_symbols_fail_closed(symbol, message):
+    with pytest.raises(ValueError, match=message):
+        replay.run_replay(candles=_fixture_bars(), strategy=_buy_first_sell_fifth(), symbol=symbol)
+    with pytest.raises(ValueError, match=message):
+        replay.strategies_for_symbol(symbol)
+
+
+def test_cli_bid_fixture_all_runs_only_daily(tmp_path, capsys):
+    bars = _fixture_bars()
+    fixture = tmp_path / "bid.json"
+    import json
+
+    fixture.write_text(json.dumps(bars), encoding="utf-8")
+    code = replay.main(
+        ["--symbol", "BID", "--fixture-json", str(fixture), "--out-dir", str(tmp_path / "out"),
+         "--cutoff-ms", str(bars[-1]["CloseTimeMs"] + 1)]
+    )
+    assert code == 0
+    written = sorted(p.name for p in (tmp_path / "out").iterdir())
+    assert len(written) == 1 and written[0].startswith("sma-cross-20-50-BID-1d-")
+    report = json.loads((tmp_path / "out" / written[0]).read_text(encoding="utf-8"))
+    assert report["symbol"] == "BID"
+    assert report["verdict"]["value"] == "unavailable"  # 7 bars < minBars 52

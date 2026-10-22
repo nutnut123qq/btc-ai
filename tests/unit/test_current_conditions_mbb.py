@@ -23,6 +23,13 @@ from current_technical_conditions import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _explicit_fixture_calendar(monkeypatch):
+    """EQX v2 A1: pure runs without a calendar fail closed, so every fixture here
+    declares one explicitly via the env override (a date outside all fixture ranges)."""
+    monkeypatch.setenv(vn.NON_TRADING_DATES_ENV, "2000-01-03")
+
+
 def _trading_days(start: date, count: int, non_trading=frozenset()) -> list[date]:
     days = []
     cursor = start
@@ -252,3 +259,58 @@ class TestEndpoint:
             response = self.client.get("/api/current-conditions?timeframe=4h")
         assert response.status_code == 503
         assert loader.call_args[0][0] == "BTCUSDT"
+
+
+# --- EQX: BID (1d-only decision equity) + capability gating -----------------
+
+
+def test_bid_daily_conditions_on_instrument_candles():
+    days = _trading_days(date(2026, 8, 3), 40)
+    rows = _mbb_daily_rows(days, first_close=40_000.0)
+    payload = build_conditions_payload(
+        "1d", rows, [], sorted(CANONICAL_SMC_COLUMNS),
+        now_ms=int(rows[-1]["CloseTimeMs"]), symbol="bid",
+    )
+    assert payload["schemaVersion"] == "current-conditions-v1"
+    assert payload["symbol"] == "BID"
+    assert payload["timeframe"] == "1d"
+    assert payload["analysisWindow"]["bars"] == 40
+    assert payload["analysisWindow"]["contiguous"] is True
+    assert payload["latestClosedBar"]["openTimeMs"] == int(rows[-1]["OpenTimeMs"])
+
+
+def test_bid_load_inputs_reads_instrument_candles():
+    connection = _FakeConnection(lambda sql: [])
+    with patch("db_config.get_db_connection", return_value=connection):
+        ctc._load_inputs("BID", "1d", now_ms=1_800_000_000_000)
+    assert '"InstrumentCandles"' in connection.queries[0][0]
+    assert connection.queries[0][1][:2] == ("BID", "1d")
+
+
+def test_bid_rejects_hourly_and_context_only_symbols_rejected():
+    with pytest.raises(ctc.UnknownTimeframeError):
+        build_conditions_payload("1h", [], [], [], now_ms=0, symbol="BID")
+    for symbol in ("VCB", "CTG", "VNINDEX"):
+        with pytest.raises(ctc.UnsupportedCapabilityError):
+            build_conditions_payload("1d", [], [], [], now_ms=0, symbol=symbol)
+        with pytest.raises(ctc.UnsupportedCapabilityError):
+            ctc.get_current_conditions("1d", symbol=symbol)
+
+
+class TestEndpointBid:
+    def setup_method(self):
+        ctc.clear_cache()
+        self.client = TestClient(__import__("main").app)
+
+    def test_bid_daily_payload(self):
+        rows = _mbb_daily_rows(_trading_days(date(2026, 8, 3), 30), first_close=40_000.0)
+        with patch.object(ctc, "_load_inputs", return_value=(rows, [], ["EventId"], None)) as loader:
+            response = self.client.get("/api/current-conditions?timeframe=1d&symbol=BID")
+        assert response.status_code == 200
+        assert response.json()["symbol"] == "BID"
+        assert loader.call_args[0][:2] == ("BID", "1d")
+
+    def test_bid_hourly_and_vnindex_return_400(self):
+        assert self.client.get("/api/current-conditions?timeframe=1h&symbol=BID").status_code == 400
+        assert self.client.get("/api/current-conditions?timeframe=1d&symbol=VNINDEX").status_code == 400
+        assert self.client.get("/api/current-conditions?timeframe=1d&symbol=VCB").status_code == 400

@@ -12,15 +12,22 @@ Facts locked by the MBB-00 probe evidence and the backend calendar:
 - Lunch, overnight, weekends and configured non-trading dates are NOT data
   gaps: contiguity is defined on the expected-open sequence, never on a fixed
   millisecond interval. A missing expected open is a real gap.
-- Non-trading dates (holidays/suspensions) come from the MBB_NON_TRADING_DATES
-  environment variable as comma-separated YYYY-MM-DD, matching the backend's
-  MbbIngestion:NonTradingDates configuration surface.
+- Non-trading dates (EQX v2 A1): the single source of truth is the backend's
+  checked-in ``backend/Data/Calendars/vn-hose-non-trading-days.json``, synced
+  by the backend into the ``MarketCalendarDays`` table. DB-backed Python jobs
+  read that table (``load_calendar_from_cursor`` / ``load_calendar_db``). The
+  MBB_NON_TRADING_DATES environment variable (comma-separated YYYY-MM-DD) is
+  only an explicit override for fixtures/tests. An empty or unreadable table
+  fails closed with ``calendar-unavailable`` — never "every weekday trades".
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta, timezone
+from typing import Any, Iterable
 
 VN_OFFSET = timezone(timedelta(hours=7), name="Asia/Ho_Chi_Minh")
 
@@ -32,6 +39,15 @@ AFTERNOON_CLOSE_LOCAL = time(14, 45)
 EQUITY_TIMEFRAMES = ("1h", "1d")
 
 NON_TRADING_DATES_ENV = "MBB_NON_TRADING_DATES"
+
+CALENDAR_VENUE = "HOSE"
+CALENDAR_TABLE = "MarketCalendarDays"
+CALENDAR_UNAVAILABLE = "calendar-unavailable"
+CALENDAR_COVERAGE_EXPIRED = "calendar-coverage-expired"
+BELOW_CALENDAR_COVERAGE = "below-calendar-coverage"
+SOURCE_DB = f"db:{CALENDAR_TABLE}"
+SOURCE_ENV = f"env:{NON_TRADING_DATES_ENV}"
+SOURCE_EXPLICIT = "explicit"
 
 # Bound the next-trading-day walk so a pathological non-trading list cannot
 # spin forever; 45 days covers the longest holiday chains with headroom.
@@ -160,8 +176,210 @@ def non_trading_dates_from_env() -> frozenset[date]:
     return frozenset(parsed)
 
 
+class CalendarUnavailableError(RuntimeError):
+    """The HOSE non-trading calendar could not be established (fail closed).
+
+    ``reason`` is always ``calendar-unavailable``; the message says why (table
+    missing/empty/unreadable, no override for a fixture run, ...).
+    """
+
+    reason = CALENDAR_UNAVAILABLE
+
+    def __init__(self, message: str) -> None:
+        super().__init__(f"{self.reason}: {message}")
+
+
+class CalendarCoverageError(CalendarUnavailableError):
+    """A date the computation needs lies after the calendar's coverage end (fail closed).
+
+    After ``coverageTo`` the non-trading set is unknown, so treating weekdays as
+    sessions would silently re-introduce the holiday-as-gap bug.
+    """
+
+    reason = CALENDAR_COVERAGE_EXPIRED
+
+
+@dataclass(frozen=True)
+class MarketCalendar:
+    """Non-trading dates plus where they came from (recorded in every artifact)."""
+
+    non_trading_dates: frozenset[date]
+    source: str
+    venue: str = CALENDAR_VENUE
+    versions: tuple[str, ...] = ()
+    unverified_count: int = 0
+    # Coverage window of the calendar (MarketCalendarDays.CoverageFromDate/ToDate). None =
+    # unbounded, which only explicit fixture/env calendars may use.
+    coverage_from: date | None = None
+    coverage_to: date | None = None
+    extra: dict[str, Any] = field(default_factory=dict, compare=False)
+
+    @property
+    def count(self) -> int:
+        return len(self.non_trading_dates)
+
+    @property
+    def sha256(self) -> str:
+        body = "\n".join(d.isoformat() for d in sorted(self.non_trading_dates))
+        return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+    @property
+    def version(self) -> str | None:
+        return "+".join(self.versions) if self.versions else None
+
+    def provenance(self) -> dict[str, Any]:
+        dates = sorted(self.non_trading_dates)
+        return {
+            "source": self.source,
+            "venue": self.venue,
+            "version": self.version,
+            "count": self.count,
+            "unverifiedCount": self.unverified_count,
+            "firstDate": dates[0].isoformat() if dates else None,
+            "lastDate": dates[-1].isoformat() if dates else None,
+            "sha256": self.sha256,
+            "coverageFrom": self.coverage_from.isoformat() if self.coverage_from else None,
+            "coverageTo": self.coverage_to.isoformat() if self.coverage_to else None,
+        }
+
+    def is_before_coverage(self, day: date) -> bool:
+        return self.coverage_from is not None and day < self.coverage_from
+
+    def require_covered(self, day: date, what: str = "date") -> None:
+        """Fail closed when ``day`` is after the coverage end (session status unknown)."""
+        if self.coverage_to is not None and day > self.coverage_to:
+            raise CalendarCoverageError(
+                f"{what} {day.isoformat()} is after the {self.venue} calendar coverage end "
+                f"{self.coverage_to.isoformat()} (version {self.version}); add the next year's official notice"
+            )
+
+
+def calendar_from_dates(dates: Iterable[date], source: str = SOURCE_EXPLICIT) -> MarketCalendar:
+    return MarketCalendar(frozenset(dates), source)
+
+
+def calendar_from_env() -> MarketCalendar | None:
+    """Explicit fixture/test override, or None when MBB_NON_TRADING_DATES is unset/blank.
+
+    A blank value is NOT an override: it would silently mean "every weekday
+    trades", which is exactly what the fail-closed rule forbids.
+    """
+    if not os.getenv(NON_TRADING_DATES_ENV, "").strip():
+        return None
+    return MarketCalendar(non_trading_dates_from_env(), SOURCE_ENV)
+
+
+def load_calendar_from_cursor(cursor: Any, venue: str = CALENDAR_VENUE) -> MarketCalendar:
+    """Read ``MarketCalendarDays`` for ``venue`` with an open DB-API cursor.
+
+    Runs inside the caller's transaction (so a job's candle read and calendar
+    read share one snapshot). Missing table / query error / zero rows raise
+    :class:`CalendarUnavailableError`.
+    """
+    try:
+        cursor.execute(
+            f'SELECT "Date","Verification","CalendarVersion","CoverageFromDate","CoverageToDate" FROM "{CALENDAR_TABLE}" '
+            'WHERE "Venue"=%s ORDER BY "Date"',
+            (venue,),
+        )
+        rows = cursor.fetchall()
+    except Exception as exc:  # noqa: BLE001 - any driver error => fail closed
+        raise CalendarUnavailableError(
+            f'"{CALENDAR_TABLE}" could not be read ({type(exc).__name__}); '
+            "run the backend calendar sync (MarketCalendar:SyncOnStartup) first"
+        ) from exc
+    if not rows:
+        raise CalendarUnavailableError(
+            f'"{CALENDAR_TABLE}" has no {venue} rows; refusing to assume every weekday trades'
+        )
+    def as_date(value: Any) -> date:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        return date.fromisoformat(str(value))
+
+    dates: set[date] = set()
+    versions: set[str] = set()
+    froms: set[date] = set()
+    tos: set[date] = set()
+    unverified = 0
+    for raw_date, verification, version, cov_from, cov_to in rows:
+        dates.add(as_date(raw_date))
+        if cov_from is None or cov_to is None:
+            raise CalendarUnavailableError(f'"{CALENDAR_TABLE}" row without coverage window')
+        froms.add(as_date(cov_from))
+        tos.add(as_date(cov_to))
+        if version:
+            versions.add(str(version))
+        if verification != "verified":
+            unverified += 1
+    # Mixed versions: only the intersection of their coverage windows is known.
+    return MarketCalendar(
+        frozenset(dates), SOURCE_DB, venue, tuple(sorted(versions)), unverified, max(froms), min(tos)
+    )
+
+
+def load_calendar_db(venue: str = CALENDAR_VENUE, connection: Any = None) -> MarketCalendar:
+    """Env override if set, else ``MarketCalendarDays`` via ``db_config`` (fail closed)."""
+    override = calendar_from_env()
+    if override is not None:
+        return override
+    owned = connection is None
+    if owned:
+        try:
+            from db_config import get_db_connection
+
+            connection = get_db_connection()
+        except Exception as exc:  # noqa: BLE001
+            raise CalendarUnavailableError(f"database unreachable ({type(exc).__name__})") from exc
+    try:
+        with connection.cursor() as cursor:
+            calendar = load_calendar_from_cursor(cursor, venue)
+        if owned:
+            connection.rollback()
+        return calendar
+    finally:
+        if owned:
+            connection.close()
+
+
+def require_calendar(
+    non_trading_dates: Iterable[date] | None = None,
+    calendar: MarketCalendar | None = None,
+) -> MarketCalendar:
+    """Calendar for a pure (fixture-capable) computation.
+
+    Precedence: explicit ``calendar`` > explicit ``non_trading_dates`` > env
+    override. Nothing given ⇒ fail closed; DB-backed callers load the table and
+    pass it in.
+    """
+    if calendar is not None:
+        return calendar
+    if non_trading_dates is not None:
+        return calendar_from_dates(non_trading_dates)
+    override = calendar_from_env()
+    if override is not None:
+        return override
+    raise CalendarUnavailableError(
+        "no calendar supplied: DB-backed jobs read MarketCalendarDays, fixtures pass "
+        f"non_trading_dates or set {NON_TRADING_DATES_ENV}"
+    )
+
+
 __all__ = [
     "AFTERNOON_CLOSE_LOCAL",
+    "BELOW_CALENDAR_COVERAGE",
+    "CALENDAR_COVERAGE_EXPIRED",
+    "CALENDAR_UNAVAILABLE",
+    "CalendarCoverageError",
+    "CalendarUnavailableError",
+    "MarketCalendar",
+    "calendar_from_dates",
+    "calendar_from_env",
+    "load_calendar_db",
+    "load_calendar_from_cursor",
+    "require_calendar",
     "DAILY_OPEN_LOCAL",
     "EQUITY_TIMEFRAMES",
     "HOURLY_OPENS_LOCAL",
