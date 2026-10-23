@@ -177,13 +177,15 @@ stdout (not a stderr traceback, so the ops wrapper logs it) and exits 1.
 
 ## Scheduling
 
-- Entry point: `backend/ops/run-ai-job.ps1 -Job PaperObserver` (secrets via
-  `Import-OpsSecrets`, log `.ops/logs/paperobserver-job.log`, exit code passed
+- Entry point: `backend/ops/run-paper-observer.ps1` → `run-ai-job.ps1 -Job PaperObserver`
+  (secrets via `Import-OpsSecrets`; observer JSON in `.ops/logs/paperobserver-job.log`,
+  one task line per run in `.ops/logs/paperobserver-task.log`; exit code passed
   to Task Scheduler).
-- Task: `backend/ops/install-paper-observer-task.ps1 [-Enable]` registers
+- Task: `backend/ops/install-paper-observer-task.ps1 [-Enable]` (elevated) registers
   `BTCPaperObserver` every 5 minutes (≤ the 15-minute fill/outcome windows),
-  `MultipleInstances=IgnoreNew`, 4-minute time limit, same interactive
-  deploy-user principal as the other application tasks. It is separate from
+  `MultipleInstances=IgnoreNew`, 4-minute time limit, deploy user with an S4U
+  batch logon (no stored password, no logged-on session needed). Running after
+  logout/reboot is not verified yet (see the ops README). It is separate from
   `BTCPaperTrader`/`BTC_Paper_Trading_Runner`, whose cadence and action are unchanged.
 - Rollback: `Disable-ScheduledTask BTCPaperObserver`. Written fills/outcomes are
   write-once journal entries and are never deleted.
