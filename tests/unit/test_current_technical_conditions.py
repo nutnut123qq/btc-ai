@@ -38,6 +38,13 @@ def _row(index, open_, high, low, close, volume=10.0, *, interval=INTERVAL, star
     }
 
 
+@pytest.fixture(autouse=True)
+def _no_cache_probe_db():
+    # Unit tests never reach PostgreSQL: the cheap cache probe is off unless a test sets it.
+    with patch.object(ctc, "_cache_probe", return_value=None):
+        yield
+
+
 def _uptrend_rows(count=140, *, interval=INTERVAL, start=START, first_close=100.0):
     rows = []
     for i in range(count):
@@ -403,3 +410,62 @@ class TestEndpoint:
         assert {k: v for k, v in first.items() if k != "generatedAtMs"} == {
             k: v for k, v in second.items() if k != "generatedAtMs"
         }
+
+
+class TestPayloadCacheAndSingleFlight:
+    def setup_method(self):
+        ctc.clear_cache()
+
+    def _inputs(self):
+        rows = _uptrend_rows(140)
+        smc = {**_fvg_row(rows, 30, 50.0, 60.0), "Id": 7}
+        return rows, [smc], list(smc), None
+
+    def test_probe_hit_skips_full_load(self):
+        rows, smc, columns, error = self._inputs()
+        probe = (int(rows[-1]["CloseTimeMs"]), 1, 7)
+        with patch.object(ctc, "_cache_probe", return_value=probe), patch.object(
+            ctc, "_load_inputs", return_value=(rows, smc, columns, error)
+        ) as loader:
+            first = ctc.get_current_conditions("4h", now_ms=int(rows[-1]["CloseTimeMs"]) + 1)
+            second = ctc.get_current_conditions("4h", now_ms=int(rows[-1]["CloseTimeMs"]) + 2)
+        assert loader.call_count == 1
+        assert {k: v for k, v in first.items() if k != "generatedAtMs"} == {
+            k: v for k, v in second.items() if k != "generatedAtMs"
+        }
+
+    def test_new_smc_row_below_as_of_invalidates(self):
+        rows, smc, columns, error = self._inputs()
+        as_of = int(rows[-1]["CloseTimeMs"])
+        with patch.object(ctc, "_cache_probe", side_effect=[(as_of, 1, 7), (as_of, 2, 8)]), patch.object(
+            ctc, "_load_inputs", return_value=(rows, smc, columns, error)
+        ) as loader:
+            ctc.get_current_conditions("4h", now_ms=as_of + 1)
+            ctc.get_current_conditions("4h", now_ms=as_of + 2)
+        assert loader.call_count == 2
+
+    def test_concurrent_requests_compute_once(self):
+        import threading
+        import time as _time
+
+        rows, smc, columns, error = self._inputs()
+        probe = (int(rows[-1]["CloseTimeMs"]), 1, 7)
+        calls = []
+
+        def slow_load(*_args):
+            calls.append(1)
+            _time.sleep(0.3)
+            return rows, smc, columns, error
+
+        results = []
+        with patch.object(ctc, "_cache_probe", return_value=probe), patch.object(ctc, "_load_inputs", side_effect=slow_load):
+            threads = [
+                threading.Thread(target=lambda: results.append(ctc.get_current_conditions("4h", now_ms=probe[0] + 1)))
+                for _ in range(3)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+        assert len(calls) == 1
+        assert len(results) == 3

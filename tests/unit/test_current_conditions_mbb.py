@@ -225,6 +225,13 @@ def test_mbb_rejects_4h_and_unknown_symbol():
         ctc.get_current_conditions("4h", symbol="MBB")
 
 
+@pytest.fixture(autouse=True)
+def _no_cache_probe_db():
+    # Unit tests never reach PostgreSQL: the cheap cache probe is off unless a test sets it.
+    with patch.object(ctc, "_cache_probe", return_value=None):
+        yield
+
+
 class TestEndpoint:
     def setup_method(self):
         ctc.clear_cache()

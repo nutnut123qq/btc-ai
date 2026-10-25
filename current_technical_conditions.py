@@ -20,6 +20,7 @@ finalization is ``CloseTimeMs <= now`` only and contiguity follows the
 from __future__ import annotations
 
 import json
+import threading
 import time
 from bisect import bisect_right
 from typing import Any, Callable, Mapping, Sequence
@@ -820,10 +821,65 @@ def _load_calendar(symbol: str) -> "vn_calendar.MarketCalendar":
     return vn_calendar.load_calendar_db()
 
 
-# In-process cache keyed by (symbol, timeframe, asOfMs); a newly closed bar
-# changes the key and therefore invalidates automatically.
-_PAYLOAD_CACHE: dict[tuple[str, str, int, str], dict[str, Any]] = {}
+# In-process cache keyed by (symbol, timeframe, asOfMs, causal-SMC fingerprint, calendar). A newly closed bar or a
+# newly inserted/rebuilt SMC decision row (count or max Id below asOfMs) changes the key and invalidates it.
+_PAYLOAD_CACHE: dict[tuple[Any, ...], dict[str, Any]] = {}
 _CACHE_MAX_ENTRIES = 16
+_CACHE_GUARD = threading.Lock()
+# One computation per (symbol, timeframe) at a time: concurrent or retried requests wait for it and then hit the
+# cache instead of re-reading the whole SMC history in parallel. Keys are validated scopes, so the dict is bounded.
+_SCOPE_LOCKS: dict[tuple[str, str], threading.Lock] = {}
+
+
+def _scope_lock(scope: tuple[str, str]) -> threading.Lock:
+    with _CACHE_GUARD:
+        return _SCOPE_LOCKS.setdefault(scope, threading.Lock())
+
+
+def _cache_probe(symbol: str, timeframe: str, now_ms: int) -> tuple[int, int, int | None] | None:
+    """Cheap ``(asOfMs, smcCount, smcMaxId)`` read that answers a cache hit without loading every SMC row.
+
+    Uses the same bar predicates as ``_load_inputs`` (its newest row is ``klines[-1]``) and the same SMC filter, so a
+    fresh full load of the same snapshot yields the same fingerprint via ``_smc_fingerprint``.
+    """
+    from db_config import get_db_connection
+
+    connection = get_db_connection()
+    try:
+        connection.set_session(readonly=True, autocommit=False, isolation_level="REPEATABLE READ")
+        with connection.cursor() as cursor:
+            if symbol == SYMBOL:
+                cursor.execute(
+                    'SELECT "CloseTimeMs" FROM "Klines" WHERE "Symbol"=%s AND "Timeframe"=%s '
+                    'AND "CloseTimeMs"<=%s AND "CloseTimeMs"-"OpenTimeMs"+1=%s '
+                    'ORDER BY "OpenTimeMs" DESC LIMIT 1',
+                    (symbol, timeframe, now_ms, TIMEFRAME_MS[timeframe]),
+                )
+            else:
+                cursor.execute(
+                    'SELECT "CloseTimeMs" FROM "InstrumentCandles" WHERE "Symbol"=%s AND "Timeframe"=%s '
+                    'AND "CloseTimeMs"<=%s ORDER BY "OpenTimeMs" DESC LIMIT 1',
+                    (symbol, timeframe, now_ms),
+                )
+            row = cursor.fetchone()
+            if row is None:
+                return None
+            as_of_ms = int(row[0])
+            cursor.execute(
+                'SELECT count(*), max("Id") FROM "CausalSmartMoneyEvents" '
+                'WHERE "Symbol"=%s AND "Timeframe"=%s AND "AvailableTimeMs"<=%s',
+                (symbol, timeframe, as_of_ms),
+            )
+            count, max_id = cursor.fetchone()
+        connection.rollback()
+        return as_of_ms, int(count), None if max_id is None else int(max_id)
+    finally:
+        connection.close()
+
+
+def _smc_fingerprint(causal_rows: Sequence[Mapping[str, Any]]) -> tuple[int, int | None]:
+    ids = [int(row["Id"]) for row in causal_rows if row.get("Id") is not None]
+    return len(causal_rows), (max(ids) if ids else None)
 
 
 def clear_cache() -> None:
@@ -842,42 +898,48 @@ def get_current_conditions(
             market_calendar = _load_calendar(canonical)
         except vn_calendar.CalendarUnavailableError as exc:
             raise ConditionsUnavailableError(str(exc)) from exc
-    try:
-        klines, causal_rows, causal_columns, causal_error = _load_inputs(
-            canonical, normalized, now
+    calendar_sha = market_calendar.sha256 if market_calendar is not None else ""
+    with _scope_lock((canonical, normalized)):
+        try:
+            probe = _cache_probe(canonical, normalized, now)
+        except Exception:  # the full load below reports DB problems with the proper error
+            probe = None
+        if probe is not None:
+            cached = _PAYLOAD_CACHE.get((canonical, normalized, *probe, calendar_sha))
+            if cached is not None:
+                return {**cached, "generatedAtMs": now}
+        try:
+            klines, causal_rows, causal_columns, causal_error = _load_inputs(
+                canonical, normalized, now
+            )
+        except Exception as exc:
+            raise ConditionsUnavailableError(
+                f"bars unavailable for {canonical} {normalized}: {type(exc).__name__}"
+            ) from exc
+        if not klines:
+            raise ConditionsUnavailableError(
+                f"no finalized contiguous bars for {canonical} {normalized}"
+            )
+        as_of_ms = int(klines[-1]["CloseTimeMs"])
+        key = (canonical, normalized, as_of_ms, *_smc_fingerprint(causal_rows), calendar_sha)
+        cached = _PAYLOAD_CACHE.get(key)
+        if cached is not None:
+            return {**cached, "generatedAtMs": now}
+        payload = build_conditions_payload(
+            normalized,
+            klines,
+            causal_rows,
+            causal_columns,
+            now_ms=now,
+            symbol=canonical,
+            causal_smc_error=causal_error,
+            calendar=market_calendar,
         )
-    except Exception as exc:
-        raise ConditionsUnavailableError(
-            f"bars unavailable for {canonical} {normalized}: {type(exc).__name__}"
-        ) from exc
-    if not klines:
-        raise ConditionsUnavailableError(
-            f"no finalized contiguous bars for {canonical} {normalized}"
-        )
-    as_of_ms = int(klines[-1]["CloseTimeMs"])
-    key = (
-        canonical,
-        normalized,
-        as_of_ms,
-        market_calendar.sha256 if market_calendar is not None else "",
-    )
-    cached = _PAYLOAD_CACHE.get(key)
-    if cached is not None:
-        return {**cached, "generatedAtMs": now}
-    payload = build_conditions_payload(
-        normalized,
-        klines,
-        causal_rows,
-        causal_columns,
-        now_ms=now,
-        symbol=canonical,
-        causal_smc_error=causal_error,
-        calendar=market_calendar,
-    )
-    if len(_PAYLOAD_CACHE) >= _CACHE_MAX_ENTRIES:
-        _PAYLOAD_CACHE.pop(next(iter(_PAYLOAD_CACHE)))
-    _PAYLOAD_CACHE[key] = payload
-    return {**payload, "generatedAtMs": now}
+        with _CACHE_GUARD:
+            if len(_PAYLOAD_CACHE) >= _CACHE_MAX_ENTRIES:
+                _PAYLOAD_CACHE.pop(next(iter(_PAYLOAD_CACHE)))
+            _PAYLOAD_CACHE[key] = payload
+        return {**payload, "generatedAtMs": now}
 
 
 __all__ = [
