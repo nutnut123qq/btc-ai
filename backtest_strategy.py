@@ -331,7 +331,8 @@ def compute_metrics(trades, klines, initial_capital=10000.0):
 
     total_return = (equity[-1] - initial_capital) / initial_capital * 100.0
     win_rate = wins / len(trades) if trades else 0.0
-    profit_factor = gross_profit / gross_loss if gross_loss > 0 else float("inf")
+    # No losing trade: finite cap like EnsembleBacktestService.cs (ProfitFactor column is non-null, MetricsJson strict JSON).
+    profit_factor = gross_profit / gross_loss if gross_loss > 0 else (99.9 if gross_profit > 0 else 0.0)
 
     returns = [t["net_return"] for t in trades]
     avg_return = np.mean(returns) if returns else 0.0
