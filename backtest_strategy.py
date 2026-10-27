@@ -477,7 +477,25 @@ def run_execution_stress_scenarios(
     return scenarios
 
 
+def _require_finite(value, path):
+    """Raise on NaN/+-Inf anywhere in a nested record (AGENTS.md #50: nothing downstream rejects them)."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            _require_finite(item, f"{path}.{key}")
+    elif isinstance(value, (list, tuple)):
+        for index, item in enumerate(value):
+            _require_finite(item, f"{path}[{index}]")
+    elif isinstance(value, (float, np.floating)) and not math.isfinite(value):
+        raise ValueError(f"Refusing to save backtest: non-finite value at {path} ({value!r}).")
+
+
 def save_backtest_to_db(run_info, trades):
+    # Validate everything before opening the connection so a bad run never leaves a partial write.
+    _require_finite(run_info, "run_info")
+    _require_finite(trades, "trades")
+    metrics_json = json.dumps(run_info["metrics"], allow_nan=False)
+    equity_curve_json = json.dumps(run_info["metrics"]["equity_curve"], allow_nan=False)
+
     conn = get_connection()
     cur = conn.cursor()
 
@@ -499,7 +517,7 @@ def save_backtest_to_db(run_info, trades):
             run_info["metrics"]["total_trades"], run_info["metrics"]["win_rate"], run_info["metrics"]["total_return_pct"],
             run_info["metrics"]["buy_hold_return_pct"], run_info["metrics"]["max_drawdown_pct"],
             run_info["metrics"]["sharpe_ratio"], run_info["metrics"]["sortino_ratio"], run_info["metrics"]["profit_factor"],
-            run_info["metrics"]["final_equity"], json.dumps(run_info["metrics"]), json.dumps(run_info["metrics"]["equity_curve"]),
+            run_info["metrics"]["final_equity"], metrics_json, equity_curve_json,
             BACKTEST_PIPELINE_VERSION, BACKTEST_EVALUATION_VERSION, BACKTEST_VALIDITY_STATUS,
             datetime.now(timezone.utc),
         ),

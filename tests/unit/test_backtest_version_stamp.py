@@ -5,12 +5,21 @@ Backtest runs written by this script used to rely on the DB column defaults
 AddResearchValidityAndAlertDeduplication), so GET /api/backtest/runs with
 includeLegacy=false hid every Python-produced run. The INSERT now carries
 explicit PipelineVersion / EvaluationVersion / ValidityStatus provenance.
+
+FINITE-1: the writer stamps "Valid" itself, so it must also refuse NaN/+-Inf
+anywhere it would insert (columns, trades, MetricsJson, EquityCurveJson).
 """
 
+import json
+import math
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
+
+import numpy as np
+import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -62,12 +71,17 @@ def _trade():
     }
 
 
-def _save_with_mocked_db(monkeypatch, trades):
+def _mock_db(monkeypatch):
     conn = Mock()
     cursor = Mock()
     conn.cursor.return_value = cursor
     cursor.fetchone.return_value = (42,)
     monkeypatch.setattr(backtest_strategy, "get_connection", lambda: conn)
+    return conn, cursor
+
+
+def _save_with_mocked_db(monkeypatch, trades):
+    conn, cursor = _mock_db(monkeypatch)
     run_id = backtest_strategy.save_backtest_to_db(_run_info(), trades)
     return run_id, conn, cursor
 
@@ -123,3 +137,65 @@ def test_trade_inserts_keep_ledger_columns_and_share_run_id(monkeypatch):
     assert len(trade_calls) == 2
     for call in trade_calls:
         assert call.args[1][0] == run_id
+
+
+def test_finite_run_inserts_same_parameters_in_same_order(monkeypatch):
+    _run_id, conn, cursor = _save_with_mocked_db(monkeypatch, [_trade()])
+
+    metrics = _run_info()["metrics"]
+    run_params = cursor.execute.call_args_list[0].args[1]
+    assert run_params[:-1] == (
+        "BTCUSDT", "4h", 5, "4h", "fixture-model",
+        1_700_000_000_000, 1_700_100_000_000, 10.0, 5.0,
+        1, 1.0, 1.5, 1.0, 0.5, 2.0, 2.5, 3.0, 10_150.0,
+        json.dumps(metrics), json.dumps(metrics["equity_curve"]),
+        backtest_strategy.BACKTEST_PIPELINE_VERSION,
+        backtest_strategy.BACKTEST_EVALUATION_VERSION,
+        backtest_strategy.BACKTEST_VALIDITY_STATUS,
+    )
+    assert isinstance(run_params[-1], datetime)
+    assert cursor.execute.call_args_list[1].args[1] == (
+        42, 1_700_014_400_000, 1_700_028_800_000, "long",
+        50_000.0, 50_750.0, 0.015, 0.014, 1.4, 0.7, 1, 0.01,
+    )
+    assert cursor.execute.call_count == 2
+    conn.commit.assert_called_once()
+
+
+def _set_metric(name, value):
+    return lambda run_info, trades: run_info["metrics"].__setitem__(name, value)
+
+
+@pytest.mark.parametrize(
+    "poison",
+    [
+        pytest.param(_set_metric("sharpe_ratio", math.inf), id="run-metric-inf"),
+        pytest.param(_set_metric("profit_factor", math.nan), id="run-metric-nan"),
+        pytest.param(_set_metric("win_rate", np.float32("nan")), id="run-metric-numpy-nan"),
+        pytest.param(lambda run_info, trades: run_info.__setitem__("fee_bps", -math.inf), id="run-column-outside-metrics"),
+        pytest.param(lambda run_info, trades: trades[1].__setitem__("net_return", math.nan), id="trade-net-return-nan"),
+        pytest.param(lambda run_info, trades: trades[0].__setitem__("target_return", math.inf), id="trade-target-return-inf"),
+        pytest.param(
+            lambda run_info, trades: run_info["metrics"]["equity_curve"][0].__setitem__("equity", math.inf),
+            id="equity-curve-inf",
+        ),
+        pytest.param(
+            _set_metric("mark_to_market_equity_curve", [{"time": 1, "equity": math.nan}]),
+            id="metrics-json-only-nan",
+        ),
+    ],
+)
+def test_non_finite_value_raises_before_any_insert(monkeypatch, poison):
+    conn, cursor = _mock_db(monkeypatch)
+    connect = Mock(return_value=conn)
+    monkeypatch.setattr(backtest_strategy, "get_connection", connect)
+    run_info, trades = _run_info(), [_trade(), _trade()]
+    poison(run_info, trades)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        backtest_strategy.save_backtest_to_db(run_info, trades)
+
+    connect.assert_not_called()
+    conn.cursor.assert_not_called()
+    cursor.execute.assert_not_called()
+    conn.commit.assert_not_called()
