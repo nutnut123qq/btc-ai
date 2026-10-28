@@ -115,6 +115,10 @@ def test_schema_provenance_and_deterministic_pnl():
     assert report["accounting"]["finalEquityVnd"] == pytest.approx(
         953_940.0 + (4_400_000 - 6_600 - 4_400)
     )
+    # MBBREPLAY-1 (c): no open position at the end -> same figures as before.
+    assert report["accounting"]["netReturnPct"] == pytest.approx(6.8588)
+    assert report["accounting"]["grossReturnPct"] == pytest.approx(7.2)
+    assert report["accounting"]["maxDrawdownPct"] == 0.0
     assert {b["id"] for b in report["baselines"]} == {"buy-and-hold", "flat"}
     assert report["verdict"]["value"] == "inconclusive"
     assert report["verdict"]["reason"].startswith("insufficient-trades:1<")
@@ -270,3 +274,130 @@ def test_cli_bid_fixture_all_runs_only_daily(tmp_path, capsys):
     report = json.loads((tmp_path / "out" / written[0]).read_text(encoding="utf-8"))
     assert report["symbol"] == "BID"
     assert report["verdict"]["value"] == "unavailable"  # 7 bars < minBars 52
+
+
+# --- MBBREPLAY-1: symmetric exit costs + uncertainty before "supported" ------
+
+
+def _scripted(signals_by_index):
+    return {
+        **_buy_first_sell_fifth(),
+        "name": "test-scripted",
+        "signals": lambda closes: [signals_by_index.get(i) for i in range(len(closes))],
+    }
+
+
+def _replay(pairs, signals, **kwargs):
+    bars = [_daily_bar(DAYS[i], float(o), float(c)) for i, (o, c) in enumerate(pairs)]
+    return replay.run_replay(
+        candles=bars,
+        strategy=_scripted(signals),
+        initial_cash_vnd=5_000_000,
+        cutoff_ms=10**15,
+        **kwargs,
+    )
+
+
+# Two winning round trips, 200 shares each, respecting T+2 (shares and sale cash
+# settle 2 sessions later): buy 20,000 -> sell 21,000, buy 19,500 -> sell 20,500.
+TWO_WINS = [
+    (20_000, 20_000), (20_000, 20_500), (20_500, 21_000), (21_000, 20_000),
+    (20_000, 19_500), (19_500, 20_000), (20_000, 20_500), (20_500, 19_500),
+    (19_500, 19_500),
+]
+TWO_WINS_SIGNALS = {0: "buy", 2: "sell", 4: "buy", 6: "sell"}
+
+
+def test_open_position_is_netted_like_buy_and_hold():
+    # Buy once, never sell: the strategy IS buy-and-hold, so both report one net.
+    report = replay.run_replay(
+        candles=_fixture_bars(),
+        strategy=_scripted({0: "buy"}),
+        initial_cash_vnd=5_000_000,
+        cutoff_ms=10**15,
+    )
+    acct = report["accounting"]
+    # cash 953,940 + 200 x 23,000 = 5,553,940 marked; liquidation fee + tax
+    # 4,600,000 x (0.15% + 0.1%) = 11,500 -> 5,542,440.
+    assert acct["netReturnPct"] == pytest.approx(10.8488)
+    assert acct["finalEquityVnd"] == pytest.approx(5_542_440.0)
+    assert acct["netReturnPct"] == report["baselines"][0]["netReturnPct"]
+    assert acct["markToMarketEquityVnd"] == pytest.approx(5_553_940.0)
+    assert acct["assumedExitCostsVnd"] == pytest.approx(11_500.0)
+    assert acct["grossReturnPct"] == pytest.approx(11.2)  # before any cost: unchanged
+    assert report["trades"]["openPosition"]["shares"] == 200
+
+
+def test_strategy_cannot_beat_baselines_by_skipping_exit_costs():
+    # Two wins, then a re-entry at 19,500 drifting to 17,700: marked to market
+    # the strategy is +0.031% (above flat), but selling 200 x 17,700 costs
+    # 8,850 -> -0.146%, below flat.  The CI is above 0, so only the
+    # accounting stands between this run and "supported".
+    pairs = TWO_WINS + [(19_500, 18_300), (18_300, 17_900), (17_900, 17_700)]
+    report = _replay(pairs, {**TWO_WINS_SIGNALS, 8: "buy"}, min_trades=2)
+    assert report["verdict"] == {
+        "value": "inconclusive",
+        "reason": "net-return-not-above-baselines",
+    }
+    acct = report["accounting"]
+    assert acct["netReturnPct"] == pytest.approx(-0.146)
+    assert acct["markToMarketEquityVnd"] == pytest.approx(5_001_550.0)
+    assert acct["assumedExitCostsVnd"] == pytest.approx(8_850.0)
+    assert report["trades"]["closedRoundTrips"] == 2
+    assert report["trades"]["openPosition"]["shares"] == 200
+    assert report["uncertainty"]["ciLowerPct"] > 0
+
+
+def test_supported_needs_baseline_beat_and_ci_lower_above_zero():
+    report = _replay(TWO_WINS + [(19_500, 19_000)], TWO_WINS_SIGNALS, min_trades=2)
+    assert report["verdict"] == {"value": "supported", "reason": "net-return-above-baselines"}
+    unc = report["uncertainty"]
+    keys = ("method", "seed", "resamples", "confidenceLevel", "sampleSize")
+    assert {k: unc[k] for k in keys} == {
+        "method": "percentile-bootstrap-iid",
+        "seed": replay.BOOTSTRAP_SEED,
+        "resamples": replay.BOOTSTRAP_RESAMPLES,
+        "confidenceLevel": 0.95,
+        "sampleSize": 2,
+    }
+    trips = [t["netReturnPct"] for t in report["trades"]["roundTrips"]]
+    assert unc["ciLowerPct"] == pytest.approx(min(trips))
+    assert unc["ciLowerPct"] > 0
+    assert unc["ciUpperPct"] == pytest.approx(max(trips))
+    assert report["accounting"]["assumedExitCostsVnd"] == 0.0
+
+
+def test_beating_baselines_with_ci_reaching_zero_is_inconclusive():
+    # Trip 2 loses (19,500 -> 19,200): net still beats both baselines, but the
+    # bootstrap CI of the mean trip return reaches the losing trip.
+    pairs = TWO_WINS[:6] + [(19_500, 19_300), (19_200, 19_000), (19_000, 18_800)]
+    first = _replay(pairs, TWO_WINS_SIGNALS, min_trades=2)
+    assert first["verdict"] == {
+        "value": "inconclusive",
+        "reason": "round-trip-ci-lower-not-above-zero",
+    }
+    best = max(b["netReturnPct"] for b in first["baselines"])
+    assert first["accounting"]["netReturnPct"] > best
+    assert first["uncertainty"]["ciLowerPct"] <= 0
+    second = _replay(pairs, TWO_WINS_SIGNALS, min_trades=2)
+    assert first["uncertainty"] == second["uncertainty"]
+
+
+def test_single_round_trip_has_no_ci_and_cannot_be_supported():
+    report = _replay(TWO_WINS[:5] + [(19_500, 19_000)], {0: "buy", 2: "sell"}, min_trades=1)
+    assert report["verdict"] == {
+        "value": "inconclusive",
+        "reason": "uncertainty-unavailable:1<2",
+    }
+    assert report["uncertainty"]["ciLowerPct"] is None
+    assert report["uncertainty"]["ciUpperPct"] is None
+
+
+def test_bootstrap_block_is_deterministic():
+    returns = [4.2, -1.3, 0.8, 2.5, -0.4, 3.1, 1.7]
+    block = replay._bootstrap_uncertainty(returns)
+    assert block == replay._bootstrap_uncertainty(list(returns))
+    # Pinned: same values in a fresh process (fixed seed, no hash/dict ordering).
+    assert block["ciLowerPct"] == pytest.approx(1.0 / 7.0)
+    assert block["ciUpperPct"] == pytest.approx(19.8 / 7.0)
+    assert block["ciLowerPct"] < block["meanNetReturnPct"] < block["ciUpperPct"]

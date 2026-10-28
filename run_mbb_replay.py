@@ -21,11 +21,15 @@ evaluation rules):
   resting order at a time; a band-rejected order is cancelled, not
   clamped.
 - Baselines on the same cost model: buy-and-hold (max lots at the first
-  fillable open, liquidated at the last close) and flat (no trade).
+  fillable open, liquidated at the last close) and flat (no trade).  A
+  strategy position still open at the end is netted of the same exit
+  fee + sell tax at the last close, so both sides use one accounting.
 - Verdict rule (declared): ``unavailable`` when the usable bar count is
   below the strategy's declared minimum; ``inconclusive`` when closed
-  round trips < ``--min-trades`` OR the strategy's net return does not
-  exceed every available baseline; ``supported`` otherwise.
+  round trips < ``--min-trades``, OR the strategy's net return does not
+  exceed every available baseline, OR the 95% percentile-bootstrap CI of
+  the mean closed round-trip net return (fixed seed) has a lower bound
+  <= 0 or cannot be computed (< 2 round trips); ``supported`` otherwise.
 - All prices/PnL are adjusted basis (``priceBasis: "adjusted"`` is
   stamped on the report and every trade) — not real matched prices.
 - Equity decision instruments only (MBB, BID): symbol must resolve to an
@@ -40,6 +44,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import random
+import statistics
 import sys
 import time
 from datetime import date, datetime, timezone
@@ -68,6 +74,8 @@ DEFAULT_OUT_DIR = (
 DEFAULT_INITIAL_CAPITAL_VND = 50_000_000.0
 DEFAULT_MIN_TRADES = 10
 VERDICTS = ("supported", "inconclusive", "unavailable")
+BOOTSTRAP_SEED = 20261028
+BOOTSTRAP_RESAMPLES = 10_000
 
 CANDLE_FIELDS = ("OpenTimeMs", "CloseTimeMs", "Open", "High", "Low", "Close", "Volume")
 
@@ -303,6 +311,48 @@ def _max_drawdown_fraction(equity: list[float]) -> float:
     return -max_dd
 
 
+def _exit_costs_vnd(shares: int, price: float, costs: VnEquityCostSpec) -> float:
+    """Broker fee + sell tax for liquidating ``shares`` at ``price``.
+
+    Shared by the buy-and-hold baseline and the strategy's open position so
+    both are valued with one accounting.
+    """
+    return shares * price * (costs.broker_fee_fraction + costs.sell_tax_fraction)
+
+
+def _bootstrap_uncertainty(net_returns_pct: list[float]) -> dict[str, Any]:
+    """95% percentile-bootstrap CI of the mean closed round-trip net return.
+
+    Indices come from ``Random.random()`` (Mersenne Twister, reproducible
+    across Python versions for a fixed seed; ``choices``/``randrange`` are not
+    guaranteed), so the block is deterministic for a given trade list.
+    """
+    n = len(net_returns_pct)
+    block: dict[str, Any] = {
+        "method": "percentile-bootstrap-iid",
+        "statistic": "mean-closed-round-trip-net-return-pct",
+        "seed": BOOTSTRAP_SEED,
+        "resamples": BOOTSTRAP_RESAMPLES,
+        "confidenceLevel": 0.95,
+        "sampleSize": n,
+        "meanNetReturnPct": sum(net_returns_pct) / n if n else None,
+        "ciLowerPct": None,
+        "ciUpperPct": None,
+        "note": "Closed round trips only (open position excluded); i.i.d. "
+        "resampling ignores serial dependence between trades.",
+    }
+    if n < 2:  # one observation has no sampling spread to measure
+        return block
+    rng = random.Random(BOOTSTRAP_SEED)
+    means = [
+        sum(net_returns_pct[int(rng.random() * n)] for _ in range(n)) / n
+        for _ in range(BOOTSTRAP_RESAMPLES)
+    ]
+    cuts = statistics.quantiles(means, n=40, method="inclusive")  # 2.5% steps
+    block["ciLowerPct"], block["ciUpperPct"] = cuts[0], cuts[-1]
+    return block
+
+
 def _buy_and_hold_baseline(
     bars: list[dict[str, Any]],
     initial_cash_vnd: float,
@@ -335,9 +385,7 @@ def _buy_and_hold_baseline(
         return result
     account.settle_as_of(date(3000, 1, 1))
     last_close = bars[-1]["close"]
-    exit_costs = fill.shares * last_close * (
-        costs.broker_fee_fraction + costs.sell_tax_fraction
-    )
+    exit_costs = _exit_costs_vnd(fill.shares, last_close, costs)
     gross_value = account.settled_cash_vnd + fill.shares * last_close
     net_value = gross_value - exit_costs
     result.update(
@@ -448,9 +496,12 @@ def run_replay(
     }
 
     verdict_rule = (
-        f"supported requires >= {min_trades} closed round trips and net "
-        "return above every evaluated baseline; fewer trades or no baseline "
-        "beat -> inconclusive; too few usable bars -> unavailable."
+        f"supported requires >= {min_trades} closed round trips, net return "
+        "(open position netted of exit fee+tax at the last close) above every "
+        "evaluated baseline, and a 95% bootstrap CI lower bound of mean "
+        "round-trip net return above 0; fewer trades, no baseline beat, or CI "
+        "lower bound <= 0 / not computable -> inconclusive; too few usable "
+        "bars -> unavailable."
     )
     report["verdictRule"] = verdict_rule
 
@@ -511,11 +562,15 @@ def run_replay(
     # -- accounting ------------------------------------------------------
     account.settle_as_of(date(3000, 1, 1))  # flush pending at horizon end
     last_close = bars[-1]["close"] if bars else 0.0
-    final_equity = (
+    marked_equity = (
         account.settled_cash_vnd + account.total_shares * last_close
         if bars
         else account.settled_cash_vnd
     )
+    # Same liquidation formula as _buy_and_hold_baseline: an open position is
+    # valued after the fee + tax its exit would pay at the last close.
+    exit_costs = _exit_costs_vnd(account.total_shares, last_close, costs)
+    final_equity = marked_equity - exit_costs
     gross_pnl = sum(t.gross_pnl_vnd for t in round_trips)
     net_pnl = sum(t.net_pnl_vnd for t in round_trips)
     fee_total = sum(f.fee_vnd for f in fills)
@@ -541,11 +596,14 @@ def run_replay(
         "netReturnPct": (final_equity / initial_cash_vnd - 1.0) * 100.0
         if initial_cash_vnd > 0
         else 0.0,
-        "grossReturnPct": ((final_equity + fee_total + tax_total) / initial_cash_vnd - 1.0)
+        "grossReturnPct": ((marked_equity + fee_total + tax_total) / initial_cash_vnd - 1.0)
         * 100.0
         if initial_cash_vnd > 0
         else 0.0,
         "maxDrawdownPct": _max_drawdown_fraction(equity_curve) * 100.0,
+        "markToMarketEquityVnd": marked_equity,
+        "assumedExitCostsVnd": exit_costs,
+        "exitCostPolicy": "open-position-liquidated-at-last-close-net-of-broker-fee-and-sell-tax",
     }
     report["trades"] = {
         "closedRoundTrips": len(round_trips),
@@ -561,6 +619,8 @@ def run_replay(
         "openPosition": open_position,
         "roundTrips": [t.to_dict() for t in round_trips],
     }
+    uncertainty = _bootstrap_uncertainty([t.net_return_fraction * 100.0 for t in round_trips])
+    report["uncertainty"] = uncertainty
 
     # -- baselines + verdict ---------------------------------------------
     baselines = [
@@ -585,10 +645,16 @@ def run_replay(
             (b["netReturnPct"] for b in baselines if b.get("status") == "evaluated"),
             default=None,
         )
-        if best is not None and net_pct > best:
-            verdict, reason = "supported", "net-return-above-baselines"
-        else:
+        ci_lower = uncertainty["ciLowerPct"]
+        # `not x > y` keeps a NaN on the inconclusive side (fail closed).
+        if best is None or not net_pct > best:
             verdict, reason = "inconclusive", "net-return-not-above-baselines"
+        elif ci_lower is None:
+            verdict, reason = "inconclusive", f"uncertainty-unavailable:{len(round_trips)}<2"
+        elif not ci_lower > 0:
+            verdict, reason = "inconclusive", "round-trip-ci-lower-not-above-zero"
+        else:
+            verdict, reason = "supported", "net-return-above-baselines"
     report["verdict"] = {"value": verdict, "reason": reason}
     return report
 
