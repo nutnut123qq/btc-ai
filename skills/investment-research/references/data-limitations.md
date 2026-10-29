@@ -88,8 +88,9 @@ Snapshot-specific limitations are in `snapshot.json` → `pit.limitations`, `una
 9. **Relative strength**: a benchmark whose latest bar lags the instrument is `stale`
    (`benchmark-stale` / `aligned-window-ends-before-instrument-latest`) — do not use its returns. RS uses
    the latest ~400 stored bars, so very old as-of values may be unavailable.
-10. **MBB has 1h and 1d; BID is 1d only.** 1h bars have provider quirks (missing 09:00 bars, stray 12:00
-    bar) — prefer 1d for anything statistical.
+10. **MBB and BID both have 1h and 1d** (BID 1h since EQTECH-1, history from 2023-09-11). The decision
+    journal still records BID on 1d only (MBB on 1h and 1d). 1h bars have provider quirks (missing 09:00
+    bars, stray 12:00 bar) — prefer 1d for anything statistical.
 11. **Volume** history differs between providers deep in the past (adjustment differs); treat old volume
     comparisons as approximate.
 12. **Decision price band (known backend issue, not fixed).** The decision's ±7% ceiling/floor
