@@ -268,7 +268,7 @@ class TestEndpoint:
         assert loader.call_args[0][0] == "BTCUSDT"
 
 
-# --- EQX: BID (1d-only decision equity) + capability gating -----------------
+# --- EQX: BID (decision equity, 1h + 1d since EQTECH-1 H) + capability gating ---
 
 
 def test_bid_daily_conditions_on_instrument_candles():
@@ -294,9 +294,24 @@ def test_bid_load_inputs_reads_instrument_candles():
     assert connection.queries[0][1][:2] == ("BID", "1d")
 
 
-def test_bid_rejects_hourly_and_context_only_symbols_rejected():
+def test_bid_hourly_conditions_on_instrument_candles():
+    # EQTECH-1 H: BID declares 1h like MBB; same session-aware contiguity (lunch/weekend not gaps).
+    days = _trading_days(date(2026, 8, 3), 10)
+    rows = _mbb_hourly_rows(days, first_close=40_000.0)
+    payload = build_conditions_payload(
+        "1h", rows, [], sorted(CANONICAL_SMC_COLUMNS),
+        now_ms=int(rows[-1]["CloseTimeMs"]), symbol="bid",
+    )
+    assert payload["symbol"] == "BID"
+    assert payload["timeframe"] == "1h"
+    assert payload["analysisWindow"]["bars"] == 50
+    assert payload["analysisWindow"]["contiguous"] is True
+    assert payload["latestClosedBar"]["openTimeMs"] == int(rows[-1]["OpenTimeMs"])
+
+
+def test_bid_rejects_4h_and_context_only_symbols_rejected():
     with pytest.raises(ctc.UnknownTimeframeError):
-        build_conditions_payload("1h", [], [], [], now_ms=0, symbol="BID")
+        build_conditions_payload("4h", [], [], [], now_ms=0, symbol="BID")
     for symbol in ("VCB", "CTG", "VNINDEX"):
         with pytest.raises(ctc.UnsupportedCapabilityError):
             build_conditions_payload("1d", [], [], [], now_ms=0, symbol=symbol)
@@ -317,7 +332,15 @@ class TestEndpointBid:
         assert response.json()["symbol"] == "BID"
         assert loader.call_args[0][:2] == ("BID", "1d")
 
-    def test_bid_hourly_and_vnindex_return_400(self):
-        assert self.client.get("/api/current-conditions?timeframe=1h&symbol=BID").status_code == 400
+    def test_bid_hourly_payload(self):
+        rows = _mbb_hourly_rows(_trading_days(date(2026, 8, 3), 10), first_close=40_000.0)
+        with patch.object(ctc, "_load_inputs", return_value=(rows, [], ["EventId"], None)) as loader:
+            response = self.client.get("/api/current-conditions?timeframe=1h&symbol=BID")
+        assert response.status_code == 200
+        assert (response.json()["symbol"], response.json()["timeframe"]) == ("BID", "1h")
+        assert loader.call_args[0][:2] == ("BID", "1h")
+
+    def test_bid_4h_and_vnindex_return_400(self):
+        assert self.client.get("/api/current-conditions?timeframe=4h&symbol=BID").status_code == 400
         assert self.client.get("/api/current-conditions?timeframe=1d&symbol=VNINDEX").status_code == 400
         assert self.client.get("/api/current-conditions?timeframe=1d&symbol=VCB").status_code == 400

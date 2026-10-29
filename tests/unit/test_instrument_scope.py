@@ -110,7 +110,7 @@ def test_symbol_aware_timeframes_fail_closed_on_unknown_symbols():
 _SPEC_SCOPE = {
     "BTCUSDT": ("crypto", "USDT", "raw", ("1h", "4h", "1d"), False, True, False),
     "MBB": ("equity", "VND", "adjusted", ("1h", "1d"), True, True, True),
-    "BID": ("equity", "VND", "adjusted", ("1d",), True, True, True),
+    "BID": ("equity", "VND", "adjusted", ("1h", "1d"), True, True, True),
     "VCB": ("equity", "VND", "adjusted", ("1d",), True, False, False),
     "CTG": ("equity", "VND", "adjusted", ("1d",), True, False, False),
     "VNINDEX": ("index", "index-points", "raw", ("1d",), True, False, False),
@@ -141,14 +141,22 @@ def test_capabilities_parity_with_backend_catalog(symbol):
         assert ta is True
 
 
-def test_bid_is_daily_only():
+def test_bid_accepts_1h_and_1d_like_mbb():
+    # EQTECH-1 H: mirrors backend InstrumentCatalog (BID 1h + 1d, no synthetic 4h).
+    assert require_active_timeframe("1h", "BID") == "1h"
+    assert require_active_timeframe(" 1H ", "bid") == "1h"
     assert require_active_timeframe("1d", "BID") == "1d"
     assert require_active_timeframe(" 1D ", "bid") == "1d"
-    assert active_timeframes_for("BID") == ("1d",)
+    assert active_timeframes_for("BID") == ("1h", "1d") == active_timeframes_for("MBB")
     assert default_timeframe_for("BID") == "1d"
-    for timeframe in ("1h", "4h", "15m"):
+    for timeframe in ("4h", "15m", "1w"):
         with pytest.raises(ValueError, match="Inactive production timeframe"):
             require_active_timeframe(timeframe, "BID")
+    # Context-only peers stay daily-only.
+    for symbol in ("VCB", "CTG"):
+        assert active_timeframes_for(symbol) == ("1d",)
+        with pytest.raises(ValueError, match="Inactive production timeframe"):
+            require_active_timeframe("1h", symbol)
 
 
 def test_vnindex_is_an_index_in_points_without_vnd_costs():

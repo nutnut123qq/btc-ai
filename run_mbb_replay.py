@@ -36,7 +36,7 @@ evaluation rules):
   equity instrument with ``capabilities.decision`` in
   ``trading_config.INSTRUMENTS``; indices and context-only peers fail
   closed.  ``--strategy all`` runs only strategies bound to the symbol's
-  declared timeframes (BID: 1d only).
+  declared timeframes (MBB and BID: 1h and 1d).
 """
 
 from __future__ import annotations
@@ -276,7 +276,7 @@ def strategies_for_symbol(symbol: str, requested: str = "all") -> list[str]:
     """Declared strategies runnable for ``symbol``.
 
     ``all`` keeps only strategies bound to one of the symbol's declared
-    timeframes (BID is 1d-only, so the 1h RSI strategy is skipped); an
+    timeframes (MBB and BID declare 1h and 1d, so both strategies run); an
     explicitly requested strategy on an undeclared timeframe fails closed.
     """
     canonical = _resolve_symbol(symbol)

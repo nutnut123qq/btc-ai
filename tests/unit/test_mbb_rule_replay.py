@@ -218,7 +218,7 @@ def test_deterministic_dataset_hash_and_declared_strategies():
     }
 
 
-# --- EQX: BID (1d-only decision equity) and capability gating ---------------
+# --- EQX: BID (decision equity, 1h + 1d since EQTECH-1 H) and capability gating ---
 
 
 def test_bid_replay_runs_on_daily_fixture():
@@ -237,14 +237,14 @@ def test_bid_replay_runs_on_daily_fixture():
     assert report["trades"]["roundTrips"][0]["entryPrice"] == 20_200.0
 
 
-def test_bid_rejects_hourly_strategy_and_all_skips_it():
-    bars = _fixture_bars()
-    with pytest.raises(ValueError, match="Inactive production timeframe"):
-        replay.run_replay(candles=bars, strategy="rsi-mean-revert-14", symbol="BID")
-    assert replay.strategies_for_symbol("BID") == ["sma-cross-20-50"]
+def test_bid_declares_hourly_strategy_like_mbb_and_rejects_undeclared_timeframes():
+    # EQTECH-1 H: BID declares 1h, so "all" includes the 1h RSI strategy exactly as for MBB.
+    assert replay.strategies_for_symbol("BID") == sorted(replay.STRATEGIES)
     assert replay.strategies_for_symbol("MBB") == sorted(replay.STRATEGIES)
+    assert replay.strategies_for_symbol("BID", "rsi-mean-revert-14") == ["rsi-mean-revert-14"]
+    four_hour = dict(_buy_first_sell_fifth(), timeframe="4h")
     with pytest.raises(ValueError, match="Inactive production timeframe"):
-        replay.strategies_for_symbol("BID", "rsi-mean-revert-14")
+        replay.run_replay(candles=_fixture_bars(), strategy=four_hour, symbol="BID")
 
 
 @pytest.mark.parametrize(
@@ -258,7 +258,7 @@ def test_index_and_context_only_symbols_fail_closed(symbol, message):
         replay.strategies_for_symbol(symbol)
 
 
-def test_cli_bid_fixture_all_runs_only_daily(tmp_path, capsys):
+def test_cli_bid_fixture_all_runs_both_declared_timeframes(tmp_path, capsys):
     bars = _fixture_bars()
     fixture = tmp_path / "bid.json"
     import json
@@ -270,10 +270,13 @@ def test_cli_bid_fixture_all_runs_only_daily(tmp_path, capsys):
     )
     assert code == 0
     written = sorted(p.name for p in (tmp_path / "out").iterdir())
-    assert len(written) == 1 and written[0].startswith("sma-cross-20-50-BID-1d-")
-    report = json.loads((tmp_path / "out" / written[0]).read_text(encoding="utf-8"))
-    assert report["symbol"] == "BID"
-    assert report["verdict"]["value"] == "unavailable"  # 7 bars < minBars 52
+    assert len(written) == 2
+    assert written[0].startswith("rsi-mean-revert-14-BID-1h-")
+    assert written[1].startswith("sma-cross-20-50-BID-1d-")
+    reports = [json.loads((tmp_path / "out" / name).read_text(encoding="utf-8")) for name in written]
+    assert [r["symbol"] for r in reports] == ["BID", "BID"]
+    # Daily fixture: no expected 1h opens (all 7 rows excluded) and 7 bars < minBars 52.
+    assert [r["verdict"]["value"] for r in reports] == ["unavailable", "unavailable"]
 
 
 # --- MBBREPLAY-1: symmetric exit costs + uncertainty before "supported" ------

@@ -303,16 +303,19 @@ def test_replay_db_run_fails_closed_on_empty_table(monkeypatch, tmp_path, capsys
 def test_replay_records_db_calendar(monkeypatch, tmp_path):
     _install_db(monkeypatch, FakeCursor(_calendar_rows(date(2025, 4, 30), date(2025, 5, 1))))
     rows = _walk_rows(80)
-    with patch.object(replay, "load_candles_db", return_value=rows):
+    with patch.object(replay, "load_candles_db", side_effect=lambda symbol, tf, cutoff: rows if tf == "1d" else []):
         code = replay.main(["--symbol", "BID", "--strategy", "all", "--out-dir", str(tmp_path)])
     assert code == 0
     import json
 
-    (artifact,) = list(tmp_path.glob("*.json"))
-    report = json.loads(artifact.read_text(encoding="utf-8"))
-    assert report["calendar"]["source"] == "db:MarketCalendarDays"
-    assert report["calendar"]["count"] == 2
-    assert report["calendar"]["nonTradingDates"] == ["2025-04-30", "2025-05-01"]
+    # EQTECH-1 H: BID declares 1h, so "all" writes the 1h RSI report too; each carries the DB calendar.
+    artifacts = sorted(tmp_path.glob("*.json"))
+    assert [json.loads(a.read_text(encoding="utf-8"))["timeframe"] for a in artifacts] == ["1h", "1d"]
+    for artifact in artifacts:
+        report = json.loads(artifact.read_text(encoding="utf-8"))
+        assert report["calendar"]["source"] == "db:MarketCalendarDays"
+        assert report["calendar"]["count"] == 2
+        assert report["calendar"]["nonTradingDates"] == ["2025-04-30", "2025-05-01"]
 
 
 # --- technical descriptive evidence (DB-backed MBB bundles) -----------------------

@@ -89,7 +89,8 @@ INSTRUMENTS: Dict[str, Dict[str, Any]] = {
         },
     },
     "MBB": _equity("MBB", "MBB (MB Bank)", ("1h", "1d"), decision=True),
-    "BID": _equity("BID", "BID (BIDV)", ("1d",), decision=True),
+    # EQTECH-1 H: BID declares 1h too (same VCI 1h feed as MBB, from 2023-09-11).
+    "BID": _equity("BID", "BID (BIDV)", ("1h", "1d"), decision=True),
     "VCB": _equity("VCB", "VCB (Vietcombank)", ("1d",), decision=False),
     "CTG": _equity("CTG", "CTG (VietinBank)", ("1d",), decision=False),
     # Market index: quoted in points (not VND), raw basis, never traded — no lot/fee/tax.
