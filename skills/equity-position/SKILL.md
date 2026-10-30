@@ -109,7 +109,7 @@ Re-read `decision.json` after any write. Report, with field paths:
   | `trend-constructive` | `market.trend` is `up`, 50 <= RSI14 < 70, and at least one lot is affordable |
   | `cash-unknown` / `buy-budget-undeclared` / `budget-exceeds-cash` / `cash-below-one-lot` | why no buy quantity is proposed |
   | `buy-sized-at-next-session-ceiling` | buy-more quantity priced at the next session's ceiling |
-  | `no-settled-shares` / `sell-not-fillable` | a sell/reduce fired but nothing can be sold now, or not within the band |
+  | `no-settled-shares` / `sell-not-fillable` | a sell/reduce fired but nothing can be sold now (nothing settled, or no positive net proceeds) |
   | `stale-data` | some timeframe is stale (e.g. only 1h); on its own it does not change the action |
   | `stale-data-blocked:<action>` | a stale 1d turned sell/reduce/conditional-sell/buy-more into `wait` |
   | `corporate-action-since-acquisition` / `corporate-action-converted:<type>` / `corporate-action-unconverted:<reason>` | a corporate action went ex after the earliest lot; converted lots are already adjusted, unconverted ones null the cost figures |
@@ -118,17 +118,19 @@ Re-read `decision.json` after any write. Report, with field paths:
   Quote any other code verbatim and say it is not in this table.
 - **Levels:** `triggers[]` (`name`, `priceLevelVnd`, `condition`, `direction`, `withinPriceBand`,
   `nonFillRisk`) and `invalidation`. HOSE rejects orders outside the band, it does not clamp them.
-- **The band in the decision is not the next session's band.** `market.ceilingPriceVnd` /
+- **The band in the decision is the next session's band.** `market.ceilingPriceVnd` /
   `market.floorPriceVnd`, and `withinPriceBand` / `nonFillRisk` on triggers, are computed around
-  `market.previousDailyCloseVnd`, the session before the signal bar (known backend issue,
-  `../investment-research/references/data-limitations.md` item 12). Recompute the next-session band
-  in a script from `market.lastDailyCloseVnd`: ceiling = close x 1.07 rounded down to a tick, floor =
-  close x 0.93 rounded up; HOSE ticks 10 ₫ below 10,000, 50 ₫ below 50,000, 100 ₫ from 50,000. Check
-  every trigger price against that band yourself.
-- **Stop and reduce levels:** the `stop-loss` trigger is only emitted on some branches (e.g. a
-  bearish trend). When it is absent and a position exists, compute the declared levels yourself in a
-  script: stop = avg cost x 0.92, reduce = avg cost x 0.96, both rounded up to a tick (never a deeper
-  loss than declared). Skip this when there is no position.
+  `market.lastDailyCloseVnd` (the signal close, the next session's reference price) on the HOSE tick
+  grid (backend rules `declared-rules-v4`;
+  `../investment-research/references/data-limitations.md` item 12). Quote them as returned; do not
+  recompute. `market.previousDailyCloseVnd` is only the close before the signal bar. This holds only
+  while the 1d entry of `dataFreshness[]` has `isStale: false`: with a stale 1d bar the band is built
+  on an old close, so say it is out of date and do not rely on it for an order.
+- **Stop and reduce levels:** with a position and `position.costBasisComparable` true, every rule
+  branch returns the `stop-loss` (avg cost -8%) and `reduce-below-cost` (avg cost -4%) triggers,
+  already rounded up to a tick. Quote their `priceLevelVnd`; do not compute levels yourself. No such
+  trigger means no position, a non-comparable cost basis, or an early `wait` on missing data
+  (`insufficient-data`, `calendar-coverage-expired`): say which, and give no level.
 - **Position:** `position.totalShares`, `settledShares`, `sellableSharesNow`, `avgCostPerShareVnd`,
   `lastPriceVnd`, `unrealizedPnlVnd`, `unrealizedPnlPct`, `netProceedsIfSellableNowVnd`. If
   `position.costBasisComparable` is `false`, every cost-based figure is null on purpose: give
@@ -137,7 +139,7 @@ Re-read `decision.json` after any write. Report, with field paths:
   `maxBuyableLots` / `estimatedCostVnd` (an upper bound priced at the ceiling). Never propose a quantity
   above `buyMore`, and none at all when `buyMore` is null.
 - **Loss if the stop is hit:** compute with a script on the saved JSON (cite it as
-  `script:<file>#<output>`): `(avgCostPerShareVnd - stop level) x totalShares`, plus sell fee 0.15%
+  `script:<file>#<output>`): `(avgCostPerShareVnd - stop-loss priceLevelVnd) x totalShares`, plus sell fee 0.15%
   and sell tax 0.1% on the gross at the stop price. If the user gives their total capital, also give it
   as a percent of that. Practitioners often cap the loss at the stop at roughly 0.5-2% of capital per
   position; say it is a convention, not a rule of this app.
@@ -164,6 +166,8 @@ the git repos, personal data, never commit): `position.json`, `decision.json`,
 
 ## Versions
 
-`skillVersion: "equity-position-v2"`. Bump it when this file's rules change. v2 (2026-10-30, after the
+`skillVersion: "equity-position-v3"`. Bump it when this file's rules change. v2 (2026-10-30, after the
 first trial run): next-session band recomputed, stop/reduce computed when no trigger, more reason codes,
-`availableCashVnd` trap, early return on `no-position`.
+`availableCashVnd` trap, early return on `no-position`. v3 (2026-10-30, EQDEC-1): the backend now
+returns the next-session band and both cost triggers on every branch (`declared-rules-v4`), so the
+skill quotes them instead of recomputing.

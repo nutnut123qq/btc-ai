@@ -77,14 +77,26 @@ def test_states_the_write_and_safety_rules(skill):
     assert "**No probabilities, no forecasts.**" in skill
     assert "never pre-adjust a lot" in skill
     assert "never copy `availableCashVnd` into a" in skill
-    assert 'skillVersion: "equity-position-v2"' in skill
+    assert 'skillVersion: "equity-position-v3"' in skill
 
 
-def test_does_not_trust_the_decision_band(skill):
-    # The decision's band is built on the close before the signal bar (data-limitations item 12).
-    assert "**The band in the decision is not the next session's band.**" in skill
-    assert "`market.previousDailyCloseVnd`" in skill and "`market.lastDailyCloseVnd`" in skill
-    assert "data-limitations.md` item 12" in skill
+def test_quotes_the_backend_band_and_levels_instead_of_recomputing(skill):
+    # Since backend rules declared-rules-v4 (EQDEC-1) the decision returns the next-session band
+    # (around the signal close) and both cost triggers on every branch: the skill must not redo them.
+    flat = " ".join(skill.split())  # phrases may wrap across lines
+    assert "**The band in the decision is the next session's band.**" in flat
+    assert "not the next session's band" not in flat
+    assert "`market.previousDailyCloseVnd`" in flat and "`market.lastDailyCloseVnd`" in flat
+    assert "`declared-rules-v4`" in flat and "data-limitations.md` item 12" in flat
+    # The band is only the next session's while the 1d bar is fresh (cold-check EQDEC-1 MINOR).
+    assert "while the 1d entry of `dataFreshness[]` has `isStale: false`" in flat
+    assert "do not recompute" in flat and "do not compute levels yourself" in flat
+    for recompute in ("x 1.07", "x 0.93", "x 0.92", "x 0.96"):
+        assert recompute not in flat, recompute
+    limitations = (SKILL_DIR / "../investment-research/references/data-limitations.md").resolve()
+    item12 = re.search(r"^12\. (.*?)(?=^\d+\. )", limitations.read_text(encoding="utf-8"), flags=re.M | re.S)
+    assert item12 and "fixed in backend rules `declared-rules-v4`" in item12.group(1)
+    assert "known backend issue" not in item12.group(1)
 
 
 def test_quoted_costs_equal_the_execution_model(skill):

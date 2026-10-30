@@ -93,14 +93,13 @@ Snapshot-specific limitations are in `snapshot.json` → `pit.limitations`, `una
     bars, stray 12:00 bar) — prefer 1d for anything statistical.
 11. **Volume** history differs between providers deep in the past (adjustment differs); treat old volume
     comparisons as approximate.
-12. **Decision price band (known backend issue, not fixed).** The decision's ±7% ceiling/floor
-    (`market.ceilingPriceVnd` / `floorPriceVnd`) appears to be based on the *previous* close, not the
-    signal close, and is not rounded to HOSE price ticks. Before quoting a band for the next session,
-    recompute it in a script:
-    - reference = signal-bar close; ceiling = reference × 1.07 rounded **down** to a tick; floor =
-      reference × 0.93 rounded **up** to a tick;
-    - HOSE ticks: 10 ₫ below 10,000; 50 ₫ from 10,000 to < 50,000; 100 ₫ at ≥ 50,000;
-    - adjusted prices equal raw prices only after the latest ex-date.
+12. **Decision price band (fixed in backend rules `declared-rules-v4`, 2026-10-30).** The decision's
+    ±7% ceiling/floor (`market.ceilingPriceVnd` / `floorPriceVnd`) and every trigger's
+    `withinPriceBand` / `nonFillRisk` are the next session's band: reference = signal-bar close
+    (`market.lastDailyCloseVnd`), ceiling rounded **down** and floor rounded **up** to the HOSE tick.
+    Quote them as returned. `market.previousDailyCloseVnd` is the close before the signal bar
+    (display only). Journal rows stamped `declared-rules-v1`…`v3` used that previous close as the
+    reference. Prices are adjusted: they equal raw prices only after the latest ex-date.
 13. **Conditions and snapshot warnings.**
     - `below-calendar-coverage`: the analysis window reaches back before the start of the HOSE
       calendar file. Session contiguity there cannot be checked, so the window stops at the coverage
