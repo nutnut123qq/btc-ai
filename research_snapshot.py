@@ -111,6 +111,8 @@ class Client:
             raise ApiError(exc.code, code, message) from None
         except urllib.error.URLError as exc:
             raise ApiError(0, "BACKEND_UNREACHABLE", str(exc.reason)) from None
+        except TimeoutError:  # a read timeout escapes urlopen unwrapped; it is a backend failure, not usage
+            raise ApiError(0, "BACKEND_TIMEOUT", f"no response within {self.timeout:g} s") from None
 
     def get_bytes(self, path: str, query: Mapping[str, Any] | None = None, admin: bool = False) -> bytes:
         return self._request("GET", path, query, admin=admin)

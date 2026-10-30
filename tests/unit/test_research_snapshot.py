@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import socket
 import sys
 import threading
 from decimal import Decimal
@@ -264,6 +265,17 @@ def test_api_error_envelope_is_reported(backend, tmp_path, monkeypatch, capsys):
     assert code == rs.EXIT_HTTP
     err = capsys.readouterr().err
     assert "HTTP 400 INVALID_NOTE" in err and ADMIN_KEY not in err
+
+
+def test_backend_read_timeout_is_an_http_failure(monkeypatch, capsys):
+    monkeypatch.delenv(rs.ADMIN_KEY_ENV, raising=False)
+    with socket.socket() as silent:  # accepts the connection (backlog) but never answers
+        silent.bind(("127.0.0.1", 0))
+        silent.listen(1)
+        port = silent.getsockname()[1]
+        code = rs.main(["--backend", f"http://127.0.0.1:{port}", "--timeout", "0.5", "readiness", "--symbol", "BID"])
+    assert code == rs.EXIT_HTTP
+    assert "BACKEND_TIMEOUT" in capsys.readouterr().err
 
 
 def test_unreachable_backend_fails_cleanly(monkeypatch, capsys):

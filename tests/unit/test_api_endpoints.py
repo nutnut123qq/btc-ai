@@ -1,231 +1,56 @@
-import unittest
-import sys
+"""AI service routes after VNONLY-1: only the VN equity lane is served."""
+
 import os
+import subprocess
+import sys
 from pathlib import Path
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
-# Add btc-ai to sys.path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(ROOT))
 
-from main import app
-from prediction_service import ModelArtifactIncompatibleError
+from main import app  # noqa: E402
 
-
-class TestApiEndpoints(unittest.TestCase):
-    """
-    Hermetic API endpoint testing for FastAPI service.
-    """
-
-    def setUp(self):
-        self.client = TestClient(app)
-
-    def test_list_models_endpoint(self):
-        response = self.client.get("/api/predict/models")
-        self.assertEqual(response.status_code, 200)
-        data = response.json()
-        self.assertIn("models", data)
-        self.assertIsInstance(data["models"], list)
-
-    def test_predict_endpoint_validation_error(self):
-        # A quarantined model fails closed before model-specific shape validation.
-        payload = {
-            "symbol": "BTCUSDT",
-            "timeframe": "4h",
-            "window_size": 5,
-            "horizon": "4h",
-            "feature_vector": [1.0, 2.0]
-        }
-        with patch(
-            "main.predict_from_vector",
-            side_effect=ModelArtifactIncompatibleError("quarantined"),
-        ):
-            response = self.client.post("/api/predict", json=payload)
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["code"], "MODEL_ARTIFACT_INCOMPATIBLE")
-
-    def test_capabilities_reports_llm_disabled_but_ml_available(self):
-        with (
-            patch.dict(os.environ, {"LLM_PROVIDER": "none"}),
-            patch("main.list_available_models", return_value=[{"file": "model.joblib"}]),
-        ):
-            response = self.client.get("/api/capabilities")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {
-            "mlInference": True,
-            "llmExplanation": False,
-            "provider": "none",
-            "reason": "LLM provider is disabled.",
-            "mlReason": None,
-        })
-
-    def test_capabilities_reports_ml_unavailable_when_registry_cannot_load(self):
-        with patch("main.list_available_models", side_effect=ValueError("secret registry error")):
-            response = self.client.get("/api/capabilities")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertFalse(response.json()["mlInference"])
-        self.assertEqual(response.json()["mlReason"], "Model registry is unavailable.")
-        self.assertNotIn("secret registry error", response.text)
-
-    def test_predict_does_not_require_llm(self):
-        expected = {"label": 1, "probability": 0.7}
-        with (
-            patch.dict(os.environ, {"LLM_PROVIDER": "none"}),
-            patch("main.predict_from_vector", return_value=expected),
-        ):
-            response = self.client.post("/api/predict", json={
-                "symbol": "BTCUSDT",
-                "timeframe": "4h",
-                "window_size": 5,
-                "horizon": "4h",
-                "feature_vector": [1.0],
-            })
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), expected)
-
-    def test_predict_defaults_to_primary_4h_model_identity(self):
-        expected = {"label": 0, "probability": 0.7}
-        with patch("main.predict_from_vector", return_value=expected) as predictor:
-            response = self.client.post("/api/predict", json={"feature_vector": [1.0]})
-
-        self.assertEqual(response.status_code, 200)
-        predictor.assert_called_once_with(
-            feature_vector=[1.0],
-            symbol="BTCUSDT",
-            timeframe="4h",
-            window_size=5,
-            horizon="4h",
-            model_name=None,
-        )
-
-    def test_predict_rejects_inactive_minute_timeframe(self):
-        response = self.client.post("/api/predict", json={
-            "symbol": "BTCUSDT",
-            "timeframe": "15m",
-            "window_size": 5,
-            "horizon": "1h",
-            "feature_vector": [1.0],
-        })
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("Inactive production timeframe", response.json()["detail"])
-
-    def test_llm_endpoints_return_structured_503_when_disabled(self):
-        with patch.dict(os.environ, {"LLM_PROVIDER": "none"}):
-            responses = [
-                self.client.post("/api/analyze", json={"symbol": "BTC"}),
-                self.client.post("/api/explain", json={"prompt": "Explain"}),
-                self.client.post("/api/explain/stream", json={"prompt": "Explain"}),
-            ]
-
-        for response in responses:
-            self.assertEqual(response.status_code, 503)
-            body = response.json()
-            self.assertEqual(body["code"], "LLM_NOT_CONFIGURED")
-            self.assertFalse(body["retryable"])
-            self.assertTrue(body["requestId"])
-            self.assertEqual(set(body), {"code", "message", "retryable", "requestId"})
-
-    def test_missing_provider_key_does_not_expose_configuration_details(self):
-        with patch.dict(
-            os.environ,
-            {"LLM_PROVIDER": "blackbox", "BLACKBOX_API_KEY": ""},
-        ):
-            response = self.client.post("/api/explain", json={"prompt": "Explain"})
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["code"], "LLM_NOT_CONFIGURED")
-        self.assertNotIn("BLACKBOX_API_KEY", response.text)
-
-    def test_unknown_provider_returns_sanitized_unavailable_error(self):
-        with patch.dict(os.environ, {"LLM_PROVIDER": "not-a-provider"}):
-            response = self.client.post("/api/explain", json={"prompt": "Explain"})
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["code"], "LLM_PROVIDER_UNAVAILABLE")
-        self.assertFalse(response.json()["retryable"])
-        self.assertNotIn("not-a-provider", response.text)
-
-    def test_provider_runtime_error_is_sanitized(self):
-        class BrokenLlm:
-            async def ainvoke(self, _messages):
-                raise RuntimeError("secret provider response")
-
-        with patch("main._build_llm", return_value=BrokenLlm()):
-            response = self.client.post("/api/explain", json={"prompt": "Explain"})
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["code"], "LLM_PROVIDER_UNAVAILABLE")
-        self.assertTrue(response.json()["retryable"])
-        self.assertNotIn("secret provider response", response.text)
-
-    def test_analyze_graph_runtime_error_is_sanitized(self):
-        class BrokenLlm:
-            async def ainvoke(self, _messages):
-                raise RuntimeError("secret graph provider response")
-
-        with (
-            patch.dict(os.environ, {"LLM_PROVIDER": "ollama"}),
-            patch("main._build_llm", return_value=BrokenLlm()),
-        ):
-            response = self.client.post("/api/analyze", json={
-                "symbol": "BTC",
-                "news_context": "known news",
-                "tech_context": "known technical context",
-            })
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["code"], "LLM_PROVIDER_UNAVAILABLE")
-        self.assertNotIn("secret graph provider response", response.text)
-
-    def test_stream_runtime_error_is_sanitized(self):
-        class BrokenLlm:
-            async def astream(self, _messages):
-                if False:
-                    yield None
-                raise RuntimeError("secret streaming response")
-
-        with patch("main._build_llm", return_value=BrokenLlm()):
-            response = self.client.post("/api/explain/stream", json={"prompt": "Explain"})
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["code"], "LLM_PROVIDER_UNAVAILABLE")
-        self.assertNotIn("secret streaming response", response.text)
-
-    def test_empty_stream_returns_sanitized_503(self):
-        class EmptyLlm:
-            async def astream(self, _messages):
-                if False:
-                    yield None
-
-        with patch("main._build_llm", return_value=EmptyLlm()):
-            response = self.client.post("/api/explain/stream", json={"prompt": "Explain"})
-
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(response.json()["code"], "LLM_PROVIDER_UNAVAILABLE")
-
-    def test_stream_error_after_first_token_is_sanitized(self):
-        class PartiallyBrokenLlm:
-            async def astream(self, _messages):
-                yield "safe token"
-                raise RuntimeError("secret mid-stream response")
-
-        with patch("main._build_llm", return_value=PartiallyBrokenLlm()):
-            response = self.client.post(
-                "/api/explain/stream",
-                json={"prompt": "Explain"},
-                headers={"x-request-id": "test-request-id"},
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn("safe token", response.text)
-        self.assertIn("LLM_PROVIDER_UNAVAILABLE", response.text)
-        self.assertIn("test-request-id", response.text)
-        self.assertNotIn("secret mid-stream response", response.text)
+RETIRED = [
+    ("post", "/api/predict"), ("get", "/api/predict/models"), ("post", "/api/analyze"),
+    ("post", "/api/explain"), ("post", "/api/explain/stream"), ("post", "/api/rl/predict"), ("post", "/api/rl/train"),
+]
+KEPT = {"/api/capabilities", "/api/current-conditions", "/api/equity-base-rates/build",
+        "/api/equity-llm/run", "/api/equity-llm/status"}
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.mark.parametrize(("method", "path"), RETIRED)
+def test_retired_btc_routes_are_not_served(client, method, path):
+    assert client.request(method, path).status_code == 404
+
+
+def test_equity_routes_are_served():
+    assert KEPT <= {route.path for route in app.routes}
+
+
+def test_capabilities_keeps_shape_and_reports_retired_btc_features(client):
+    with patch.dict(os.environ, {"LLM_PROVIDER": "none"}):
+        response = client.get("/api/capabilities")
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"mlInference", "llmExplanation", "provider", "reason", "mlReason"}
+    assert (body["mlInference"], body["llmExplanation"], body["provider"]) == (False, False, "none")
+    assert "retired" in body["reason"] and "retired" in body["mlReason"]
+
+
+def test_importing_main_does_not_load_btc_modules():
+    # Fresh interpreter: other tests in this process import these modules directly.
+    heavy = ("graph", "prediction_service", "rl_agent", "langgraph", "langchain_core", "joblib")
+    code = f"import sys, main; print(','.join(m for m in {heavy!r} if m in sys.modules))"
+    result = subprocess.run([sys.executable, "-c", code], cwd=ROOT, capture_output=True, text=True,
+                            env={**os.environ, "LLM_PROVIDER": "none"}, timeout=120)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == ""
