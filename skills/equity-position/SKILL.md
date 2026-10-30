@@ -15,14 +15,19 @@ To start it in a new session (not auto-discovered, same convention as `equity-te
 > Read `D:\code\btc\ai\skills\equity-position\SKILL.md` and follow it for: <request>.
 
 Backend: env `BACKEND_BASE_URL`, default `http://localhost:5197`. Every endpoint here is admin-only
-(personal data): send env `EQX_ADMIN_KEY` as header `X-Admin-Key`, never print or write it. Check it
-exists with the command in `../investment-research/references/cli.md` ("Admin key"). Without it, stop
-and say the user must set `EQX_ADMIN_KEY` first; do not look for the key anywhere else.
+(personal data): send env `EQX_ADMIN_KEY` as header `X-Admin-Key`, never print or write it. If
+`[bool]$env:EQX_ADMIN_KEY` is `False`, stop and say the user must set `EQX_ADMIN_KEY` themselves
+(value from `backend/ops/show-admin-key.ps1`); do not read ops secrets or look for the key anywhere
+else. A 401 means the key is missing or wrong: stop. A 404 means the symbol is outside the scope.
+Shell notes (UTF-8, paths) are in `../investment-research/references/cli.md`.
 
 ```powershell
 $base = if ($env:BACKEND_BASE_URL) { $env:BACKEND_BASE_URL } else { "http://localhost:5197" }
 $h = @{ "X-Admin-Key" = $env:EQX_ADMIN_KEY }
 ```
+
+First create one session folder per symbol (see "Where things go") and work inside it. The cash
+pool is shared by MBB and BID: when a request covers both, read it once and say it is the same pool.
 
 ## Scope (hard limits)
 
@@ -44,12 +49,18 @@ Save both responses in the session folder (`Invoke-WebRequest -UseBasicParsing -
 
 - `position.json`: `lots[]` (`id`, `quantity`, `costPerShareVnd`, `acquireDate`, `settleDate`,
   `settled`, `source`), `totalShares`, `settledShares`, `pendingShares`, `avgCostPerShareVnd`,
-  `sharedCashVnd`, `buyBudgetVnd`, `cashSource` (`shared-pool` or `unknown`), `cashNotes`.
+  `sharedCashVnd`, `buyBudgetVnd`, `totalDeclaredBudgetsVnd`, `cashSource` (`shared-pool` or
+  `unknown`), `cashNotes`, `updatedAtUtc`. `availableCashVnd` is a legacy mirror that reads 0 while
+  the pool is unknown: use `sharedCashVnd` with `cashSource`, and never copy `availableCashVnd` into a
+  PUT (a 0 there would be written to the shared pool).
 - `decision.json`: `action`, `reasons[]`, `triggers[]`, `invalidation`, `position`, `buyMore`,
-  `market`, `cash`, `dataFreshness[]`, `evidenceStatus`, `priceBasis`, `generatedAtUtc`.
+  `market`, `cash` (`sharedCashVnd`, `buyBudgetVnd`, `totalDeclaredBudgetsVnd`, `cashSource`,
+  `spendableVnd`), `dataFreshness[]`, `evidenceStatus`, `priceBasis`, `generatedAtUtc`.
 
-Empty `lots` with reason `no-position` means nothing has been entered yet; `cashSource: unknown` means
-the cash pool has never been set. Say so; do not assume the user holds nothing.
+Empty `lots` (`decision.reasons` = `no-position`) means nothing has been entered yet; `cashSource:
+unknown` means the cash pool has never been set. Say so; do not assume the user holds nothing. With
+`no-position` the decision returns early: no trend reason, no triggers, and `buyMore` is always null
+whatever the cash, so this endpoint never sizes a first buy; say that too.
 
 ## Step 2: Record what the user did (only when they say so)
 
@@ -98,14 +109,26 @@ Re-read `decision.json` after any write. Report, with field paths:
   | `trend-constructive` | `market.trend` is `up`, 50 <= RSI14 < 70, and at least one lot is affordable |
   | `cash-unknown` / `buy-budget-undeclared` / `budget-exceeds-cash` / `cash-below-one-lot` | why no buy quantity is proposed |
   | `buy-sized-at-next-session-ceiling` | buy-more quantity priced at the next session's ceiling |
-  | `stale-data`, `stale-data-blocked:<action>` | data is not fresh; the action was turned into `wait` |
+  | `no-settled-shares` / `sell-not-fillable` | a sell/reduce fired but nothing can be sold now, or not within the band |
+  | `stale-data` | some timeframe is stale (e.g. only 1h); on its own it does not change the action |
+  | `stale-data-blocked:<action>` | a stale 1d turned sell/reduce/conditional-sell/buy-more into `wait` |
+  | `corporate-action-since-acquisition` / `corporate-action-converted:<type>` / `corporate-action-unconverted:<reason>` | a corporate action went ex after the earliest lot; converted lots are already adjusted, unconverted ones null the cost figures |
   | `insufficient-data`, `indicators-warming-up`, `no-trigger` | not enough data, or nothing fired |
 
   Quote any other code verbatim and say it is not in this table.
 - **Levels:** `triggers[]` (`name`, `priceLevelVnd`, `condition`, `direction`, `withinPriceBand`,
-  `nonFillRisk`) and `invalidation`. A trigger outside the ±7% band carries `nonFillRisk`: HOSE rejects
-  orders outside the band, it does not clamp them. `market.ceilingPriceVnd` / `market.floorPriceVnd`
-  are the next session's band.
+  `nonFillRisk`) and `invalidation`. HOSE rejects orders outside the band, it does not clamp them.
+- **The band in the decision is not the next session's band.** `market.ceilingPriceVnd` /
+  `market.floorPriceVnd`, and `withinPriceBand` / `nonFillRisk` on triggers, are computed around
+  `market.previousDailyCloseVnd`, the session before the signal bar (known backend issue,
+  `../investment-research/references/data-limitations.md` item 12). Recompute the next-session band
+  in a script from `market.lastDailyCloseVnd`: ceiling = close x 1.07 rounded down to a tick, floor =
+  close x 0.93 rounded up; HOSE ticks 10 ₫ below 10,000, 50 ₫ below 50,000, 100 ₫ from 50,000. Check
+  every trigger price against that band yourself.
+- **Stop and reduce levels:** the `stop-loss` trigger is only emitted on some branches (e.g. a
+  bearish trend). When it is absent and a position exists, compute the declared levels yourself in a
+  script: stop = avg cost x 0.92, reduce = avg cost x 0.96, both rounded up to a tick (never a deeper
+  loss than declared). Skip this when there is no position.
 - **Position:** `position.totalShares`, `settledShares`, `sellableSharesNow`, `avgCostPerShareVnd`,
   `lastPriceVnd`, `unrealizedPnlVnd`, `unrealizedPnlPct`, `netProceedsIfSellableNowVnd`. If
   `position.costBasisComparable` is `false`, every cost-based figure is null on purpose: give
@@ -119,14 +142,14 @@ Re-read `decision.json` after any write. Report, with field paths:
   as a percent of that. Practitioners often cap the loss at the stop at roughly 0.5-2% of capital per
   position; say it is a convention, not a rule of this app.
 - **Freshness:** `dataFreshness[]` per timeframe (`isStale`, `reason`). A stale 1d blocks
-  sell/reduce/buy-more by rule; say the decision is on old data.
+  sell/reduce/conditional-sell/buy-more by rule; say the decision is on old data.
 
 ## Honesty rules
 
 - **No probabilities, no forecasts.** The decision is rules-only. For a direction view, use
   `equity-technical`; do not mix its view into these numbers.
 - **Fees are defaults, not the user's broker.** Broker fee 0.15% per side, sell tax 0.1%, lot 100,
-  T+2, band ±7% are the backend's declared defaults (`Services/VietnamExecutionRules.cs`). The user's
+  T+2, band ±7% are the backend's declared defaults (`backend/Services/VietnamExecutionRules.cs`). The user's
   real broker schedule is not entered yet; say costs are approximate.
 - **Prices are adjusted.** `priceBasis` is `adjusted` (corporate actions rewrite history); compare in
   returns across an ex-date, not levels.
@@ -141,4 +164,6 @@ the git repos, personal data, never commit): `position.json`, `decision.json`,
 
 ## Versions
 
-`skillVersion: "equity-position-v1"`. Bump it when this file's rules change.
+`skillVersion: "equity-position-v2"`. Bump it when this file's rules change. v2 (2026-10-30, after the
+first trial run): next-session band recomputed, stop/reduce computed when no trigger, more reason codes,
+`availableCashVnd` trap, early return on `no-position`.

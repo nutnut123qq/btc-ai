@@ -76,7 +76,15 @@ def test_states_the_write_and_safety_rules(skill):
     assert "never places an order" in skill.lower()
     assert "**No probabilities, no forecasts.**" in skill
     assert "never pre-adjust a lot" in skill
-    assert 'skillVersion: "equity-position-v1"' in skill
+    assert "never copy `availableCashVnd` into a" in skill
+    assert 'skillVersion: "equity-position-v2"' in skill
+
+
+def test_does_not_trust_the_decision_band(skill):
+    # The decision's band is built on the close before the signal bar (data-limitations item 12).
+    assert "**The band in the decision is not the next session's band.**" in skill
+    assert "`market.previousDailyCloseVnd`" in skill and "`market.lastDailyCloseVnd`" in skill
+    assert "data-limitations.md` item 12" in skill
 
 
 def test_quoted_costs_equal_the_execution_model(skill):
@@ -99,10 +107,11 @@ def test_reuses_investment_research_references(skill):
 def test_reason_codes_exist_in_the_decision_service(skill):
     source = DECISION_SERVICE.read_text(encoding="utf-8")
     table = re.findall(r"^[ \t]*\|([^|\n]+)\|[^|\n]+\|[ \t]*$", skill, flags=re.M)
-    codes = {c for cell in table for c in re.findall(r"`([a-z][a-z-]+)(?::<action>)?`", cell)}
+    # Prefixed codes are written `code:<placeholder>` and appear in the source as "code:...".
+    codes = {c for cell in table for c in re.findall(r"`([a-z][a-z-]+)(?::<[a-z]+>)?`", cell)}
     codes -= {"reason", "down", "up"}
-    assert len(codes) >= 15, codes
-    missing = {c for c in codes if f'"{c}"' not in source and f'"{c}:"' not in source}
+    assert len(codes) >= 20, codes
+    missing = {c for c in codes if f'"{c}"' not in source and f'"{c}:' not in source}
     assert not missing, missing
 
 
@@ -129,7 +138,8 @@ def test_field_names_exist_in_the_dtos(skill):
         "lastPriceVnd", "unrealizedPnlVnd", "unrealizedPnlPct", "netProceedsIfSellableNowVnd",
         "costBasisComparable", "costBasisNote", "corporateActions", "spendableVnd", "maxBuyableShares",
         "maxBuyableLots", "estimatedCostVnd", "ceilingPriceVnd", "floorPriceVnd", "priceLevelVnd",
-        "withinPriceBand", "nonFillRisk", "isStale", "availableCashVnd",
+        "withinPriceBand", "nonFillRisk", "isStale", "availableCashVnd", "previousDailyCloseVnd",
+        "lastDailyCloseVnd", "totalDeclaredBudgetsVnd", "updatedAtUtc",
     ):
         assert f"`{field}`" in skill or f".{field}`" in skill or f"`{field}[]`" in skill, f"skill no longer names {field}"
         assert field in declared, f"{field} is not a DTO property"

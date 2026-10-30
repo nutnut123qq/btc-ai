@@ -99,7 +99,7 @@ def test_only_the_config_horizons_are_allowed(skill, note_example):
 def test_names_rule_versions_and_endpoints(skill):
     assert "direction-score-v1" in skill
     assert "scoring.ruleVersion" in skill
-    assert 'skillVersion: "equity-technical-v1"' in skill
+    assert 'skillVersion: "equity-technical-v2"' in skill
     assert 'methodVersion: "equity-technical-method-v1"' in skill
     assert "GET /api/equities/{symbol}/technical" in skill
     assert "GET /api/equities/{symbol}/research-notes/direction-scores" in skill
@@ -112,7 +112,7 @@ def test_names_rule_versions_and_endpoints(skill):
 def test_note_example_has_null_probability_and_versions(skill, note_example):
     assert "`body.probability` is always `null`" in skill
     assert "probability" in note_example["body"] and note_example["body"]["probability"] is None
-    assert note_example["skillVersion"] == "equity-technical-v1"
+    assert note_example["skillVersion"] == "equity-technical-v2"
     assert note_example["methodVersion"] == "equity-technical-method-v1"
     assert note_example["mode"] == "forward"
     assert note_example["actionBasis"] == "market-only"
@@ -140,7 +140,9 @@ def test_base_rates_are_labelled_unvalidated(skill):
 
 
 def test_only_technical_endpoints_are_named(skill):
-    paths = {p.rstrip(".,);:`") for p in re.findall(r"/api/[A-Za-z0-9_{}./-]+", skill)}
+    # Runnable examples name a real symbol (/api/equities/MBB/...); compare them as {symbol}.
+    paths = {re.sub(r"^/api/equities/(MBB|BID)/", "/api/equities/{symbol}/", p.rstrip(".,);:`\""))
+             for p in re.findall(r"/api/[A-Za-z0-9_{}./-]+", skill)}
     assert paths, "the skill must name its endpoints"
     assert paths <= ALLOWED_API_PATHS, paths - ALLOWED_API_PATHS
     for segment in FORBIDDEN_ROUTE_SEGMENTS:

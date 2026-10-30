@@ -13,9 +13,19 @@ To start it in a new session (it is not auto-discovered, same convention as `inv
 
 > Read `D:\code\btc\ai\skills\equity-technical\SKILL.md` and follow it for: <request>.
 
-Backend: env `BACKEND_BASE_URL`, default `http://localhost:5197` (local stack). Shell notes, the
-admin-key check and the CLI are in `../investment-research/references/cli.md`; use only the parts this
-file names.
+Backend: env `BACKEND_BASE_URL`, default `http://localhost:5197` (local stack). Shell notes (UTF-8,
+paths) are in `../investment-research/references/cli.md`; use only the parts this file names.
+Recording and reviewing need env `EQX_ADMIN_KEY`, sent only as header `X-Admin-Key`, never printed or
+written. If `[bool]$env:EQX_ADMIN_KEY` is `False`, do the analysis, save `note.json` unrecorded and
+say the user must set the key themselves; do not read ops secrets or look for it elsewhere. A 401
+means the key is missing or wrong.
+
+```powershell
+$base = if ($env:BACKEND_BASE_URL) { $env:BACKEND_BASE_URL } else { "http://localhost:5197" }
+$h = @{ "X-Admin-Key" = $env:EQX_ADMIN_KEY }
+```
+
+First create the session folder (see "Where things go") and work inside it.
 
 ## Scope (hard limits)
 
@@ -33,23 +43,38 @@ file names.
 
 ## Step 1: Read the payload
 
-Save the raw response bytes (`Invoke-WebRequest -UseBasicParsing <url> -OutFile technical.json`) in the
-session folder, then read these fields by these exact names:
+Save the raw response bytes in the session folder
+(`Invoke-WebRequest -UseBasicParsing "$base/api/equities/MBB/technical" -OutFile technical.json`;
+`?bars=` sets the window, default 100, at most 500; the call can take close to a minute on a busy
+machine), then read these fields by these exact names:
 
 - `timeframes[]`: one entry per timeframe the catalog lists for the symbol. Use whatever timeframes
   are present; a timeframe that is absent has no data, so do not infer it. Each entry has:
-  - `candles` (ascending; the last one is the latest finalized bar) and `freshness`;
+  - `candles` (ascending; the last one is the latest finalized bar);
+  - `freshness` (`isStale`, `staleRule`, `reason`): a stale timeframe goes into the note's
+    `limitations`;
   - `indicators` (latest row) with `indicators.methods`: quote every indicator under the formula named
     there (e.g. Wilder vs Cutler RSI); never assume a formula;
-  - `candlePatterns` in the window, and `conditions` (if `conditions.status` is `unavailable`, give
-    `conditions.reason`; no stand-in);
+  - `candlePatterns` in the window (the stored recognizer). The `conditions` module `candlePatterns`
+    can disagree with it on the same bar; report both when they do;
+  - `conditions`: if `conditions.status` is `unavailable`, give `conditions.reason` (no stand-in). The
+    usable part is `conditions.payload.conditions[]`, each with `module`, `eventType`, `kind`,
+    `direction`, `details`; one `eventType` can appear twice (`kind` = bar trigger vs ongoing state).
+    Also read `conditions.payload.warnings`; if `conditions.alignedWithLatestCandle` is `false`, say
+    the conditions are not for the latest candle;
   - `dataQuality`: copy every `dataQuality.caveats[].code` with its text into the note's `limitations`
-    (e.g. `session-open-1h-bars-missing`, `stale`).
-- `baseRates`, `relativeStrength`, `calendar.forwardNoteOpen`, `calendar.nextSessionOpenUtcMs`.
+    (e.g. `missing-expected-bars`, `session-open-1h-bars-missing`, `unexpected-session-bars`,
+    `below-calendar-coverage`).
+- `baseRates` (`status`, `reasons[]`, `configs[]`), `relativeStrength`, `calendar.forwardNoteOpen`,
+  `calendar.nextSessionOpenUtcMs`.
 - `noteBinding.snapshotId`, `noteBinding.snapshotSha256`, `noteBinding.requestedAsOf`,
-  `noteBinding.signalBarOpenTimeMs`: the binding for the note (Step 4).
+  `noteBinding.signalBarOpenTimeMs`: the binding for the note (Step 4). If `noteBinding` is null, give
+  `noteBindingUnavailableReason` and do not record.
 - `scoring.ruleVersion` (must be `direction-score-v1`; if not, stop and report the mismatch).
 - `limitations`: copy them into the note.
+
+Cite payload items as `technical:<field path>`, and array items by their key, e.g.
+`technical:timeframes[1d].conditions[REGIME_SIDEWAYS_NORMAL]`.
 
 The signal bar is the latest finalized **1d** bar. Horizons count 1d HOSE sessions; 1h bars are context
 only. Prices are latest-adjusted (corporate actions rewrite history): reason in returns, not levels
@@ -59,8 +84,8 @@ across an ex-date (`../investment-research/references/data-limitations.md` item 
 
 - **No probabilities.** Quote the backend's numbers with their field path; never turn them, a pattern
   count or a feeling into a probability or a "likely %". `body.probability` is always `null`.
-- **Base rates are unvalidated.** While `baseRates.status` is `abstained` with reason
-  `gate-not-passed`, the kNN artifact failed its out-of-sample gate, so every base-rate number
+- **Base rates are unvalidated.** While `baseRates.status` is `abstained` with `gate-not-passed` in
+  `baseRates.reasons`, the kNN artifact failed its out-of-sample gate, so every base-rate number
   (including configs showing `abstained: false`) is research-only and **unvalidated**. Quote one only
   with that word next to it, and never as a reason on its own.
 - **Disagreements stay visible.** Two RSIs or two trend labels that disagree are reported, not merged.
@@ -87,21 +112,24 @@ across an ex-date (`../investment-research/references/data-limitations.md` item 
   So "up" means you expect R >= +5% (H = 20), not merely a green close. A missing target bar is not
   shifted to another session (`target-bar-missing`).
 - `actionView` / `actionBasis`: from the table in `../investment-research/SKILL.md` Step 7. This skill
-  reads no position, so `position-aware` never applies: `market-only` with `wait` or `hold` stated
-  for a holder, or `insufficient-input` with `none` when the view is `no-view` for lack of data.
+  reads no position, so `position-aware` never applies: `market-only` with `wait` by default, or
+  `hold` only when the user says they already hold the stock; or `insufficient-input` with `none`
+  when the view is `no-view` for lack of data.
   For holdings, stop levels, sellable shares or buy capacity, point to the `equity-position` skill.
 - Give scenarios with invalidation levels (from the payload or a script) for the same horizon.
 
 ## Step 4: Record the note (once)
 
 - `mode: "forward"` only when `calendar.forwardNoteOpen` is `true`: after the signal bar is stored and
-  before `calendar.nextSessionOpenUtcMs` (the next session's 09:00 ICT open). Otherwise
-  `retrospective` (stored, never scored), or do not record.
-- Top level: `noteBinding` copied verbatim into `snapshotId`, `snapshotSha256`, `requestedAsOf` (send
-  as a JSON string; quote it if the payload gives a number) and `signalBarOpenTimeMs`, plus
-  `skillVersion: "equity-technical-v1"` and `methodVersion: "equity-technical-method-v1"`.
+  before `calendar.nextSessionOpenUtcMs` (the next session's 09:00 ICT open). Otherwise record it as
+  `retrospective` (stored for the record, never scored) unless the user says not to record.
+- Top level: `noteBinding` copied verbatim into `snapshotId`, `snapshotSha256`, `requestedAsOf` (a
+  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v2"` and
+  `methodVersion: "equity-technical-method-v1"`.
 - `body` follows `equity-research-note-v1` exactly as in
-  `../investment-research/references/journal-note.md` (required keys, enums, limits).
+  `../investment-research/references/journal-note.md` (required keys, enums, limits). Use that file
+  for the `body` only: its "omit the binding, use `--snapshot`" instruction is for exported snapshots;
+  this skill has no export, so the note carries the binding from `noteBinding`.
   `body.limitations` carries the payload `limitations` and every `dataQuality` caveat;
   `body.missingData` says fundamentals and news were deliberately not read.
   `body.outcomeCheck.how` states the `direction-score-v1` rule and thresholds for the chosen horizon.
@@ -116,7 +144,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
   "snapshotId": "snap/MBB/1792309500000/0123456789ab",
   "snapshotSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "horizonSessions": 20,
-  "skillVersion": "equity-technical-v1",
+  "skillVersion": "equity-technical-v2",
   "methodVersion": "equity-technical-method-v1",
   "direction": "sideways",
   "actionView": "wait",
@@ -135,9 +163,16 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
 }
 ```
 
-Record with `& $py $cli journal record --symbol MBB --file <session>\note.json` (no `--snapshot`: the
-binding is already in the note; the CLI sends `EQX_ADMIN_KEY` as `X-Admin-Key`). Without the key, save
-`note.json` unrecorded and say so. Save the response as `journal-response.json`.
+Record by posting the file as bytes, so nothing is re-encoded (save `note.json` as UTF-8 without BOM):
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -Method Post -Headers $h -ContentType "application/json; charset=utf-8" `
+  -InFile note.json -OutFile journal-response.json -TimeoutSec 900 "$base/api/equities/MBB/research-notes"
+```
+
+The POST re-verifies the snapshot and can take several minutes. If it times out or the connection
+drops, do not post again blindly: GET `direction-scores` (Step 5) and look for the note in `items[]`
+first; post again only if it is not there. Without the key, save `note.json` unrecorded and say so.
 
 On 409:
 
@@ -154,7 +189,13 @@ Only the **earliest** forward note per (signal bar, horizon) is scored; later on
 ## Step 5: Review past calls
 
 `GET /api/equities/{symbol}/research-notes/direction-scores` with header `X-Admin-Key` (from
-`EQX_ADMIN_KEY`, never printed). Report what it says, item by item where useful:
+`EQX_ADMIN_KEY`, never printed):
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -Headers $h -OutFile direction-scores.json "$base/api/equities/MBB/research-notes/direction-scores"
+```
+
+Report what it says, item by item where useful:
 
 - Per horizon (`horizons[]`): `status` is `insufficient-sample` until `nEffective >= 30`
   (non-overlapping calls), `no-data` when nothing resolved, else `ok`. Below 30, `hitRate` means
@@ -170,12 +211,15 @@ Only the **earliest** forward note per (signal bar, horizon) is scored; later on
 
 ## Where things go
 
-`D:\code\btc\data\research-sessions\{SYMBOL}\{YYYYMMDD-HHMM}-{forward|retrospective}-technical\`
-(ICT creation time; outside the git repos): `technical.json`, `scripts/`, `note.json`,
-`journal-response.json`, and a short `report.md` (view, evidence, counter-evidence, scenarios,
-limitations, note id).
+`D:\code\btc\data\research-sessions\{SYMBOL}\{YYYYMMDD-HHMM}-technical\` (ICT creation time; outside
+the git repos; one folder per symbol): `technical.json`, `scripts/` (scripts, their outputs and any
+`/candles` reads), `note.json`, `journal-response.json`, `direction-scores.json`, and a short
+`report.md` (mode, view, evidence, counter-evidence, scenarios, limitations, note id).
 
 ## Versions
 
-`skillVersion: "equity-technical-v1"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
-version when this file's rules change and the method version when the analysis procedure changes.
+`skillVersion: "equity-technical-v2"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
+version when this file's rules change and the method version when the analysis procedure changes. v2
+(2026-10-30, after the first trial run): record by posting the file with a long timeout and check
+before re-posting, payload structure of `conditions` and `freshness`, real caveat codes, binding stays
+in the note.
