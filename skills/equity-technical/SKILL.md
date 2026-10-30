@@ -89,6 +89,7 @@ across an ex-date (`../investment-research/references/data-limitations.md` item 
 - `actionView` / `actionBasis`: from the table in `../investment-research/SKILL.md` Step 7. This skill
   reads no position, so `position-aware` never applies: `market-only` with `wait` or `hold` stated
   for a holder, or `insufficient-input` with `none` when the view is `no-view` for lack of data.
+  For holdings, stop levels, sellable shares or buy capacity, point to the `equity-position` skill.
 - Give scenarios with invalidation levels (from the payload or a script) for the same horizon.
 
 ## Step 4: Record the note (once)

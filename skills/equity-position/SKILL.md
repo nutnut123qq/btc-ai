@@ -1,0 +1,144 @@
+---
+name: equity-position
+description: Position and risk session for the Vietnamese bank equities MBB and BID in the btc repo. It records the user's real trades and cash into the backend (PUT /api/equities/{symbol}/position, PUT /api/equities/cash), then reads the backend's rules-only decision (GET /api/equities/{symbol}/decision) and explains it - action and reasons, -8% stop and -4% reduce levels, T+2 sellable shares, the next-session ±7% band, buy-more capacity within the declared budget, and the loss if the stop is hit. Use it when the user says they bought or sold MBB/BID, sets cash or a buy budget, or asks "vị thế", "rủi ro", "cắt lỗ", "bán được bao nhiêu", "mua thêm được bao nhiêu". Never places an order, never gives a probability, never reads news or fundamentals; for a chart/candle view use equity-technical.
+---
+
+# equity-position (MBB / BID, your holdings)
+
+The backend holds the lots, the cash pool and the declared rules, and computes every decision
+number. This session writes only what the user says they actually did, then reads the decision and
+explains it. It never places an order, never produces a probability, and is not investment advice:
+the action is the output of fixed, declared rules (`evidenceStatus: rules-only`).
+
+To start it in a new session (not auto-discovered, same convention as `equity-technical`):
+
+> Read `D:\code\btc\ai\skills\equity-position\SKILL.md` and follow it for: <request>.
+
+Backend: env `BACKEND_BASE_URL`, default `http://localhost:5197`. Every endpoint here is admin-only
+(personal data): send env `EQX_ADMIN_KEY` as header `X-Admin-Key`, never print or write it. Check it
+exists with the command in `../investment-research/references/cli.md` ("Admin key"). Without it, stop
+and say the user must set `EQX_ADMIN_KEY` first; do not look for the key anywhere else.
+
+```powershell
+$base = if ($env:BACKEND_BASE_URL) { $env:BACKEND_BASE_URL } else { "http://localhost:5197" }
+$h = @{ "X-Admin-Key" = $env:EQX_ADMIN_KEY }
+```
+
+## Scope (hard limits)
+
+- **Symbols:** `MBB` or `BID` only.
+- **Endpoints, and nothing else:**
+  - `GET /api/equities/{symbol}/position`: lots, settlement, shared cash, this symbol's buy budget.
+  - `PUT /api/equities/{symbol}/position`: replace the lots (and the buy budget).
+  - `PUT /api/equities/cash`: set the one shared cash pool.
+  - `GET /api/equities/{symbol}/decision`: the rules-only decision.
+- Write only what the user states. Never invent a trade, a price, a date or a cash figure, and never
+  "correct" data to change a decision.
+- Never read news, fundamentals, events, documents or the web. For a direction view, point to
+  `equity-technical`.
+
+## Step 1: Read the current state
+
+Save both responses in the session folder (`Invoke-WebRequest -UseBasicParsing -Headers $h <url>
+-OutFile position.json`, same for `decision.json`) and read these fields by these exact names:
+
+- `position.json`: `lots[]` (`id`, `quantity`, `costPerShareVnd`, `acquireDate`, `settleDate`,
+  `settled`, `source`), `totalShares`, `settledShares`, `pendingShares`, `avgCostPerShareVnd`,
+  `sharedCashVnd`, `buyBudgetVnd`, `cashSource` (`shared-pool` or `unknown`), `cashNotes`.
+- `decision.json`: `action`, `reasons[]`, `triggers[]`, `invalidation`, `position`, `buyMore`,
+  `market`, `cash`, `dataFreshness[]`, `evidenceStatus`, `priceBasis`, `generatedAtUtc`.
+
+Empty `lots` with reason `no-position` means nothing has been entered yet; `cashSource: unknown` means
+the cash pool has never been set. Say so; do not assume the user holds nothing.
+
+## Step 2: Record what the user did (only when they say so)
+
+Before any PUT, show the user the exact lot list and figures you are about to send, and send only
+after they confirm.
+
+- **The position PUT replaces everything.** It deletes every stored lot of the symbol and writes the
+  body's lots, and it sets `buyBudgetVnd` to the body's value: an omitted or null `buyBudgetVnd`
+  **clears** the budget. So always start from `position.json`: copy every existing lot
+  (`quantity`, `costPerShareVnd`, `acquireDate`; drop `id`, `settleDate`, `settled`, `source`), apply
+  the change, and send the current `buyBudgetVnd` back unless the user changes it. Do not send
+  `availableCashVnd` here; set cash with the cash PUT.
+- **Buy:** add one lot `{ "quantity", "costPerShareVnd", "acquireDate" }`: matched quantity, matched
+  price per share in VND (before fees), trade date as `yyyy-MM-dd` (Vietnam date, not in the future).
+  Several fills at different prices are separate lots.
+- **Sell:** remove the sold quantity from lots, oldest `acquireDate` first, unless the user names the
+  lots. Only settled shares can have been sold (T+2); if the user reports selling more than
+  `settledShares`, or more than they hold, stop and ask instead of writing.
+- **Corporate actions:** enter lots exactly as bought (original quantity and price). The backend
+  converts stock dividends, bonus shares and splits itself (`decision.position.corporateActions`);
+  never pre-adjust a lot.
+- **Cash:** `PUT /api/equities/cash` with `{ "availableCashVnd": <settled, spendable VND> }`. One pool
+  serves MBB and BID; `null` resets it to unknown.
+- **Budget:** `buyBudgetVnd` in the position PUT is this symbol's share of the pool. Budgets of all
+  symbols together must stay within the pool.
+- On 400: `INVALID_POSITION_INPUT`, `INVALID_CASH_INPUT`, `CASH_UNKNOWN` (set cash before a budget),
+  `BUDGET_EXCEEDS_CASH`. Report the message and fix the input with the user; never loosen a figure to
+  pass validation.
+- After a PUT, GET `position` again and check `totalShares`, `settledShares` and `buyBudgetVnd` match
+  what the user expects. Save the request body and both responses.
+
+## Step 3: Explain the decision
+
+Re-read `decision.json` after any write. Report, with field paths:
+
+- **Action** (`hold`, `wait`, `buy-more`, `reduce`, `sell`, `conditional-sell`) and every reason code,
+  verbatim, with its meaning:
+
+  | reason | meaning |
+  |---|---|
+  | `no-position` | nothing entered for this symbol |
+  | `stop-loss-hit` | last 1d close at or below avg cost -8% (sell needs the whole position settled) |
+  | `reduce-threshold-hit` | at or below avg cost -4% |
+  | `partial-settlement-sell-settled-only` | only settled shares can go now (T+2) |
+  | `trend-bearish` | `market.trend` is `down` and RSI14 < 50 |
+  | `trend-constructive` | `market.trend` is `up`, 50 <= RSI14 < 70, and at least one lot is affordable |
+  | `cash-unknown` / `buy-budget-undeclared` / `budget-exceeds-cash` / `cash-below-one-lot` | why no buy quantity is proposed |
+  | `buy-sized-at-next-session-ceiling` | buy-more quantity priced at the next session's ceiling |
+  | `stale-data`, `stale-data-blocked:<action>` | data is not fresh; the action was turned into `wait` |
+  | `insufficient-data`, `indicators-warming-up`, `no-trigger` | not enough data, or nothing fired |
+
+  Quote any other code verbatim and say it is not in this table.
+- **Levels:** `triggers[]` (`name`, `priceLevelVnd`, `condition`, `direction`, `withinPriceBand`,
+  `nonFillRisk`) and `invalidation`. A trigger outside the ±7% band carries `nonFillRisk`: HOSE rejects
+  orders outside the band, it does not clamp them. `market.ceilingPriceVnd` / `market.floorPriceVnd`
+  are the next session's band.
+- **Position:** `position.totalShares`, `settledShares`, `sellableSharesNow`, `avgCostPerShareVnd`,
+  `lastPriceVnd`, `unrealizedPnlVnd`, `unrealizedPnlPct`, `netProceedsIfSellableNowVnd`. If
+  `position.costBasisComparable` is `false`, every cost-based figure is null on purpose: give
+  `costBasisNote` and the `corporateActions[]` with status `unconverted`, and do not estimate PnL.
+- **Buying power:** `cash.spendableVnd`, `cash.buyBudgetVnd`, and `buyMore.maxBuyableShares` /
+  `maxBuyableLots` / `estimatedCostVnd` (an upper bound priced at the ceiling). Never propose a quantity
+  above `buyMore`, and none at all when `buyMore` is null.
+- **Loss if the stop is hit:** compute with a script on the saved JSON (cite it as
+  `script:<file>#<output>`): `(avgCostPerShareVnd - stop level) x totalShares`, plus sell fee 0.15%
+  and sell tax 0.1% on the gross at the stop price. If the user gives their total capital, also give it
+  as a percent of that. Practitioners often cap the loss at the stop at roughly 0.5-2% of capital per
+  position; say it is a convention, not a rule of this app.
+- **Freshness:** `dataFreshness[]` per timeframe (`isStale`, `reason`). A stale 1d blocks
+  sell/reduce/buy-more by rule; say the decision is on old data.
+
+## Honesty rules
+
+- **No probabilities, no forecasts.** The decision is rules-only. For a direction view, use
+  `equity-technical`; do not mix its view into these numbers.
+- **Fees are defaults, not the user's broker.** Broker fee 0.15% per side, sell tax 0.1%, lot 100,
+  T+2, band ±7% are the backend's declared defaults (`Services/VietnamExecutionRules.cs`). The user's
+  real broker schedule is not entered yet; say costs are approximate.
+- **Prices are adjusted.** `priceBasis` is `adjusted` (corporate actions rewrite history); compare in
+  returns across an ex-date, not levels.
+- The final call is the user's. Say what the rules output and why; do not tell the user to buy or sell.
+
+## Where things go
+
+`D:\code\btc\data\research-sessions\{SYMBOL}\{YYYYMMDD-HHMM}-position\` (ICT creation time; outside
+the git repos, personal data, never commit): `position.json`, `decision.json`,
+`put-request.json` / `put-response.json` for each write, `scripts/`, and a short `report.md`
+(what changed, action, levels, risk at the stop, freshness, limitations).
+
+## Versions
+
+`skillVersion: "equity-position-v1"`. Bump it when this file's rules change.
