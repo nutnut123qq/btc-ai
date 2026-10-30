@@ -99,7 +99,7 @@ def test_only_the_config_horizons_are_allowed(skill, note_example):
 def test_names_rule_versions_and_endpoints(skill):
     assert "direction-score-v1" in skill
     assert "scoring.ruleVersion" in skill
-    assert 'skillVersion: "equity-technical-v2"' in skill
+    assert 'skillVersion: "equity-technical-v3"' in skill
     assert 'methodVersion: "equity-technical-method-v1"' in skill
     assert "GET /api/equities/{symbol}/technical" in skill
     assert "GET /api/equities/{symbol}/research-notes/direction-scores" in skill
@@ -112,7 +112,7 @@ def test_names_rule_versions_and_endpoints(skill):
 def test_note_example_has_null_probability_and_versions(skill, note_example):
     assert "`body.probability` is always `null`" in skill
     assert "probability" in note_example["body"] and note_example["body"]["probability"] is None
-    assert note_example["skillVersion"] == "equity-technical-v2"
+    assert note_example["skillVersion"] == "equity-technical-v3"
     assert note_example["methodVersion"] == "equity-technical-method-v1"
     assert note_example["mode"] == "forward"
     assert note_example["actionBasis"] == "market-only"
@@ -151,8 +151,26 @@ def test_only_technical_endpoints_are_named(skill):
     assert "--include-portfolio" not in skill
 
 
-def test_reuses_investment_research_references(skill):
-    refs = set(re.findall(r"`(\.\./investment-research/[^`]+\.md)`", skill))
-    assert "../investment-research/references/journal-note.md" in refs
-    for ref in refs:
-        assert (SKILL_DIR / ref).resolve().is_file(), ref
+def test_states_no_edge_from_the_blind_test(skill, note_example):
+    # SKILLS-1 (#12): the 2026-10-30 blind test showed no edge, so every view and note says so.
+    flat = " ".join(skill.split())
+    assert "**No edge yet: the view is for reference only.**" in flat
+    assert "**5/14** right, against **7/14** for always answering `sideways`, 7/14 for the prior and 4/14 for momentum" in flat
+    sentence = "no edge shown: blind test 2026-10-30 scored 5/14 vs 7/14 for always sideways (H20); view is for reference only"
+    assert f"`\"{sentence}\"`" in flat
+    assert sentence in note_example["body"]["limitations"]
+    assert "`nEffective >= 30`" in flat and "`baselinePrior`" in flat
+
+
+def test_blind_test_numbers_match_the_scored_cases(skill):
+    score = AI_ROOT.parent / "evidence" / "blind-test-20261030" / "score.json"
+    if not score.is_file():
+        pytest.skip("blind-test evidence lives outside the ai repo (btc workspace only)")
+    rows = json.loads(score.read_text(encoding="utf-8"))
+    n = len(rows)
+    hits = {key: sum(r[key] == r["realized"] for r in rows) for key in ("prediction", "prior", "momentum")}
+    sideways = sum(r["realized"] == "sideways" for r in rows)
+    flat = " ".join(skill.split())
+    assert (f"**{hits['prediction']}/{n}** right, against **{sideways}/{n}** for always answering `sideways`, "
+            f"{hits['prior']}/{n} for the prior and {hits['momentum']}/{n} for momentum") in flat
+    assert f"scored {hits['prediction']}/{n} vs {sideways}/{n} for always sideways" in flat

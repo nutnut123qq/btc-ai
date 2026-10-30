@@ -87,16 +87,12 @@ def test_quotes_the_backend_band_and_levels_instead_of_recomputing(skill):
     assert "**The band in the decision is the next session's band.**" in flat
     assert "not the next session's band" not in flat
     assert "`market.previousDailyCloseVnd`" in flat and "`market.lastDailyCloseVnd`" in flat
-    assert "`declared-rules-v4`" in flat and "data-limitations.md` item 12" in flat
+    assert "`declared-rules-v4`" in flat and "ceiling rounded down and floor rounded up" in flat
     # The band is only the next session's while the 1d bar is fresh (cold-check EQDEC-1 MINOR).
     assert "while the 1d entry of `dataFreshness[]` has `isStale: false`" in flat
     assert "do not recompute" in flat and "do not compute levels yourself" in flat
     for recompute in ("x 1.07", "x 0.93", "x 0.92", "x 0.96"):
         assert recompute not in flat, recompute
-    limitations = (SKILL_DIR / "../investment-research/references/data-limitations.md").resolve()
-    item12 = re.search(r"^12\. (.*?)(?=^\d+\. )", limitations.read_text(encoding="utf-8"), flags=re.M | re.S)
-    assert item12 and "fixed in backend rules `declared-rules-v4`" in item12.group(1)
-    assert "known backend issue" not in item12.group(1)
 
 
 def test_quoted_costs_equal_the_execution_model(skill):
@@ -106,13 +102,6 @@ def test_quoted_costs_equal_the_execution_model(skill):
     assert f"lot {spec.lot_size}" in skill
     assert f"T+{spec.settlement_trading_days}" in skill
     assert f"band ±{_pct(spec.price_band_fraction)}" in skill
-
-
-def test_reuses_investment_research_references(skill):
-    refs = set(re.findall(r"`(\.\./investment-research/[^`]+\.md)`", skill))
-    assert "../investment-research/references/cli.md" in refs
-    for ref in refs:
-        assert (SKILL_DIR / ref).resolve().is_file(), ref
 
 
 @needs_backend

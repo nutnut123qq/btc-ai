@@ -10,16 +10,25 @@ number. This session writes only what the user says they actually did, then read
 explains it. It never places an order, never produces a probability, and is not investment advice:
 the action is the output of fixed, declared rules (`evidenceStatus: rules-only`).
 
-To start it in a new session (not auto-discovered, same convention as `equity-technical`):
+Sessions opened in `D:\code\btc` find it on their own: `.claude\skills\equity-position` (Claude Code)
+and `.agents\skills\equity-position` (Codex, not checked there yet) are junctions to this folder, made by
+`D:\code\btc\ai\scripts\link_skills.ps1`. Anywhere else, start it with:
 
 > Read `D:\code\btc\ai\skills\equity-position\SKILL.md` and follow it for: <request>.
+
+This file is self-contained: it needs no other skill's files.
 
 Backend: env `BACKEND_BASE_URL`, default `http://localhost:5197`. Every endpoint here is admin-only
 (personal data): send env `EQX_ADMIN_KEY` as header `X-Admin-Key`, never print or write it. If
 `[bool]$env:EQX_ADMIN_KEY` is `False`, stop and say the user must set `EQX_ADMIN_KEY` themselves
 (value from `backend/ops/show-admin-key.ps1`); do not read ops secrets or look for the key anywhere
 else. A 401 means the key is missing or wrong: stop. A 404 means the symbol is outside the scope.
-Shell notes (UTF-8, paths) are in `../investment-research/references/cli.md`.
+Shell notes:
+
+- Commands here are **PowerShell**. In Git Bash, write paths as `D:/...`; Windows Python does not
+  understand `/d/...` inside scripts.
+- Before running a script that prints Vietnamese, set `$env:PYTHONIOENCODING = "utf-8"`; write JSON
+  outputs with `encoding="utf-8"` and `ensure_ascii=False`.
 
 ```powershell
 $base = if ($env:BACKEND_BASE_URL) { $env:BACKEND_BASE_URL } else { "http://localhost:5197" }
@@ -121,9 +130,9 @@ Re-read `decision.json` after any write. Report, with field paths:
 - **The band in the decision is the next session's band.** `market.ceilingPriceVnd` /
   `market.floorPriceVnd`, and `withinPriceBand` / `nonFillRisk` on triggers, are computed around
   `market.lastDailyCloseVnd` (the signal close, the next session's reference price) on the HOSE tick
-  grid (backend rules `declared-rules-v4`;
-  `../investment-research/references/data-limitations.md` item 12). Quote them as returned; do not
-  recompute. `market.previousDailyCloseVnd` is only the close before the signal bar. This holds only
+  grid, ceiling rounded down and floor rounded up (backend rules `declared-rules-v4`). Quote them as
+  returned; do not recompute. Journal rows stamped `declared-rules-v1` to `v3` used the previous close
+  as the reference. `market.previousDailyCloseVnd` is only the close before the signal bar. This holds only
   while the 1d entry of `dataFreshness[]` has `isStale: false`: with a stale 1d bar the band is built
   on an old close, so say it is out of date and do not rely on it for an order.
 - **Stop and reduce levels:** with a position and `position.costBasisComparable` true, every rule
@@ -170,4 +179,6 @@ the git repos, personal data, never commit): `position.json`, `decision.json`,
 first trial run): next-session band recomputed, stop/reduce computed when no trigger, more reason codes,
 `availableCashVnd` trap, early return on `no-position`. v3 (2026-10-30, EQDEC-1): the backend now
 returns the next-session band and both cost triggers on every branch (`declared-rules-v4`), so the
-skill quotes them instead of recomputing.
+skill quotes them instead of recomputing. SKILLS-1 (2026-10-30) moved the shell notes and the band
+note in so the file needs no other skill, and made it discoverable from `D:\code\btc`; the rules are
+unchanged, so the version stays v3.

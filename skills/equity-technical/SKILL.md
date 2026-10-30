@@ -1,20 +1,31 @@
 ---
 name: equity-technical
-description: Technical-only (candles and indicators) analysis session for the Vietnamese bank equities MBB and BID in the btc repo. It reads one backend payload, GET /api/equities/{symbol}/technical (plus /candles for more history), forms a direction view up/down/sideways/no-view over 20 or 60 sessions without inventing any probability, records it as a forward journal note bound to the payload's snapshot, and later reads how past calls were scored by the backend rule direction-score-v1. Use it when the user asks for a technical, chart, candle or "phân tích kỹ thuật / nến" view of MBB or BID, or asks how earlier technical calls scored. Never reads fundamentals, events, documents or news; for those use investment-research. Do not use it for BTC/crypto or for changing the app's code.
+description: Technical-only (candles and indicators) analysis session for the Vietnamese bank equities MBB and BID in the btc repo. It reads one backend payload, GET /api/equities/{symbol}/technical (plus /candles for more history), forms a direction view up/down/sideways/no-view over 20 or 60 sessions without inventing any probability, records it as a forward journal note bound to the payload's snapshot, and later reads how past calls were scored by the backend rule direction-score-v1. Use it when the user asks for a technical, chart, candle or "phân tích kỹ thuật / nến" view of MBB or BID, or asks how earlier technical calls scored. Never reads fundamentals, events, documents or news (out of scope). Do not use it for BTC/crypto or for changing the app's code.
 ---
 
 # equity-technical (MBB / BID, candles only)
 
 The backend computes every number (candles, indicators, patterns, conditions, base rates, scores).
 This session reads them, judges a direction, writes it down once, and lets the backend score it.
-It never places an order and never produces a probability.
+It never places an order and never produces a probability. So far its calls have shown **no edge**
+(Step 2, "No edge yet"): every view is for reference only.
 
-To start it in a new session (it is not auto-discovered, same convention as `investment-research`):
+Sessions opened in `D:\code\btc` find it on their own: `.claude\skills\equity-technical` (Claude Code)
+and `.agents\skills\equity-technical` (Codex, not checked there yet) are junctions to this folder, made by
+`D:\code\btc\ai\scripts\link_skills.ps1`. Anywhere else, start it with:
 
 > Read `D:\code\btc\ai\skills\equity-technical\SKILL.md` and follow it for: <request>.
 
-Backend: env `BACKEND_BASE_URL`, default `http://localhost:5197` (local stack). Shell notes (UTF-8,
-paths) are in `../investment-research/references/cli.md`; use only the parts this file names.
+This file is self-contained: it needs no other skill's files.
+
+Backend: env `BACKEND_BASE_URL`, default `http://localhost:5197` (local stack).
+Shell notes:
+
+- Commands here are **PowerShell**. In Git Bash, write paths as `D:/...`; Windows Python does not
+  understand `/d/...` inside scripts.
+- Before running a script that prints Vietnamese, set `$env:PYTHONIOENCODING = "utf-8"`; write JSON
+  outputs with `encoding="utf-8"` and `ensure_ascii=False`.
+
 Recording and reviewing need env `EQX_ADMIN_KEY`, sent only as header `X-Admin-Key`, never printed or
 written. If `[bool]$env:EQX_ADMIN_KEY` is `False`, do the analysis, save `note.json` unrecorded and
 say the user must set the key themselves; do not read ops secrets or look for it elsewhere. A 401
@@ -38,7 +49,7 @@ First create the session folder (see "Where things go") and work inside it.
   - `GET /api/equities/{symbol}/research-notes/direction-scores`: past calls scored (admin).
 - Never read fundamentals, financial facts, events, corporate-action lists, source documents, news,
   the dossier, the full research snapshot or the web. If the user asks about them, say this skill is
-  technical-only and point to `investment-research`.
+  technical-only and that they are out of scope (the user chose candles only on 2026-10-29).
 - Do not loop the endpoints; one `technical` read per session (again only after `SNAPSHOT_MISMATCH`).
 
 ## Step 1: Read the payload
@@ -77,8 +88,9 @@ Cite payload items as `technical:<field path>`, and array items by their key, e.
 `technical:timeframes[1d].conditions[REGIME_SIDEWAYS_NORMAL]`.
 
 The signal bar is the latest finalized **1d** bar. Horizons count 1d HOSE sessions; 1h bars are context
-only. Prices are latest-adjusted (corporate actions rewrite history): reason in returns, not levels
-across an ex-date (`../investment-research/references/data-limitations.md` item 1).
+only. Prices are latest-adjusted: the providers back-adjust the whole history at every ex-date (stock
+dividend, bonus, cash dividend), so a past level differs from what was on screen then. Reason in
+returns, not levels across an ex-date.
 
 ## Step 2: Honesty rules
 
@@ -88,6 +100,20 @@ across an ex-date (`../investment-research/references/data-limitations.md` item 
   `baseRates.reasons`, the kNN artifact failed its out-of-sample gate, so every base-rate number
   (including configs showing `abstained: false`) is research-only and **unvalidated**. Quote one only
   with that word next to it, and never as a reason on its own.
+- **No edge yet: the view is for reference only.** In the blind test of 2026-10-30 (14 MBB/BID cases,
+  signal sessions 2026-07-01 to 2026-09-28, H = 20, scored by `direction-score-v1`; evidence
+  `D:\code\btc\evidence\blind-test-20261030\README.md`) this kind of call got **5/14** right, against
+  **7/14** for always answering `sideways`, 7/14 for the prior and 4/14 for momentum. The sample is
+  small (about 3-4 independent observations per symbol), so it proves no edge either way, and nothing
+  has been tested for H = 60. Therefore:
+  - say in `report.md`, next to the view, that it is for reference only and has not beaten "always
+    sideways";
+  - put that sentence in `body.limitations` of every note:
+    `"no edge shown: blind test 2026-10-30 scored 5/14 vs 7/14 for always sideways (H20); view is for reference only"`;
+  - never present the direction as a reason to trade.
+
+  Drop this only when `direction-scores` shows the horizon with `status` `ok` (`nEffective >= 30`) and
+  `hitRate` above `baselinePrior.hitRate` on the same resolved set; then quote those numbers instead.
 - **Disagreements stay visible.** Two RSIs or two trend labels that disagree are reported, not merged.
 - **Computed numbers come from a script.** Anything not copied from the payload (returns, ranges,
   levels from more candles) comes from a script in `scripts/`, run on the saved JSON, cited as
@@ -111,10 +137,10 @@ across an ex-date (`../investment-research/references/data-limitations.md` item 
 
   So "up" means you expect R >= +5% (H = 20), not merely a green close. A missing target bar is not
   shifted to another session (`target-bar-missing`).
-- `actionView` / `actionBasis`: from the table in `../investment-research/SKILL.md` Step 7. This skill
-  reads no position, so `position-aware` never applies: `market-only` with `wait` by default, or
-  `hold` only when the user says they already hold the stock; or `insufficient-input` with `none`
-  when the view is `no-view` for lack of data.
+- `actionView` / `actionBasis`: this skill reads no position, so `position-aware` never applies.
+  Use `market-only` with `wait` by default, or `hold` only when the user says they already hold the
+  stock; or `insufficient-input` with `none` when the view is `no-view` for lack of data. A bullish
+  view does not imply `buy-more`.
   For holdings, stop levels, sellable shares or buy capacity, point to the `equity-position` skill.
 - Give scenarios with invalidation levels (from the payload or a script) for the same horizon.
 
@@ -124,15 +150,29 @@ across an ex-date (`../investment-research/references/data-limitations.md` item 
   before `calendar.nextSessionOpenUtcMs` (the next session's 09:00 ICT open). Otherwise record it as
   `retrospective` (stored for the record, never scored) unless the user says not to record.
 - Top level: `noteBinding` copied verbatim into `snapshotId`, `snapshotSha256`, `requestedAsOf` (a
-  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v2"` and
+  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v3"` and
   `methodVersion: "equity-technical-method-v1"`.
-- `body` follows `equity-research-note-v1` exactly as in
-  `../investment-research/references/journal-note.md` (required keys, enums, limits). Use that file
-  for the `body` only: its "omit the binding, use `--snapshot`" instruction is for exported snapshots;
-  this skill has no export, so the note carries the binding from `noteBinding`.
-  `body.limitations` carries the payload `limitations` and every `dataQuality` caveat;
-  `body.missingData` says fundamentals and news were deliberately not read.
+- Top-level enums: `mode` forward | retrospective; `direction` up | down | sideways | no-view;
+  `actionView` buy-more | hold | reduce | sell | wait | none; `actionBasis` position-aware |
+  market-only | insufficient-input (`insufficient-input` requires `actionView: "none"`).
+- `body` is `equity-research-note-v1`, checked strictly by the backend (400 `INVALID_NOTE` names the
+  field):
+  - keys `schemaVersion` (`"equity-research-note-v1"`), `thesis`, `evidence`, `counterEvidence`,
+    `scenarios`, `limitations`, `missingData`, `outcomeCheck`, `probability`; any other key is
+    rejected, and all but `probability` are required;
+  - `thesis`: non-empty string, at most 4000 characters; the whole `body` at most 64 KiB;
+  - `evidence[]` (at most 100): `{ "claim", "evidenceIds": [strings] }`; `counterEvidence[]` (at most
+    100): plain strings or the same `{claim, evidenceIds}` shape;
+  - `scenarios[]` (at most 20): `{ "name", "horizonSessions" (> 0), "description", "invalidation":
+    [strings] }`;
+  - `limitations[]`, `missingData[]`: strings (at most 200 items each, like `evidenceIds` and
+    `invalidation`); `outcomeCheck`: `{ "how", "dueAfterSessions" (> 0) }`;
+  - `probability`: always `null` here.
+- `body.limitations` carries the payload `limitations`, every `dataQuality` caveat and the "no edge
+  shown" sentence (Step 2). `body.missingData` says fundamentals and news were deliberately not read.
   `body.outcomeCheck.how` states the `direction-score-v1` rule and thresholds for the chosen horizon.
+- Notes are immutable once recorded. The response carries `noteId`
+  (`session/{SYMBOL}/{signalBarOpenTimeMs}/{shortid}`); put it in `report.md`.
 
 Minimal shape (values are placeholders; the binding values come from `noteBinding`):
 
@@ -144,7 +184,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
   "snapshotId": "snap/MBB/1792309500000/0123456789ab",
   "snapshotSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "horizonSessions": 20,
-  "skillVersion": "equity-technical-v2",
+  "skillVersion": "equity-technical-v3",
   "methodVersion": "equity-technical-method-v1",
   "direction": "sideways",
   "actionView": "wait",
@@ -155,7 +195,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
     "evidence": [{ "claim": "close above SMA50 on 1d", "evidenceIds": ["technical:timeframes[1d].indicators"] }],
     "counterEvidence": [],
     "scenarios": [{ "name": "base", "horizonSessions": 20, "description": "range", "invalidation": ["1d close < level"] }],
-    "limitations": ["base rates unvalidated (gate-not-passed)"],
+    "limitations": ["no edge shown: blind test 2026-10-30 scored 5/14 vs 7/14 for always sideways (H20); view is for reference only", "base rates unvalidated (gate-not-passed)"],
     "missingData": ["fundamentals and news not read (technical-only skill)"],
     "outcomeCheck": { "how": "direction-score-v1: R = close(signal+20 sessions)/signal close - 1 (adjusted); R >= +5% up, R <= -4% down, else sideways", "dueAfterSessions": 20 },
     "probability": null
@@ -218,8 +258,10 @@ the git repos; one folder per symbol): `technical.json`, `scripts/` (scripts, th
 
 ## Versions
 
-`skillVersion: "equity-technical-v2"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
+`skillVersion: "equity-technical-v3"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
 version when this file's rules change and the method version when the analysis procedure changes. v2
 (2026-10-30, after the first trial run): record by posting the file with a long timeout and check
 before re-posting, payload structure of `conditions` and `freshness`, real caveat codes, binding stays
-in the note.
+in the note. v3 (2026-10-30, SKILLS-1): every view and note says no edge has been shown (blind test
+5/14 vs 7/14 for always sideways); the file is self-contained (shell notes and note-body rules moved
+in, no path into `investment-research`); found automatically through the `D:\code\btc` junctions.

@@ -1,9 +1,22 @@
 ---
 name: investment-research
-description: Point-in-time investment research session for the Vietnamese bank equities MBB and BID in the btc repo. It fixes the symbol, as-of date and horizon, checks readiness, exports one verified snapshot through ai/research_snapshot.py, splits broad research across fundamentals, technical/statistical, news/macro and critic roles that all use that same snapshot, and synthesizes the disagreements. The direction view is kept separate from the buy/hold/reduce/wait action, and the session saves a report plus a journal note whose outcome can be checked later. Use it whenever the user asks to research, analyse, review or "nghiên cứu / phân tích / đánh giá" MBB or BID, asks whether to buy more, hold, reduce or wait on them, wants a forward or retrospective view at a date, or wants a research note recorded. Do not use it for BTC/crypto or for changing the app's code.
+description: DEPRECATED (retired 2026-10-30, SKILLS-1); do not use it and do not record notes with it. It was the point-in-time research session for MBB/BID (snapshot export, fundamentals, news and technical roles). For a candle/chart view of MBB or BID use equity-technical; for holdings and risk use equity-position.
 ---
 
-# investment-research (MBB / BID)
+# investment-research (MBB / BID) — RETIRED
+
+> **Retired 2026-10-30 (SKILLS-1). Do not follow this file and do not record notes with it.**
+> On 2026-10-29 the user narrowed the work to MBB/BID candles only, without news or fundamentals.
+> Use instead:
+>
+> - `equity-technical` (`D:\code\btc\ai\skills\equity-technical\SKILL.md`): direction view from candles,
+>   recorded and scored by the backend;
+> - `equity-position` (`D:\code\btc\ai\skills\equity-position\SKILL.md`): holdings, cash and the
+>   rules-only decision.
+>
+> `ai\scripts\link_skills.ps1` does not link this skill into `.claude\skills` / `.agents\skills`.
+> Notes it recorded stay in the journal. This file and `references/` are kept as history only; the
+> two skills above no longer read them.
 
 This skill turns a research request into a **reproducible, point-in-time** research record. The
 backend collects, normalizes and serves the data; this session thinks, criticises its own work and
