@@ -3,8 +3,11 @@
 
 Planning is always read-only.  Applying requires the exact hash of a fresh plan;
 every candidate is re-hashed immediately before deletion.  Only known
-content-addressed evidence file names directly inside the selected directory are
-eligible.  The active latest-success graph is never deleted.
+content-addressed evidence file names directly inside the selected instrument's
+directory are eligible: ``<output-dir>`` for BTCUSDT, ``<output-dir>/<SYMBOL>``
+for every other registry instrument (the pipeline's layout), so one instrument's
+retention never sees another's runs.  The active latest-success graph is never
+deleted.
 """
 
 from __future__ import annotations
@@ -16,12 +19,14 @@ import re
 import stat
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
+import trading_config
 from run_technical_evidence_pipeline import (
+    DEFAULT_SYMBOL,
     RUN_INDEX_SCHEMA,
     RUN_POINTER_FILE,
-    TIMEFRAMES,
+    _symbol_run_dir,
     canonical_json,
     read_verified_success,
     sha256_bytes,
@@ -81,7 +86,12 @@ def _load_manifest_graph(directory: Path) -> tuple[dict[str, set[str]], set[str]
     return graph, all_known
 
 
-def _load_run_indexes(directory: Path, manifest_graph: Mapping[str, set[str]]) -> list[dict[str, Any]]:
+def _load_run_indexes(
+    directory: Path,
+    manifest_graph: Mapping[str, set[str]],
+    symbol: str,
+    timeframes: Sequence[str],
+) -> list[dict[str, Any]]:
     runs: list[dict[str, Any]] = []
     for path in sorted(directory.glob("*.run-index.json")):
         if not CONTENT_FILE.fullmatch(path.name):
@@ -93,9 +103,10 @@ def _load_run_indexes(directory: Path, manifest_graph: Mapping[str, set[str]]) -
         bundles = value.get("bundles")
         if (
             value.get("schema") != RUN_INDEX_SCHEMA
+            or value.get("symbol") != symbol
             or value.get("status") != "succeeded"
             or not isinstance(bundles, list)
-            or [bundle.get("timeframe") for bundle in bundles] != list(TIMEFRAMES)
+            or [bundle.get("timeframe") for bundle in bundles] != list(timeframes)
         ):
             raise ValueError(f"run-index schema/trio mismatch: {path.name}")
         references = {path.name}
@@ -134,17 +145,26 @@ def _load_run_indexes(directory: Path, manifest_graph: Mapping[str, set[str]]) -
     return sorted(runs, key=lambda run: (run["completed"], run["name"]), reverse=True)
 
 
-def build_retention_plan(output_dir: Path, *, keep_successful_runs: int = 2) -> dict[str, Any]:
+def build_retention_plan(
+    output_dir: Path,
+    *,
+    keep_successful_runs: int = 2,
+    symbol: str = DEFAULT_SYMBOL,
+) -> dict[str, Any]:
     if keep_successful_runs < 2:
         raise ValueError("at least two successful runs must be retained")
-    directory = output_dir.resolve()
+    canonical = trading_config.require_known_symbol(symbol)
+    timeframes = tuple(trading_config.active_timeframes_for(canonical))
+    directory = _symbol_run_dir(output_dir.resolve(), canonical)
     if not directory.is_dir():
         raise FileNotFoundError(f"evidence directory does not exist: {directory}")
-    active = read_verified_success(directory, verify_semantics=False)
+    active = read_verified_success(
+        directory, verify_semantics=False, symbol=canonical, timeframes=timeframes
+    )
     pointer = json.loads((directory / RUN_POINTER_FILE).read_text(encoding="utf-8"))
     active_index = str(pointer["runIndexFileName"])
     manifest_graph, all_known = _load_manifest_graph(directory)
-    runs = _load_run_indexes(directory, manifest_graph)
+    runs = _load_run_indexes(directory, manifest_graph, canonical, timeframes)
 
     blocked_reason = None
     if len(runs) < keep_successful_runs:
@@ -172,6 +192,7 @@ def build_retention_plan(output_dir: Path, *, keep_successful_runs: int = 2) -> 
             })
     core = {
         "schema": PLAN_SCHEMA,
+        "symbol": canonical,
         "directory": str(directory),
         "keepSuccessfulRuns": keep_successful_runs,
         "activeRunIndexFileName": active_index,
@@ -192,13 +213,16 @@ def apply_retention_plan(
     *,
     keep_successful_runs: int,
     expected_plan_sha256: str,
+    symbol: str = DEFAULT_SYMBOL,
 ) -> dict[str, Any]:
-    plan = build_retention_plan(output_dir, keep_successful_runs=keep_successful_runs)
+    plan = build_retention_plan(
+        output_dir, keep_successful_runs=keep_successful_runs, symbol=symbol
+    )
     if plan["blockedReason"] is not None:
         raise RuntimeError(plan["blockedReason"])
     if expected_plan_sha256 != plan["planSha256"]:
         raise ValueError("retention plan hash changed; rerun dry-run and review")
-    directory = output_dir.resolve()
+    directory = Path(plan["directory"])
     removed: list[dict[str, Any]] = []
     for item in plan["candidates"]:
         path = _safe_child(directory, item["fileName"])
@@ -225,10 +249,15 @@ def apply_retention_plan(
 def main() -> None:
     parser = argparse.ArgumentParser(description="Reference-aware technical evidence retention")
     parser.add_argument("--output-dir", type=Path, default=Path("docs/research/evidence/technical-descriptive"))
+    parser.add_argument("--symbol", default=DEFAULT_SYMBOL)
     parser.add_argument("--keep-successful-runs", type=int, default=2)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--confirm-plan-sha256")
     args = parser.parse_args()
+    try:
+        symbol = trading_config.require_known_symbol(args.symbol)
+    except ValueError as exc:
+        parser.error(str(exc))
     if args.apply:
         if not args.confirm_plan_sha256:
             parser.error("--apply requires --confirm-plan-sha256 from a reviewed dry-run")
@@ -236,9 +265,12 @@ def main() -> None:
             args.output_dir,
             keep_successful_runs=args.keep_successful_runs,
             expected_plan_sha256=args.confirm_plan_sha256,
+            symbol=symbol,
         )
     else:
-        result = build_retention_plan(args.output_dir, keep_successful_runs=args.keep_successful_runs)
+        result = build_retention_plan(
+            args.output_dir, keep_successful_runs=args.keep_successful_runs, symbol=symbol
+        )
     print(json.dumps(result, indent=2))
 
 

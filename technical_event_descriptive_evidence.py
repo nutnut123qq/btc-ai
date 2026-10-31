@@ -1815,6 +1815,7 @@ def recompute_report(rows: Sequence[Mapping[str, Any]], dataset: Dataset, config
         bootstrap_samples=config.bootstrap_samples,
         random_seed=config.random_seed,
         sensitivity=sensitivity,
+        symbol=dataset.symbol,
     )
     report["evidenceProfiles"] = build_evidence_profiles(
         rows,

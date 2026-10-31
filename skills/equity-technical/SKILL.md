@@ -67,12 +67,25 @@ machine), then read these fields by these exact names:
   - `indicators` (latest row) with `indicators.methods`: quote every indicator under the formula named
     there (e.g. Wilder vs Cutler RSI); never assume a formula;
   - `candlePatterns` in the window (the stored recognizer). The `conditions` module `candlePatterns`
-    can disagree with it on the same bar; report both when they do;
+    is a different, smaller rule set: only `DOJI`, `HAMMER_SHAPE`, `SHOOTING_STAR_SHAPE`,
+    `BULLISH_ENGULFING`, `BEARISH_ENGULFING` (no Marubozu, stars, tweezers...). A stored pattern
+    that conditions does not show is a rule-set difference, not two sources disagreeing; when both
+    label the same bar differently, report both;
   - `conditions`: if `conditions.status` is `unavailable`, give `conditions.reason` (no stand-in). The
     usable part is `conditions.payload.conditions[]`, each with `module`, `eventType`, `kind`,
-    `direction`, `details`; one `eventType` can appear twice (`kind` = bar trigger vs ongoing state).
-    Also read `conditions.payload.warnings`; if `conditions.alignedWithLatestCandle` is `false`, say
-    the conditions are not for the latest candle;
+    `direction`, `details`, `evidence`; one `eventType` can appear twice (`kind` = bar trigger vs
+    ongoing state). Also read `conditions.payload.warnings`; if `conditions.alignedWithLatestCandle`
+    is `false`, say the conditions are not for the latest candle;
+  - `conditions.payload.evidence`: whether historical statistics are attached for this symbol and
+    timeframe. `available` true or false; when false, give `reason` (`no-verified-evidence-bundle`,
+    `statistical-evidence-unavailable`, `evidence-scope-mismatch`, `evidence-contract-hash-unverifiable`,
+    `contract-definitions-sha-mismatch`, `evidence-catalog-unavailable`) and use no stand-in.
+    `cutoffMs` is where the bundle's history ends; `evidenceAgeBars` is the time from `cutoffMs` to
+    the conditions' `asOfMs` (the latest closed bar, not now) divided by the bar length, so nights and
+    weekends count (calendar days on 1d, clock hours on 1h, not sessions or HOSE bars). How to read
+    the cells is in Step 2, "Condition statistics";
+  - `conditions.payload.conflicts[]`: horizons where at least one bullish and one bearish condition
+    both pass the declared gate (`horizon`, `metric`, `bullish[]`, `bearish[]`);
   - `dataQuality`: copy every `dataQuality.caveats[].code` with its text into the note's `limitations`
     (e.g. `missing-expected-bars`, `session-open-1h-bars-missing`, `unexpected-session-bars`,
     `below-calendar-coverage`).
@@ -100,6 +113,37 @@ returns, not levels across an ex-date.
   `baseRates.reasons`, the kNN artifact failed its out-of-sample gate, so every base-rate number
   (including configs showing `abstained: false`) is research-only and **unvalidated**. Quote one only
   with that word next to it, and never as a reason on its own.
+- **Condition statistics are descriptive history, not a forecast.** Each condition carries
+  `evidence["1"|"3"|"6"]["forwardReturn"|"mfe"|"mae"]`, one cell per horizon and metric:
+  - The horizon keys count bars **of that timeframe**: on 1d, 1/3/6 sessions; on 1h, 1/3/6 hourly
+    HOSE bars (about five per session, so 6 bars is just over one session). They are not the 20/60
+    sessions of the call; never stretch them to it.
+  - Metrics, from the signal bar's close: `forwardReturn` = close h bars later / close - 1; `mfe` =
+    highest high in those bars / close - 1; `mae` = lowest low / close - 1. Fractions, not
+    adjusted for the condition's direction.
+  - `tested: false` comes with `reason` `untested` (no test exists for it: state labels such as
+    `RSI_ZONE_NEUTRAL` or `EMA_FAST_BELOW_SLOW` are not declared events), `insufficient-sample` or
+    `evidence-unavailable`; say that, nothing more.
+  - The cells belong to the **event type**, matched by `module` + `eventType`. For a condition whose
+    `kind` is `triggeredOnBar`, that event fired on the latest bar. For any other `kind` (`state`,
+    `activeZone`, `operativeLeg`), the cells describe the past bars where that event type fired (for
+    `CLOSE_BELOW_SMA50`, the bar that crossed below), not every bar spent in the state; say so when
+    you cite one.
+  - `tested: true` compares the events with a matched earlier bar in the same trend/volatility
+    context: `meanPairedDifference` (event minus match, a fraction), `ciLower`/`ciUpper` (its
+    block-bootstrap interval), `effect` (standardized), `rawP`, `adjustedQValue` (Benjamini-Yekutieli
+    over the whole timeframe bundle), `nonOverlappingPairs`, `sufficientSample` (at least 20
+    non-overlapping pairs) and `passesDeclaredFdr` (q at most 0.05 **and** a sufficient sample).
+  - Only a cell with `passesDeclaredFdr: true` may be called a difference from the matched context,
+    and still only as "historically, after this condition, ... over n non-overlapping cases". A cell
+    with `sufficientSample: false` is too few cases; one with `passesDeclaredFdr: false` is not
+    distinguishable from the matched context. Never turn a cell into a probability or an expected
+    return.
+  - Quote a cell with its path and sample size, e.g.
+    `technical:timeframes[1d].conditions[RSI_ENTER_OVERSOLD].evidence[6].forwardReturn` (n = 23).
+  - The tests were declared once on BTCUSDT (BTC research lane) and run unchanged on HOSE bars;
+    when you cite a cell, put this sentence in `body.limitations`:
+    `"condition statistics are descriptive history (spec declared on BTCUSDT, run unchanged on HOSE bars), not a forecast"`.
 - **No edge yet: the view is for reference only.** In the blind test of 2026-10-30 (14 MBB/BID cases,
   signal sessions 2026-07-01 to 2026-09-28, H = 20, scored by `direction-score-v1`; evidence
   `D:\code\btc\evidence\blind-test-20261030\README.md`) this kind of call got **5/14** right, against
@@ -150,7 +194,7 @@ returns, not levels across an ex-date.
   before `calendar.nextSessionOpenUtcMs` (the next session's 09:00 ICT open). Otherwise record it as
   `retrospective` (stored for the record, never scored) unless the user says not to record.
 - Top level: `noteBinding` copied verbatim into `snapshotId`, `snapshotSha256`, `requestedAsOf` (a
-  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v3"` and
+  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v4"` and
   `methodVersion: "equity-technical-method-v1"`.
 - Top-level enums: `mode` forward | retrospective; `direction` up | down | sideways | no-view;
   `actionView` buy-more | hold | reduce | sell | wait | none; `actionBasis` position-aware |
@@ -168,8 +212,9 @@ returns, not levels across an ex-date.
   - `limitations[]`, `missingData[]`: strings (at most 200 items each, like `evidenceIds` and
     `invalidation`); `outcomeCheck`: `{ "how", "dueAfterSessions" (> 0) }`;
   - `probability`: always `null` here.
-- `body.limitations` carries the payload `limitations`, every `dataQuality` caveat and the "no edge
-  shown" sentence (Step 2). `body.missingData` says fundamentals and news were deliberately not read.
+- `body.limitations` carries the payload `limitations`, every `dataQuality` caveat, the "no edge
+  shown" sentence (Step 2) and, when a condition cell is cited, the condition-statistics sentence
+  (Step 2). `body.missingData` says fundamentals and news were deliberately not read.
   `body.outcomeCheck.how` states the `direction-score-v1` rule and thresholds for the chosen horizon.
 - Notes are immutable once recorded. The response carries `noteId`
   (`session/{SYMBOL}/{signalBarOpenTimeMs}/{shortid}`); put it in `report.md`.
@@ -184,7 +229,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
   "snapshotId": "snap/MBB/1792309500000/0123456789ab",
   "snapshotSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "horizonSessions": 20,
-  "skillVersion": "equity-technical-v3",
+  "skillVersion": "equity-technical-v4",
   "methodVersion": "equity-technical-method-v1",
   "direction": "sideways",
   "actionView": "wait",
@@ -258,10 +303,13 @@ the git repos; one folder per symbol): `technical.json`, `scripts/` (scripts, th
 
 ## Versions
 
-`skillVersion: "equity-technical-v3"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
+`skillVersion: "equity-technical-v4"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
 version when this file's rules change and the method version when the analysis procedure changes. v2
 (2026-10-30, after the first trial run): record by posting the file with a long timeout and check
 before re-posting, payload structure of `conditions` and `freshness`, real caveat codes, binding stays
 in the note. v3 (2026-10-30, SKILLS-1): every view and note says no edge has been shown (blind test
 5/14 vs 7/14 for always sideways); the file is self-contained (shell notes and note-body rules moved
-in, no path into `investment-research`); found automatically through the `D:\code\btc` junctions.
+in, no path into `investment-research`); found automatically through the `D:\code\btc` junctions. v4
+(2026-10-31, EQEVID-1): MBB/BID conditions now carry verified per-symbol statistics; how to read
+`conditions.payload.evidence` and the per-condition cells (descriptive only, sample gate, horizons in
+bars, tests declared on BTCUSDT); the conditions candle module's own rule set (no Marubozu).

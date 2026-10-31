@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import numpy as np
+
+import trading_config
 from technical_event_modules import load_contract
 
 
@@ -218,7 +220,12 @@ def build_statistical_evidence(
     bootstrap_samples: int,
     random_seed: int,
     sensitivity: Mapping[str, Any],
+    symbol: str = "BTCUSDT",
 ) -> dict[str, Any]:
+    # The spec was declared on BTCUSDT and is applied unchanged to other
+    # registry instruments; the output scope names the instrument actually
+    # evaluated, which the backend matches against the requested symbol.
+    symbol = trading_config.require_known_symbol(symbol)
     spec, spec_sha = load_statistics_spec()
     if (
         timeframe not in spec["scope"]["timeframes"]
@@ -325,7 +332,7 @@ def build_statistical_evidence(
     return {
         "schema": STATISTICS_SCHEMA,
         "specSha256": spec_sha,
-        "scope": {"symbol": "BTCUSDT", "timeframe": timeframe},
+        "scope": {"symbol": symbol, "timeframe": timeframe},
         "claimType": "descriptive_only",
         "declaredFamily": {
             "technicalModuleContractDefinitionsSha256": module_contract_sha,

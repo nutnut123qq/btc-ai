@@ -141,6 +141,33 @@ def test_machine_readable_output_schema_and_example_are_versioned_and_nullable()
         jsonschema.Draft202012Validator(schema).validate(example)
 
 
+def test_output_scope_names_the_evaluated_instrument_and_schema_tracks_the_registry():
+    # The backend attaches evidence to an MBB/BID condition only when
+    # statisticalEvidence.scope.symbol equals the requested symbol
+    # (CurrentConditionsService.ScopeSymbolMatches); a hard-coded BTCUSDT made
+    # every equity bundle an evidence-scope-mismatch.
+    import trading_config
+
+    contracts = Path(__file__).parents[2] / "contracts"
+    schema = json.loads((contracts / "technical-evidence-statistics.schema.json").read_text(encoding="utf-8"))
+    assert schema["properties"]["scope"]["properties"]["symbol"]["enum"] == list(trading_config.INSTRUMENTS)
+    arguments = dict(
+        timeframe="1d",
+        horizons=HORIZONS,
+        metrics=METRICS,
+        block_size_events=8,
+        bootstrap_samples=10,
+        random_seed=42,
+        sensitivity={"preRegisteredGrid": {}},
+    )
+    assert build_statistical_evidence([], {}, **arguments)["scope"] == {"symbol": "BTCUSDT", "timeframe": "1d"}
+    for symbol in ("MBB", "BID"):
+        report = build_statistical_evidence([], {}, symbol=symbol, **arguments)
+        assert report["scope"] == {"symbol": symbol, "timeframe": "1d"}
+    with pytest.raises(ValueError, match="Unknown symbol"):
+        build_statistical_evidence([], {}, symbol="VNM", **arguments)
+
+
 def test_effect_null_multiple_testing_stability_and_sample_diagnostics_are_complete():
     rows = [
         _row("p1", "EMA_BULL_CROSS", "technicalIndicators", 10, _milliseconds(2024, 1, 1), 0.03, "up|normal"),

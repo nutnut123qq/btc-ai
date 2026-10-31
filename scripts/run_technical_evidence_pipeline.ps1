@@ -1,19 +1,23 @@
 [CmdletBinding()]
 param(
     [string]$OutputDirectory = "docs/research/evidence/technical-descriptive",
+    # Registry instrument (ai/trading_config.py). BTCUSDT publishes at the top of
+    # OutputDirectory, every other symbol under OutputDirectory/<SYMBOL>.
+    [ValidatePattern('^[A-Za-z0-9]{2,16}$')][string]$Symbol = "BTCUSDT",
     [ValidateRange(3, 90)][int]$LogRetentionCount = 14,
     [switch]$ApplyRetention,
-    [ValidateRange(2, 30)][int]$KeepSuccessfulRuns = 2
+    [ValidateRange(2, 30)][int]$KeepSuccessfulRuns = 2,
+    # Print the resolved plan as JSON and exit before the secret store is loaded
+    # or anything is written.
+    [switch]$DryRun
 )
 
 $ErrorActionPreference = "Stop"
+$Symbol = $Symbol.ToUpperInvariant()
 $AiRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 
 $OpsCommon = Join-Path $AiRoot "..\backend\ops\common.ps1"
 $Python = Join-Path $AiRoot "venv/Scripts/python.exe"
-if (-not (Test-Path -LiteralPath $Python)) {
-    throw "AI virtual-environment Python was not found at $Python"
-}
 $ResolvedOutput = if ([IO.Path]::IsPathRooted($OutputDirectory)) {
     [IO.Path]::GetFullPath($OutputDirectory)
 } else {
@@ -21,7 +25,29 @@ $ResolvedOutput = if ([IO.Path]::IsPathRooted($OutputDirectory)) {
 }
 $OpsDirectory = Join-Path $AiRoot ".ops/technical-evidence"
 $LogDirectory = Join-Path $OpsDirectory "logs"
-$StatusPath = Join-Path $OpsDirectory "scheduler-status.json"
+# BTCUSDT keeps the legacy status file; other symbols get their own so runs of
+# different instruments never overwrite each other's status.
+$StatusPath = if ($Symbol -in @("BTCUSDT", "BTC")) {
+    Join-Path $OpsDirectory "scheduler-status.json"
+} else {
+    Join-Path $OpsDirectory "scheduler-status-$Symbol.json"
+}
+$PipelineArguments = @("run_technical_evidence_pipeline.py", "--output-dir", $ResolvedOutput, "--symbol", $Symbol)
+$RetentionArguments = @("technical_evidence_retention.py", "--output-dir", $ResolvedOutput, "--symbol", $Symbol, "--keep-successful-runs", "$KeepSuccessfulRuns")
+if ($DryRun) {
+    [ordered]@{
+        symbol = $Symbol
+        python = $Python
+        pipelineArguments = $PipelineArguments
+        retentionEnabled = [bool]$ApplyRetention
+        retentionArguments = $RetentionArguments
+        statusPath = $StatusPath
+    } | ConvertTo-Json -Depth 4
+    exit 0
+}
+if (-not (Test-Path -LiteralPath $Python)) {
+    throw "AI virtual-environment Python was not found at $Python"
+}
 New-Item -ItemType Directory -Force -Path $LogDirectory | Out-Null
 
 $Started = [DateTimeOffset]::UtcNow
@@ -45,7 +71,7 @@ try {
         # terminating RemoteException and masks the real exit code.
         # Start-Process redirection bypasses the stream machinery entirely.
         $proc = Start-Process -FilePath $Python -WorkingDirectory $AiRoot -NoNewWindow -Wait -PassThru `
-            -ArgumentList @("run_technical_evidence_pipeline.py", "--output-dir", $ResolvedOutput) `
+            -ArgumentList $PipelineArguments `
             -RedirectStandardOutput $LogPath -RedirectStandardError $StdErrPath
         $ExitCode = $proc.ExitCode
         if ($ExitCode -eq 2) { $FailureType = "PipelineLockedError" }
@@ -56,7 +82,7 @@ try {
         }
         if ($ExitCode -eq 0 -and $ApplyRetention) {
             $proc = Start-Process -FilePath $Python -WorkingDirectory $AiRoot -NoNewWindow -Wait -PassThru `
-                -ArgumentList @("technical_evidence_retention.py", "--output-dir", $ResolvedOutput, "--keep-successful-runs", "$KeepSuccessfulRuns") `
+                -ArgumentList $RetentionArguments `
                 -RedirectStandardOutput $PlanJsonPath -RedirectStandardError $StdErrPath
             if ($proc.ExitCode -ne 0) { throw "Retention dry-run failed" }
             $PlanText = Get-Content -LiteralPath $PlanJsonPath -Raw
@@ -64,7 +90,7 @@ try {
             $Plan = $PlanText | ConvertFrom-Json
             if ($null -eq $Plan.blockedReason -and $Plan.candidateCount -gt 0) {
                 $proc = Start-Process -FilePath $Python -WorkingDirectory $AiRoot -NoNewWindow -Wait -PassThru `
-                    -ArgumentList @("technical_evidence_retention.py", "--output-dir", $ResolvedOutput, "--keep-successful-runs", "$KeepSuccessfulRuns", "--apply", "--confirm-plan-sha256", $Plan.planSha256) `
+                    -ArgumentList ($RetentionArguments + @("--apply", "--confirm-plan-sha256", $Plan.planSha256)) `
                     -RedirectStandardOutput $PlanJsonPath -RedirectStandardError $StdErrPath
                 if ($proc.ExitCode -ne 0) { throw "Retention apply failed" }
                 Get-Content -LiteralPath $PlanJsonPath | Out-File -LiteralPath $LogPath -Encoding utf8 -Append
@@ -84,6 +110,7 @@ finally {
     $Completed = [DateTimeOffset]::UtcNow
     $Status = [ordered]@{
         schema = "btc-technical-evidence-scheduler-status/v1"
+        symbol = $Symbol
         runId = $RunId
         succeeded = ($ExitCode -eq 0)
         exitCode = $ExitCode

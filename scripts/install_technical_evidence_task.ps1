@@ -1,6 +1,8 @@
 [CmdletBinding(SupportsShouldProcess)]
 param(
-    [string]$TaskName = "BTCTechnicalDescriptiveEvidence",
+    # Empty = BTCTechnicalDescriptiveEvidence for BTCUSDT, BTCTechnicalEvidence-<SYMBOL> otherwise.
+    [string]$TaskName = "",
+    [ValidatePattern('^[A-Za-z0-9]{2,16}$')][string]$Symbol = "BTCUSDT",
     [string]$DailyAt = "02:20",
     [string]$OutputDirectory = "docs/research/evidence/technical-descriptive",
     [switch]$ApplyRetention,
@@ -9,6 +11,11 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$Symbol = $Symbol.ToUpperInvariant()
+$IsBtc = $Symbol -in @("BTCUSDT", "BTC")
+if (-not $TaskName) {
+    $TaskName = if ($IsBtc) { "BTCTechnicalDescriptiveEvidence" } else { "BTCTechnicalEvidence-$Symbol" }
+}
 $AiRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $Runner = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "run_technical_evidence_pipeline.ps1"))
 if (-not (Test-Path -LiteralPath $Runner)) { throw "Runner not found: $Runner" }
@@ -30,10 +37,19 @@ finally { Pop-Location }
 $At = [DateTime]::ParseExact($DailyAt, "HH:mm", [Globalization.CultureInfo]::InvariantCulture)
 $PowerShell = Join-Path $env:SystemRoot "System32/WindowsPowerShell/v1.0/powershell.exe"
 $Arguments = "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File `"$Runner`" -OutputDirectory `"$ResolvedOutput`""
+# The BTCUSDT action stays byte-identical to the one already registered (-AuditOnly).
+if (-not $IsBtc) {
+    $Arguments += " -Symbol $Symbol"
+}
 if ($ApplyRetention) {
     $Arguments += " -ApplyRetention -KeepSuccessfulRuns $KeepSuccessfulRuns"
 }
 $ExpectedWorkingDirectory = $AiRoot
+$Description = if ($IsBtc) {
+    "Finite BTCUSDT 1h/4h/1d descriptive technical-evidence publisher"
+} else {
+    "Finite $Symbol descriptive technical-evidence publisher (its declared timeframes)"
+}
 
 if ($AuditOnly) {
     $Task = Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop
@@ -53,7 +69,7 @@ $Trigger = New-ScheduledTaskTrigger -Daily -At $At
 $Settings = New-ScheduledTaskSettingsSet -MultipleInstances IgnoreNew -StartWhenAvailable -ExecutionTimeLimit (New-TimeSpan -Hours 4)
 if ($PSCmdlet.ShouldProcess($TaskName, "install finite technical-evidence task")) {
     Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Settings $Settings `
-        -Description "Finite BTCUSDT 1h/4h/1d descriptive technical-evidence publisher" -Force | Out-Null
+        -Description $Description -Force | Out-Null
 }
 
 Write-Host "Technical evidence task configured: $TaskName"

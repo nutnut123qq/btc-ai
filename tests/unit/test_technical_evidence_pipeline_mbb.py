@@ -265,6 +265,26 @@ def test_mbb_evaluation_horizons_realize_across_lunch_and_weekend():
         assert all(h["elapsedTimeMs"] is None for h in group["horizons"].values())
 
 
+@pytest.mark.parametrize("symbol", ["MBB", "BID"])
+@pytest.mark.parametrize("timeframe", ["1h", "1d"])
+def test_equity_statistical_evidence_scope_names_the_instrument(symbol, timeframe):
+    # CurrentConditionsService rejects a bundle whose statisticalEvidence scope
+    # names another instrument (evidence-scope-mismatch), so the equity report
+    # must carry its own symbol there, not only in report.scope.
+    rows = (
+        _mbb_hourly_rows(_trading_days(date(2026, 8, 3), 15))
+        if timeframe == "1h"
+        else _mbb_daily_rows(_trading_days(date(2026, 6, 1), 60))
+    )
+    snapshot = build_postgresql_snapshot_from_rows(
+        timeframe, int(rows[-1]["CloseTimeMs"]), rows, [], smc_columns=[], symbol=symbol
+    )
+    cutoff = int(snapshot["candles"][-1]["closeTimeMs"])
+    _, _, report = evaluate(snapshot, EvaluationConfig(cutoff_ms=cutoff, bootstrap_samples=10))
+    assert report["scope"]["symbol"] == symbol
+    assert report["statisticalEvidence"]["scope"] == {"symbol": symbol, "timeframe": timeframe}
+
+
 def test_mbb_evaluation_missing_expected_open_is_a_real_gap():
     days = _trading_days(date(2026, 8, 3), 15)
     rows = _mbb_hourly_rows(days)

@@ -99,7 +99,7 @@ def test_only_the_config_horizons_are_allowed(skill, note_example):
 def test_names_rule_versions_and_endpoints(skill):
     assert "direction-score-v1" in skill
     assert "scoring.ruleVersion" in skill
-    assert 'skillVersion: "equity-technical-v3"' in skill
+    assert 'skillVersion: "equity-technical-v4"' in skill
     assert 'methodVersion: "equity-technical-method-v1"' in skill
     assert "GET /api/equities/{symbol}/technical" in skill
     assert "GET /api/equities/{symbol}/research-notes/direction-scores" in skill
@@ -112,7 +112,7 @@ def test_names_rule_versions_and_endpoints(skill):
 def test_note_example_has_null_probability_and_versions(skill, note_example):
     assert "`body.probability` is always `null`" in skill
     assert "probability" in note_example["body"] and note_example["body"]["probability"] is None
-    assert note_example["skillVersion"] == "equity-technical-v3"
+    assert note_example["skillVersion"] == "equity-technical-v4"
     assert note_example["methodVersion"] == "equity-technical-method-v1"
     assert note_example["mode"] == "forward"
     assert note_example["actionBasis"] == "market-only"
@@ -174,3 +174,72 @@ def test_blind_test_numbers_match_the_scored_cases(skill):
     assert (f"**{hits['prediction']}/{n}** right, against **{sideways}/{n}** for always answering `sideways`, "
             f"{hits['prior']}/{n} for the prior and {hits['momentum']}/{n} for momentum") in flat
     assert f"scored {hits['prediction']}/{n} vs {sideways}/{n} for always sideways" in flat
+
+
+CONDITIONS_SERVICE = AI_ROOT.parent / "backend" / "Services" / "CurrentConditionsService.cs"
+
+
+def test_condition_statistics_are_read_as_descriptive_history(skill, note_example):
+    # EQEVID-1: per-symbol bundles now attach statistics to MBB/BID conditions; the skill
+    # must keep them descriptive (no probability, no expected return) and gated on sample size.
+    flat = " ".join(skill.split())
+    assert "**Condition statistics are descriptive history, not a forecast.**" in flat
+    assert "Never turn a cell into a probability or an expected return." in flat
+    assert "They are not the 20/60 sessions of the call" in flat
+    sentence = ("condition statistics are descriptive history (spec declared on BTCUSDT, "
+                "run unchanged on HOSE bars), not a forecast")
+    assert f"`\"{sentence}\"`" in flat
+    assert "Only a cell with `passesDeclaredFdr: true` may be called a difference" in flat
+    # A state condition (e.g. "close below SMA50") is joined to the crossing event's history.
+    assert "The cells belong to the **event type**, matched by `module` + `eventType`." in flat
+    assert "not every bar spent in the state" in flat
+
+
+def test_sample_gate_and_fdr_level_match_the_statistical_spec(skill):
+    spec = json.loads((AI_ROOT / "contracts" / "technical-evidence-statistical-spec.json").read_text(encoding="utf-8"))
+    flat = " ".join(skill.split())
+    gate = spec["multipleTesting"]
+    assert gate["method"] == "Benjamini-Yekutieli" and "Benjamini-Yekutieli" in flat
+    assert f"at least {gate['minimumNonOverlappingPairs']} non-overlapping pairs" in flat
+    assert f"q at most {gate['declaredQAlpha']:g}" in flat
+    assert spec["scope"]["horizonsBars"] == [1, 3, 6]
+    assert spec["scope"]["metrics"] == ["forwardReturn", "mfe", "mae"]
+    assert '`evidence["1"|"3"|"6"]["forwardReturn"|"mfe"|"mae"]`' in flat
+    assert spec["scope"]["symbol"] == "BTCUSDT" and "declared once on BTCUSDT" in flat
+
+
+def test_conditions_candle_rule_set_is_quoted_from_the_module_contract(skill):
+    contract = json.loads((AI_ROOT / "contracts" / "technical-module-contract.json").read_text(encoding="utf-8"))
+    event_types = contract["modules"]["candlePatterns"]["parameters"]["eventTypes"]
+    flat = " ".join(skill.split())
+    listed = ", ".join(f"`{name}`" for name in event_types[:-1]) + f", `{event_types[-1]}`"
+    assert f"is a different, smaller rule set: only {listed} (no Marubozu" in flat
+    assert not any("MARUBOZU" in name.upper() for name in event_types)
+    assert "rule-set difference, not two sources disagreeing" in flat
+
+
+@pytest.mark.skipif(not CONDITIONS_SERVICE.is_file(), reason="backend repo not next to ai/ (separate-repo CI)")
+def test_evidence_fields_and_reasons_exist_in_the_backend_cells(skill):
+    source = CONDITIONS_SERVICE.read_text(encoding="utf-8")
+    cell_keys = set(re.findall(r'\["(\w+)"\] = Scalar\(hypothesis', source)) | {"tested"}
+    named = {"tested", "rawP", "adjustedQValue", "passesDeclaredFdr", "sufficientSample",
+             "nonOverlappingPairs", "effect", "ciLower", "ciUpper", "meanPairedDifference"}
+    assert named == cell_keys, cell_keys ^ named
+    untested = set(re.findall(r'UntestedCell\(\s*"([a-z-]+)"', source))
+    untested |= set(re.findall(r'\? "([a-z-]+)"\s*:\s*"([a-z-]+)"', source)[0])
+    unavailable = set(re.findall(r'EvidenceContext\.Unavailable\(\s*"([a-z-]+)"', source))
+    assert untested == {"evidence-unavailable", "untested", "insufficient-sample"}, untested
+    assert len(unavailable) == 6, unavailable
+    assert "`tested: true`" in skill and "`tested: false`" in skill
+    for name in sorted((named - {"tested"}) | untested | unavailable):
+        assert f"`{name}`" in skill, name
+    kinds = re.search(r"ValidKinds = new\(StringComparer\.Ordinal\)\s*\{([^}]*)\}", source).group(1)
+    assert set(re.findall(r'"(\w+)"', kinds)) == {"triggeredOnBar", "state", "activeZone", "operativeLeg"}
+    contract = json.loads((AI_ROOT / "contracts" / "technical-module-contract.json").read_text(encoding="utf-8"))
+    declared = {name for module in contract["modules"].values() for name in module["parameters"]["eventTypes"]}
+    assert {"RSI_ZONE_NEUTRAL", "EMA_FAST_BELOW_SLOW"}.isdisjoint(declared)
+    assert "CLOSE_BELOW_SMA50" in declared
+    assert "StatisticalHorizons = [1, 3, 6]" in source
+    assert 'StatisticalMetrics = ["forwardReturn", "mfe", "mae"]' in source
+    for envelope in ("available", "reason", "cutoffMs", "evidenceAgeBars"):
+        assert f'["{envelope}"]' in source and f"`{envelope}`" in skill
