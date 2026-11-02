@@ -105,6 +105,7 @@ def test_symbol_aware_timeframes_fail_closed_on_unknown_symbols():
 
 
 # --- EQX: registry parity with backend InstrumentCatalog (spec §1, instrument-catalog-v2) ---
+# Covers the instruments the AI side serves; the 26 VN30-DATA data-only constituents are backend-only.
 
 # symbol -> (asset_class, currency, price_basis, timeframes, ingestion, technical_analysis, decision)
 _SPEC_SCOPE = {
