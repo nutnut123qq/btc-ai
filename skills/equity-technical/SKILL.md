@@ -144,16 +144,26 @@ returns, not levels across an ex-date.
   - The tests were declared once on BTCUSDT (BTC research lane) and run unchanged on HOSE bars;
     when you cite a cell, put this sentence in `body.limitations`:
     `"condition statistics are descriptive history (spec declared on BTCUSDT, run unchanged on HOSE bars), not a forecast"`.
-- **No edge yet: the view is for reference only.** In the blind test of 2026-10-30 (14 MBB/BID cases,
-  signal sessions 2026-07-01 to 2026-09-28, H = 20, scored by `direction-score-v1`; evidence
-  `D:\code\btc\evidence\blind-test-20261030\README.md`) this kind of call got **5/14** right, against
-  **7/14** for always answering `sideways`, 7/14 for the prior and 4/14 for momentum. The sample is
-  small (about 3-4 independent observations per symbol), so it proves no edge either way, and nothing
-  has been tested for H = 60. Therefore:
+- **No edge yet: the view is for reference only.** Two blind tests of this kind of call (H = 20,
+  scored by `direction-score-v1`):
+  - 2026-10-30, after the model's knowledge cutoff: 14 MBB/BID cases, signal sessions 2026-07-01 to
+    2026-09-28, 10 sessions apart, so their 20-session windows overlap (about 3-4 independent
+    observations per symbol; evidence `D:\code\btc\evidence\blind-test-20261030\README.md`). **5/14**
+    right, against **7/14** for always answering `sideways`, 7/14 for the prior and 4/14 for momentum.
+  - 2026-10-31, anonymised history: 60 cases (MBB 2013-2026, BID 2015-2026; ticker, dates and price
+    scale hidden; daily candles only; evidence `D:\code\btc\evidence\blind-test-hist-20261031\README.md`).
+    **23/60** right, against **27/60** for always answering `sideways`, 24/60 for the prior and 21/60
+    for momentum. `up` calls were right 4/16 times.
+  - Together: **28/74** against **34/74** for always `sideways`, about 66-68 independent cases (the 60
+    history cases do not overlap). The interval is still wide, so this does not prove that no edge
+    exists, but any edge is too small to see at this size. Neither test is a forward journal: that is
+    the `direction-scores` record. Nothing has been tested for H = 60.
+
+  Therefore:
   - say in `report.md`, next to the view, that it is for reference only and has not beaten "always
     sideways";
   - put that sentence in `body.limitations` of every note:
-    `"no edge shown: blind test 2026-10-30 scored 5/14 vs 7/14 for always sideways (H20); view is for reference only"`;
+    `"no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20); view is for reference only"`;
   - never present the direction as a reason to trade.
 
   Drop this only when `direction-scores` shows the horizon with `status` `ok` (`nEffective >= 30`) and
@@ -194,7 +204,7 @@ returns, not levels across an ex-date.
   before `calendar.nextSessionOpenUtcMs` (the next session's 09:00 ICT open). Otherwise record it as
   `retrospective` (stored for the record, never scored) unless the user says not to record.
 - Top level: `noteBinding` copied verbatim into `snapshotId`, `snapshotSha256`, `requestedAsOf` (a
-  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v4"` and
+  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v5"` and
   `methodVersion: "equity-technical-method-v1"`.
 - Top-level enums: `mode` forward | retrospective; `direction` up | down | sideways | no-view;
   `actionView` buy-more | hold | reduce | sell | wait | none; `actionBasis` position-aware |
@@ -229,7 +239,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
   "snapshotId": "snap/MBB/1792309500000/0123456789ab",
   "snapshotSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "horizonSessions": 20,
-  "skillVersion": "equity-technical-v4",
+  "skillVersion": "equity-technical-v5",
   "methodVersion": "equity-technical-method-v1",
   "direction": "sideways",
   "actionView": "wait",
@@ -240,7 +250,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
     "evidence": [{ "claim": "close above SMA50 on 1d", "evidenceIds": ["technical:timeframes[1d].indicators"] }],
     "counterEvidence": [],
     "scenarios": [{ "name": "base", "horizonSessions": 20, "description": "range", "invalidation": ["1d close < level"] }],
-    "limitations": ["no edge shown: blind test 2026-10-30 scored 5/14 vs 7/14 for always sideways (H20); view is for reference only", "base rates unvalidated (gate-not-passed)"],
+    "limitations": ["no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20); view is for reference only", "base rates unvalidated (gate-not-passed)"],
     "missingData": ["fundamentals and news not read (technical-only skill)"],
     "outcomeCheck": { "how": "direction-score-v1: R = close(signal+20 sessions)/signal close - 1 (adjusted); R >= +5% up, R <= -4% down, else sideways", "dueAfterSessions": 20 },
     "probability": null
@@ -303,7 +313,7 @@ the git repos; one folder per symbol): `technical.json`, `scripts/` (scripts, th
 
 ## Versions
 
-`skillVersion: "equity-technical-v4"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
+`skillVersion: "equity-technical-v5"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
 version when this file's rules change and the method version when the analysis procedure changes. v2
 (2026-10-30, after the first trial run): record by posting the file with a long timeout and check
 before re-posting, payload structure of `conditions` and `freshness`, real caveat codes, binding stays
@@ -312,4 +322,6 @@ in the note. v3 (2026-10-30, SKILLS-1): every view and note says no edge has bee
 in, no path into `investment-research`); found automatically through the `D:\code\btc` junctions. v4
 (2026-10-31, EQEVID-1): MBB/BID conditions now carry verified per-symbol statistics; how to read
 `conditions.payload.evidence` and the per-condition cells (descriptive only, sample gate, horizons in
-bars, tests declared on BTCUSDT); the conditions candle module's own rule set (no Marubozu).
+bars, tests declared on BTCUSDT); the conditions candle module's own rule set (no Marubozu). v5
+(2026-10-31, after the 60-case anonymised blind test): "No edge yet" quotes both blind tests, 28/74
+together against 34/74 for always sideways, and the `body.limitations` sentence says so.

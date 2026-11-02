@@ -99,7 +99,8 @@ def test_only_the_config_horizons_are_allowed(skill, note_example):
 def test_names_rule_versions_and_endpoints(skill):
     assert "direction-score-v1" in skill
     assert "scoring.ruleVersion" in skill
-    assert 'skillVersion: "equity-technical-v4"' in skill
+    assert 'skillVersion: "equity-technical-v5"' in skill
+    assert "equity-technical-v4\"" not in skill  # no stale version left anywhere in the file
     assert 'methodVersion: "equity-technical-method-v1"' in skill
     assert "GET /api/equities/{symbol}/technical" in skill
     assert "GET /api/equities/{symbol}/research-notes/direction-scores" in skill
@@ -112,7 +113,7 @@ def test_names_rule_versions_and_endpoints(skill):
 def test_note_example_has_null_probability_and_versions(skill, note_example):
     assert "`body.probability` is always `null`" in skill
     assert "probability" in note_example["body"] and note_example["body"]["probability"] is None
-    assert note_example["skillVersion"] == "equity-technical-v4"
+    assert note_example["skillVersion"] == "equity-technical-v5"
     assert note_example["methodVersion"] == "equity-technical-method-v1"
     assert note_example["mode"] == "forward"
     assert note_example["actionBasis"] == "market-only"
@@ -151,19 +152,28 @@ def test_only_technical_endpoints_are_named(skill):
     assert "--include-portfolio" not in skill
 
 
-def test_states_no_edge_from_the_blind_test(skill, note_example):
-    # SKILLS-1 (#12): the 2026-10-30 blind test showed no edge, so every view and note says so.
+NO_EDGE_SENTENCE = ("no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20); "
+                    "view is for reference only")
+
+
+def test_states_no_edge_from_the_blind_tests(skill, note_example):
+    # SKILLS-1 (#12) and the 2026-10-31 anonymised history test: no edge shown, so every view and note says so.
     flat = " ".join(skill.split())
     assert "**No edge yet: the view is for reference only.**" in flat
     assert "**5/14** right, against **7/14** for always answering `sideways`, 7/14 for the prior and 4/14 for momentum" in flat
-    sentence = "no edge shown: blind test 2026-10-30 scored 5/14 vs 7/14 for always sideways (H20); view is for reference only"
-    assert f"`\"{sentence}\"`" in flat
-    assert sentence in note_example["body"]["limitations"]
+    assert "**23/60** right, against **27/60** for always answering `sideways`, 24/60 for the prior and 21/60 for momentum" in flat
+    assert "Together: **28/74** against **34/74** for always `sideways`, about 66-68 independent cases" in flat
+    assert "their 20-session windows overlap (about 3-4 independent observations per symbol" in flat
+    assert "forward-dated" not in flat  # the 2026-10-30 test was historical cases after the cutoff, not a forward journal
+    assert f"`\"{NO_EDGE_SENTENCE}\"`" in flat
+    assert NO_EDGE_SENTENCE in note_example["body"]["limitations"]
+    assert "blind test 2026-10-30 scored 5/14" not in flat  # the old single-test sentence is gone
     assert "`nEffective >= 30`" in flat and "`baselinePrior`" in flat
 
 
-def test_blind_test_numbers_match_the_scored_cases(skill):
-    score = AI_ROOT.parent / "evidence" / "blind-test-20261030" / "score.json"
+@pytest.mark.parametrize("folder", ["blind-test-20261030", "blind-test-hist-20261031"])
+def test_blind_test_numbers_match_the_scored_cases(skill, folder):
+    score = AI_ROOT.parent / "evidence" / folder / "score.json"
     if not score.is_file():
         pytest.skip("blind-test evidence lives outside the ai repo (btc workspace only)")
     rows = json.loads(score.read_text(encoding="utf-8"))
@@ -173,7 +183,19 @@ def test_blind_test_numbers_match_the_scored_cases(skill):
     flat = " ".join(skill.split())
     assert (f"**{hits['prediction']}/{n}** right, against **{sideways}/{n}** for always answering `sideways`, "
             f"{hits['prior']}/{n} for the prior and {hits['momentum']}/{n} for momentum") in flat
-    assert f"scored {hits['prediction']}/{n} vs {sideways}/{n} for always sideways" in flat
+
+
+def test_combined_blind_test_total_matches_both_score_files(skill):
+    rows = []
+    for folder in ("blind-test-20261030", "blind-test-hist-20261031"):
+        score = AI_ROOT.parent / "evidence" / folder / "score.json"
+        if not score.is_file():
+            pytest.skip("blind-test evidence lives outside the ai repo (btc workspace only)")
+        rows += json.loads(score.read_text(encoding="utf-8"))
+    hits = sum(r["prediction"] == r["realized"] for r in rows)
+    sideways = sum(r["realized"] == "sideways" for r in rows)
+    assert f"scored {hits}/{len(rows)} vs {sideways}/{len(rows)} for always sideways" in NO_EDGE_SENTENCE
+    assert f"Together: **{hits}/{len(rows)}** against **{sideways}/{len(rows)}**" in " ".join(skill.split())
 
 
 CONDITIONS_SERVICE = AI_ROOT.parent / "backend" / "Services" / "CurrentConditionsService.cs"
