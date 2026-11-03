@@ -11,11 +11,28 @@ cannot read (E4). The leak sentences of cold-check r2 (R2_LEAKS) are pinned verb
 plain Vietnamese without internal codes; the details go to stderr (E5).
 
 Review of round r3 (evidence/vn30-web-20261103/r3/W-exporter/review-fix): the reviewer's probe sentences
-(REVIEW_LEAKS) are pinned verbatim; every listed phrase matches with a space or a dash between its words; each chart
-phrase is blanked only in its chart context (E2_PRIVATE has a private sentence around each context rule); the
+(REVIEW_LEAKS) are pinned verbatim; the phrases the review named match with a space or a dash between their words; each
+chart phrase is blanked only in its chart context (E2_PRIVATE has a private sentence around each context rule); the
 characters the lists can read are an allowlist, in the text as written and after NFKC (E4); and every single rule,
 alternative and guard of the filter is locked: taking any one of them out turns a test red (ONE_RULE, one sentence per
-rule, and the tuples above; review-fix/mutants.py)."""
+rule, and the tuples above; review-fix/mutants.py).
+
+Round r4 (evidence/vn30-web-20261103/r4/contract.md, findings of cold-check r3): a thesis is published only for a note
+with actionBasis market-only or insufficient-input and actionView wait or none, every other value, a missing field or a
+value that is not a string withholds it and keeps the row (X1; the fixture notes carry the daily task's wait /
+market-only); a number that ends with a comma is a list, not "<number> <ticker>" (X2); break even, under water and the
+phrases margin call, net asset value, average price, target price and off the table also with a space or a dash, and
+VND amounts written with "dong" or without thousands separators (X3); the module docstring says which phrases take a
+dash (X4: SPACE_OR_DASH, SPACE_ONLY).
+
+Review of round r4 (evidence/vn30-web-20261103/r4/review-W-exporter, fixes in r4/W-exporter/review-fix): the money
+forms the docstring names are caught (a dash before a scale word or a currency word, "đ" and "dong(s)" after k or m, a
+space between the thousands, decimals, "Vietnamese"/"VN dong", a colon after VND, USD before a number, k or m before
+USD or dollar(s)) and the one it names as not caught is published ("63,000,000 in VND terms"); a list of counts written
+after the tickers ("MBB 3,000, BID 1,500") is withheld again; "broke even lower" (higher, further, more, deeper) is
+chart prose; the cheap word forms of margin call, net asset value, average price and off the table are listed; and the
+docstring and data-contract.md give the same examples, each pinned to what the filter does (DOC_WITHHELD,
+DOC_PUBLISHED; data-contract.md is read only in the btc workspace)."""
 import io
 import json
 import os
@@ -89,7 +106,58 @@ REAL_THESES = (
     "25.1 (Cutler 7.0). Continuation and mean reversion both have support; over 20 sessions the view is sideways (R "
     "between -4% and +5%), for reference only.",
 )
-TECHNICAL_THESES = REAL_THESES + (
+# Round r4: the three newer theses of the real export of 2026-11-03 (evidence/vn30-web-20261103/r3/gate/real-export),
+# copied verbatim from their notes: MBB and BID 20261103-2002 (skill v7) and ACB 20261103-2023 (v6). Each comes from a
+# forward note with actionView wait and actionBasis market-only, like the three above.
+R4_THESES = (
+    # MBB/20261103-2002-technical
+    "Technical-only view over the next 20 sessions. The daily close on 2026-11-03 was 18900, a 0.8% gain on the "
+    "session that followed a 2.8% decline on 2026-11-02 with volume 2.1x its 20-session average; the latest session "
+    "carried 1.7x its average. Over five sessions the close fell 3.8%, over 20 sessions 1.6% and over 60 sessions "
+    "5.1%. The close sits below EMA12 at 19387, below EMA26 at 19524, below SMA50 at 19849 and below SMA200 at "
+    "20481, and the daily MACD is negative with a widening negative histogram. Wilder RSI14 is 37.6 on the daily "
+    "bars, while the simple-average RSI14 in the conditions module reads 42.1, both in the neutral zone. The latest "
+    "bar has a hammer shape with a low of 18550, which is also the 20- and 60-session low; range position is 0.23 "
+    "of the 20-session range and 0.13 of the 60-session range. The close is just above the 100-bar value-area low "
+    "near 18852 and below the point of control near 20133. The regime label is sideways with normal volatility. "
+    "Relative to the market index the 20-session return is 1.8 points better and the 60-session return 1.4 points "
+    "worse; against the bank peers it is ahead of two of three on both windows. The daily trend is weak but the "
+    "decline met heavy volume near a prior low, so the evidence is mixed. The view is sideways: a move to plus 5% "
+    "near 19845 or minus 4% near 18144 within 20 sessions is not yet confirmed by the candles. For reference only; "
+    "this kind of call has not beaten an always-sideways answer in blind tests.",
+    # BID/20261103-2002-technical
+    "Technical-only view over the next 20 sessions. The daily close on 2026-11-03 was 31700, down 0.9% on the "
+    "session after a 4.2% decline on 2026-11-02 that carried volume 2.85x its 20-session average; the latest "
+    "session carried 1.4x its average. Over five sessions the close fell 5.8%, over 20 sessions 8.4% and over 60 "
+    "sessions 10.6%. The low of 31600 is the lowest of the 100-bar window, and range position is 0.03 of the "
+    "20-session range. The close is below EMA12 at 33243, below EMA26 at 33905, below SMA50 at 35094 and below "
+    "SMA200 at 38433, and below the lower Bollinger band near 32246. The daily MACD is negative with a widening "
+    "negative histogram. The close is under the 100-bar value-area low near 33582 and well under the point of "
+    "control near 36464. Wilder RSI14 on the daily bars is 26.3, in the oversold zone, while the simple-average "
+    "RSI14 in the conditions module reads 36.8, in the neutral zone; the two readings disagree and both are "
+    "reported. The regime label is still sideways with normal volatility. Relative strength is weak: over 20 "
+    "sessions the return trails the market index by 5.0 points and trails each of the three bank peers. The daily "
+    "structure is a decline to a new window low on expanding volume, so the view is down, meaning a 20-session "
+    "return at or below minus 4% near 30432. The stretched oscillator and the close below the lower band leave room "
+    "for a rebound first. For reference only; this kind of call has not beaten an always-sideways answer in blind "
+    "tests.",
+    # ACB/20261103-2023-technical
+    "Daily candles only. On 23 October a wide green candle on volume 6.0x its 20-session average lifted the close "
+    "to 21,300; four flat sessions capped at 21,450 followed before a full retracement: down 1.4% on 30 October and "
+    "3.3% on 2 November, when the session opened 1.7% lower on volume 1.9x its average and printed a 60-session low "
+    "of 20,050. On 3 November the close was 20,250, with a small body, a lower shadow half the candle's range and "
+    "volume 0.7x its average. Support at 20,050 to 20,200 has held since 9 October, with no daily close below "
+    "20,150. The trend leans down: EMA50, SMA200, EMA200 and SMA50 sit 4.9% to 5.8% above the close, EMA12 is below "
+    "EMA26, MACD is negative with a slightly positive histogram, the regime label is a low-volatility downtrend, "
+    "and the close is under the 100-session volume-profile value area (VAL 22,029, POC 22,346). Wilder RSI14 is "
+    "36.5 and a simple-average RSI14 is 46.3, both neutral; ATR14 is 2.1% of the close. Over 20 sessions the stock "
+    "fell 1.7% against 3.4% for the VNINDEX; over 60 sessions, 8.6% against 3.7%. View for the next 20 sessions: "
+    "sideways, a close 20 sessions later between 19,440 and 21,262.5 (-4% to +5%). The -4% line lies 3% under the "
+    "20,050 low; the +5% line falls inside the cluster of averages where the late-October advance stalled. A daily "
+    "close below 20,050 would invalidate the view in favor of down; one above 21,450, in favor of up. Reference "
+    "only: such calls showed no edge in blind tests and were never tested on this stock.",
+)
+TECHNICAL_THESES = REAL_THESES + R4_THESES + (
     "Buyers stepped in at the 20-session low and the support holds; price held above SMA50.",
     "Selling pressure eased after a sell-off on 2.1x volume; buying pressure returned near the lower band.",
     "RSI14 is oversold on 1d and overbought on 1h; short-term momentum is weak and the long lower shadow shows demand.",
@@ -539,6 +607,130 @@ E4_READABLE_MORE = (
 # Every dash reads as "-" (category Pd: U+2011 becomes U+2010 under NFKC, not "-"), and so does U+2212 MINUS SIGN.
 DASHES = ("\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2212")
 
+# Round r4 X1: the backend's enums (EquityResearchNoteService.cs, ActionViews and ActionBases) and the pairs whose
+# thesis may be published. The daily task writes market-only with wait, or insufficient-input with none for a no-view
+# without data (SKILL.md Step 3); a hold (the user said they hold the stock), reduce, sell or buy-more view, or a
+# position-aware basis, can carry the user's holding. ("insufficient-input", "wait") is refused by the backend
+# (insufficient-input requires none), so it is never served; the contract allows it as a pair of the two sets.
+ACTION_VIEWS = ("buy-more", "hold", "reduce", "sell", "wait", "none")
+ACTION_BASES = ("position-aware", "market-only", "insufficient-input")
+PUBLIC_ACTIONS = {("market-only", "wait"), ("market-only", "none"), ("insufficient-input", "wait"),
+                  ("insufficient-input", "none")}
+# Fail-closed: a missing field, a value that is not a string or one outside the enums withholds the thesis, and the
+# row is still exported (never a malformed notes part).
+ODD_ACTIONS = {
+    "actionView missing": lambda n: n.pop("actionView"),
+    "actionBasis missing": lambda n: n.pop("actionBasis"),
+    "both missing": lambda n: (n.pop("actionView"), n.pop("actionBasis")),
+    "actionView null": lambda n: n.update(actionView=None),
+    "actionBasis null": lambda n: n.update(actionBasis=None),
+    "actionView a list": lambda n: n.update(actionView=["wait"]),
+    "actionBasis an object": lambda n: n.update(actionBasis={"market-only": True}),
+    "actionView a number": lambda n: n.update(actionView=0),
+    "actionBasis true": lambda n: n.update(actionBasis=True),
+    "actionView capitalised": lambda n: n.update(actionView="Wait"),
+    "actionBasis with a trailing space": lambda n: n.update(actionBasis="market-only "),
+    "actionBasis own-position (not a backend value)": lambda n: n.update(actionBasis="own-position"),
+    "actionView watch (not a backend value)": lambda n: n.update(actionView="watch"),
+}
+# Round r4 X2: a number that ends with a comma is a list, not "<number> <ticker>": the bank-peer excess returns and a
+# low named after a ticker are published (cold-check r3, lens privacy finding 4: skill_vs_filter.log, and the claim of
+# the MBB v7 note of 2026-11-03) ...
+X2_LISTS = (
+    "+6.8, VCB", "18900, MBB's lowest",
+    "Over 20 sessions the excess return is +1.8 points vs VNINDEX and vs BID +6.8, VCB +5.1, CTG -2.4 points.",
+    "Against the bank benchmarks over 60 sessions: MBB -1.1, BID +3.0, VCB -0.6, CTG +0.9 points.",
+    "The close was 18900, MBB's lowest close since July.",
+    "BID fell 0.9% to 31700, BID's lowest close in the 100-bar window.",
+    "20-session excess return vs VNINDEX +1.82 points; vs BID +6.8, VCB +5.1, CTG -2.4 points.",
+    # review of r4 (x2_probe.py): lists the rule for counts written after the tickers must not take
+    "Against the peers over 20 sessions: VCB +5.1, CTG -2.4, BID +6.8 points.",
+    "The close was 31700, BID's lowest close since July.",
+    "MBB at 18900, BID at 31700 and VCB at 61000 all sit below SMA50.",
+)
+# ... while a number right before a ticker is still withheld, also across a full stop (SKILL.md v7 Step 4 tells the
+# writer to avoid that, and test_equity_technical_skill.py pins it as withheld), and so is a list of counts written
+# after the tickers (review of r4, x2_probe.py: r3 withheld the comma forms through the comma-ended count and r4 had
+# opened them; r3 and r4 both published the K forms).
+X2_COUNTS = ("closed 18750. MBB", "It closed 18750. MBB is weak", "3,000 MBB", "3.000 MBB", "3k MBB", "3K MBB",
+             "3 nghìn MBB", "Book: MBB 3,000, BID 1,500", "Lines: MBB 3,000, BID 1,500, VCB 800",
+             "As of Friday: MBB 3,000, BID 1,500", "In the account: MBB 3K, BID 1.5K",
+             "In the account: MBB 3k, BID 1.5k")
+# Round r4 X3: the sentences of cold-check r3 (lens privacy finding 2 and its triage), withheld alone, in a carrier and
+# inside a real thesis like REVIEW_LEAKS ...
+COLDCHECK_R3_LEAKS = (
+    "The October buyers are 12% under water.", "A 13.8% rise is needed to break even from 21,500.",
+    "About 63,000,000 dong remains unused for this name.", "VND 120000000 is idle.",
+    "Those positioned from the 21,450 cap are under water by 12%.",
+    "The remaining 63000000 VND covers roughly 3,000 more at the ceiling.",
+)
+# ... and one sentence for every form the round added: each alternative and each separator of a changed pattern, in a
+# sentence that only it withholds (review-fix/mutants.py takes each out in turn and needs a red case) ...
+X3_PRIVATE = (
+    "The October lot is 12.8% under water", "break even at 21,500", "breaks even at 21,500", "broke even at 21,500",
+    "breaking even at 21,500", "a margin-call", "average-price 21,500", "average share-price 21,500",
+    "net-asset-value", "off-the-table", "target-price 21,000", "price-target", "120,000,000 dong", "63000000 VND",
+    "63000000 vnđ", "63000000đ", "63000000 ₫", "63000000 dong", "VND 120000000", "vnđ 120000000", "₫120000000",
+    # review of r4 (review-W-exporter x3_probe.py, x4_probe.py): the money forms the docstring now names, one sentence
+    # each: a dash before a scale word; after k or m "đ" as a word, "dong(s)" and a dash; after an amount of a million
+    # or more a space between the thousands, decimals, a dash, "dongs", "Vietnamese"/"VN dong"; a colon and a space
+    # separator after VND; USD before a number; k or m and a dash before USD or dollar(s)
+    "a 63-million reserve", "About 63m dong remains idle", "A 900k dongs buffer is idle", "a 900k-dong buffer",
+    "120m đ", "The idle balance is 63 000 000 VND", "The idle balance is 63,000,000.00 VND",
+    "The idle balance is 63.000.000,00 đ", "A 63,000,000-dong reserve sits idle", "About 63,000,000 dongs remain idle",
+    "Roughly 63,000,000 Vietnamese dong remain idle", "Roughly 63,000,000 VN dong remain idle",
+    "Idle balance, VND: 63,000,000", "The idle balance stands at VND 63 000 000", "USD 50k", "2.5m dollars",
+    "2.5k dollars", "a 2,500-dollar reserve",
+    # ... and the cheap word forms of the review (NIT 4): margin call/calls/called/calling, margin balance, margin
+    # financed/financing, net asset values, average prices, average per-share price, off of the table
+    "Margin calls start below 18,550", "The October lot was margin-called at 18,600",
+    "Margin calling starts below 18,550", "The margin balance on these shares is large",
+    "Half of the October lot is margin-financed",
+    "Margin financing is heavy for this name", "Net asset values across the account fell 12%",
+    "Average prices for the two October lots were 21,500 and 21,800", "The average per-share price is 21,500",
+    "The average per share price is 21,500", "Taking some money off of the table near 20,133",
+    "Chips come off-of-the-table near 20,133",
+)
+# ... while a VND price stays published: under a million with thousands separators, or at most 6 digits without them.
+X3_TECHNICAL = (
+    "MBB closed at 18,750 VND on 1.4x volume; FPT closed at 118500 VND and VCB at 61,000 dong.",
+    "VND 18750 was the close; VND 118500 is the 20-session high of FPT; VIC closed at 242000 VND.",
+    "The close is 18.600đ on a daily basis; 31700 VND was the 2026-11-03 close.",
+    # review of r4: one thousands group with a space or after a colon, "dongs" and "VN dong" stay a price
+    "VND 18 750 was the close; the close was 18 750 VND; VND: 18,750 was the 2026-11-03 close.",
+    "61,000 dongs was the VCB close and 18,750 VN dong the MBB close.",
+)
+# Review of r4 (NIT 3): "break even" before lower, higher, further, more or deeper is chart prose (x3_probe.py).
+BREAK_EVEN_PROSE = (
+    "The close broke even lower on 2026-11-02, under the lower band.",
+    "Price broke even further below SMA50 after the gap.", "The close broke even higher above the upper band.",
+    "Price broke even more sharply below SMA50.", "Price broke even deeper into the gap.",
+)
+# Round r4 X4: what the module docstring says about separators, phrase by phrase (r4/W-exporter/phrase_forms.py lists
+# every multi-word phrase of the filter), as docstring text: an example. These match with a space and with a dash ...
+SPACE_OR_DASH = {
+    "stopped out": "stopped out", "scale in": "scale in", "stand aside": "stand aside", "take profit": "take profit",
+    "new money": "new money", "falling knife": "falling knife", "risk reward": "risk reward",
+    "break even": "break even at 21,500", "under water": "under water", "margin call": "margin call",
+    "net asset value": "net asset value", "average price": "average price 21,500", "target price": "target price",
+    "off the table": "off the table",
+}
+# ... and these only with spaces: their dash form is published, so the docstring may not claim it.
+SPACE_ONLY = {
+    "on margin": "held on margin", "at an average of": "at an average of 21,500", "on the books": "on the books",
+    "basis of/is <number>": "basis of 21,500", "thousands of shares": "thousands of shares", "I am/have/own": "I am",
+    "profits taken/booked": "profits taken", "cut the loss": "cut the loss", "an order": "an order",
+    "place an order": "place an order", "order at <number>": "order at 18,600",
+    "long above <number>": "long above 20,100", "a long at": "a long at 18,600", "long from": "long from 21,500",
+    "already long": "already long", "already in the stock": "already in the stock",
+    "short the bounce": "short the bounce", "fade the rally": "fade the rally", "lock in gains": "lock in gains",
+    "book profits": "book profits", "fill at": "fill at 21,500", "pick up shares": "pick up shares",
+    "close the trade": "close the trade", "keep the stock": "keep the stock",
+    "existing investors/owners": "existing investors", "dot com": "dot com",
+}
+# The forms the docstring says are not listed (not every form of every listed word is).
+FORMS_NOT_LISTED = ("stopping", "sidelining", "positioned", "going flat", "went flat")
+
 
 def _sessions(n: int, start: date) -> list[str]:
     out, d = [], start
@@ -600,14 +792,15 @@ def _technical(bars: list[dict], vnindex_status: str = "ok") -> dict:
 def _entry(symbol: str, day: str, n: int, *, mode: str = "forward", direction: str = "up", available: int = 5_000,
            thesis: str = "", horizon: int = 20, status: str = "pending", pending: str | None = None,
            ret: float | None = None, hit: bool | None = None, target: str | None = None, realized: str | None = None,
-           baseline: str | None = None) -> tuple[dict, dict]:
-    """One journal note as GET research-notes serves it, and its GET direction-scores item."""
+           baseline: str | None = None, view: str = "wait", basis: str = "market-only") -> tuple[dict, dict]:
+    """One journal note as GET research-notes serves it, and its GET direction-scores item. actionView/actionBasis
+    default to what the daily task writes (equity-technical SKILL.md Step 3: market-only with wait)."""
     ms = _ms(day)
     note = {"noteId": f"session/{symbol}/{ms}/{n:08x}", "symbol": symbol, "mode": mode,
             "requestedAsOfUtc": day + "T08:00:00Z", "signalBarOpenTimeMs": ms, "signalBarCloseTimeMs": ms + 27_900_000,
             "horizonSessions": horizon, "snapshotId": f"snap/{symbol}/{ms}/snap-secret-id", "snapshotSha256": "a" * 64,
             "snapshotVerified": True, "skillVersion": "equity-technical-v6", "methodVersion": "m1",
-            "direction": direction, "actionView": "hold", "actionBasis": "own-position",
+            "direction": direction, "actionView": view, "actionBasis": basis,
             "body": {"schemaVersion": "equity-research-note-v1", "thesis": thesis,
                      "evidence": [{"claim": "c", "evidenceIds": ["e1"]}],
                      "counterEvidence": [{"claim": "x", "evidenceIds": ["e2"]}],
@@ -965,7 +1158,7 @@ def test_every_output_file_holds_only_contract_fields_and_no_planted_secret(scre
         leaked = FORBIDDEN & set(_keys(doc))
         assert not leaked, f"{name} leaks {leaked}"
         text, values = (out / name).read_text(encoding="utf-8"), list(_strings(doc))
-        for secret in (KEY, "snap-secret-id", "session/MBB/", "fake.invalid", "http", "own-position", "a" * 64,
+        for secret in (KEY, "snap-secret-id", "session/MBB/", "fake.invalid", "http", "market-only", "a" * 64,
                        *THESIS_SECRETS):
             assert secret not in text and not any(secret in v for v in values), f"{name} contains {secret!r}"
     meta, screen = files["meta.json"], files["screen.json"]
@@ -1159,7 +1352,7 @@ def test_every_cold_check_r2_leak_sentence_is_withheld(text):
     assert web.public_thesis(f"MBB 1d closes near SMA50. {text}. View: sideways, for reference only.") == (None, True)
 
 
-@pytest.mark.parametrize("text", REVIEW_LEAKS)
+@pytest.mark.parametrize("text", REVIEW_LEAKS + COLDCHECK_R3_LEAKS)
 def test_every_review_r3_probe_sentence_is_withheld_alone_in_a_carrier_and_in_a_real_thesis(text):
     real = REAL_THESES[0]
     half = real.find(". ", len(real) // 2) + 2  # a sentence boundary in the middle of a published thesis
@@ -1212,6 +1405,153 @@ def test_the_patterns_read_the_lowercased_probe_and_the_cased_rules_keep_their_c
     assert web.public_thesis("MBB 1d closes near SMA50. POS\u0130T\u0130ON: 30%. View: sideways.") == (None, True)
     bid = "BID 1d closes near SMA50; the BID 20 EMA is flat and 2026-11-02 BID volume was 2.1x its average."
     assert web.public_thesis(bid) == (bid, False)
+
+
+# --- round r4 ---
+
+CARRIER = "MBB 1d closes near SMA50. {}. View: sideways, for reference only."
+
+
+@pytest.mark.parametrize("text", X2_LISTS + X3_TECHNICAL)
+def test_a_list_after_a_number_and_a_vnd_price_are_published_unchanged(text):
+    # X2: "+6.8, VCB" is a list (the comma ends the number), not a share count; X3: a VND price is not an amount
+    for thesis in (text, CARRIER.format(text.rstrip("."))):
+        assert web.public_thesis(thesis) == (thesis, False), thesis
+
+
+@pytest.mark.parametrize("text", X2_COUNTS + X3_PRIVATE)
+def test_a_number_before_a_ticker_and_every_new_amount_or_phrase_form_withholds_the_thesis(text):
+    assert web.public_thesis(CARRIER.format(text)) == (None, True)
+
+
+def _dashed(text: str) -> str:
+    """Every space between two words with a letter written as a dash ("average price 21,500": "average-price 21,500")."""
+    words = text.split(" ")
+    return "".join(w + ("" if i == len(words) - 1 else "-" if any(c.isalpha() for c in w)
+                        and any(c.isalpha() for c in words[i + 1]) else " ") for i, w in enumerate(words))
+
+
+def _flat(text: str) -> str:
+    """A text as one line: whitespace folded, Markdown backticks dropped."""
+    return " ".join(text.replace("`", "").split())
+
+
+def _says_the_separators(text: str) -> None:
+    """The text (the module docstring or data-contract.md) names every phrase of SPACE_OR_DASH in its list of phrases
+    that take a dash and every phrase of SPACE_ONLY in its list of phrases that take only spaces, the forms that are
+    not listed, the "sideline" rule and the break-even exception."""
+    flat = _flat(text)
+    low = flat.lower()
+    head, tail = low.split("these match only with spaces:", 1)
+    dash_list = head[head.index("the words of a listed phrasal verb or compound match with a space or a dash"):]
+    space_list = tail[:tail.index('"sideline" matches only')]
+    for phrase in SPACE_OR_DASH:
+        assert phrase.lower() in dash_list and phrase.lower() not in space_list, phrase
+    for phrase in SPACE_ONLY:
+        assert phrase.lower() in space_list and phrase.lower() not in dash_list, phrase
+    for form in FORMS_NOT_LISTED:
+        assert f'"{form}"' in flat, form
+    assert '"sideline" matches only as one word or with a dash' in flat
+    assert ('"break even" right before lower, higher, further, more or deeper is chart prose ("broke even lower")'
+            in flat)
+
+
+# Review of r4 (MINOR 1 and NIT 5): the examples the docstring and data-contract.md give for amounts and for
+# "<number> <ticker>": each example is in both texts, and the filter withholds or publishes it as the text says.
+DOC_WITHHELD = ("63 million", "a 63-million reserve", "50k VND", "120m dong", "a 900k-dong buffer", "63,000,000.00 VND",
+                "63 000 000 VND", "63000000-dong", "VND: 63,000,000", "VND 63 000 000", "VND 120000000", "VND 120m",
+                "USD 50k", "2.5m dollars", "a 2,500-dollar reserve", "3,000 MBB", "3K MBB", "3 nghìn MBB",
+                "MBB 3,000, BID 1,500", "MBB 18900, BID 31700", "at 18,750, BID 1d")
+DOC_PUBLISHED = ("18,750 VND", "118500 VND", "61,000 dong", "63,000,000 in VND terms", "+6.8, VCB +5.1",
+                 "broke even lower")
+
+
+def _says_the_examples(text: str) -> None:
+    flat = _flat(text)
+    for example in DOC_WITHHELD + DOC_PUBLISHED:
+        assert example in flat, example
+    names = re.fullmatch(r"\(\?!(.*)\)", web._NOT_TICKER).group(1).split("|")  # the exceptions of "<number> <ticker>"
+    assert f"the indicator abbreviations {', '.join(names[:-1])}, nor {names[-1]}" in flat
+
+
+def test_the_docstring_says_which_phrases_take_a_dash_and_which_forms_are_not_listed():
+    # X4: the docstring names every phrase that matches only with spaces, and claims a dash only where the filter
+    # withholds it; it also names forms of listed words that are not listed. A filter change that widens or narrows
+    # one of these turns this test red until the docstring says so (and the next test: until data-contract.md does).
+    _says_the_separators(web.__doc__)
+    for example in SPACE_OR_DASH.values():
+        for text in (example, _dashed(example)):
+            assert web.public_thesis(CARRIER.format(text)) == (None, True), text
+    for example in SPACE_ONLY.values():
+        assert web.public_thesis(CARRIER.format(example)) == (None, True), example
+        dashed = CARRIER.format(_dashed(example))
+        assert web.public_thesis(dashed) == (dashed, False), dashed
+    for form in FORMS_NOT_LISTED:
+        assert web.public_thesis(CARRIER.format(form)) == (CARRIER.format(form), False), form
+    for text, hidden in (("sideline", True), ("side-line", True), ("side line", False)):
+        assert web.public_thesis(CARRIER.format(text))[1] is hidden, text
+
+
+def test_the_docstring_examples_of_amounts_and_tickers_are_what_the_filter_does():
+    _says_the_examples(web.__doc__)
+    for example in DOC_WITHHELD:
+        assert web.public_thesis(CARRIER.format(example)) == (None, True), example
+    for example in DOC_PUBLISHED:
+        assert web.public_thesis(CARRIER.format(example)) == (CARRIER.format(example), False), example
+    for name in re.fullmatch(r"\(\?!(.*)\)", web._NOT_TICKER).group(1).split("|"):
+        assert web.public_thesis(CARRIER.format(f"the 20 {name}"))[1] is False, name
+    assert web.public_thesis(CARRIER.format("the 200 DMA")) == (None, True)  # not one of them: withheld
+
+
+def test_the_data_contract_says_what_the_docstring_says():
+    contract = AI_ROOT.parent / "evidence" / "vn30-web-20261103" / "data-contract.md"
+    if not contract.is_file():
+        pytest.skip("the data contract lives outside the ai repo (btc workspace only)")
+    text = contract.read_text(encoding="utf-8")
+    _says_the_separators(text)
+    _says_the_examples(text)
+
+
+@pytest.mark.parametrize("text", BREAK_EVEN_PROSE)
+def test_broke_even_lower_and_its_kin_are_chart_prose(text):
+    # review of r4 (NIT 3): the break-even rule leaves "broke even lower" (higher, further, more, deeper) to the chart
+    for thesis in (text, CARRIER.format(text.rstrip("."))):
+        assert web.public_thesis(thesis) == (thesis, False), thesis
+    assert web.public_thesis(CARRIER.format(text.replace("broke even", "broke even near 21,500, and"))) == (None, True)
+
+
+def _one_note(change=None, thesis: str = REAL_THESES[0]) -> tuple[list[dict], dict, int]:
+    """note_rows on a journal of one forward H=20 note with the daily task's actionView/actionBasis, after `change`."""
+    note, item = _entry("MBB", "2026-11-02", 1, thesis=thesis, pending="immature", target=_target("2026-11-02"))
+    if change is not None:
+        change(note)
+    return web.note_rows({"items": [note]}, {"horizons": [_summary(20, [item])], "items": [item]})
+
+
+@pytest.mark.parametrize("basis", ACTION_BASES)
+@pytest.mark.parametrize("view", ACTION_VIEWS)
+def test_a_thesis_is_published_only_for_a_market_only_note_with_wait_or_none(view, basis):
+    published, score, _ = _one_note()
+    assert published[0]["thesis"] == REAL_THESES[0]
+    rows, same_score, withheld = _one_note(lambda n: n.update(actionView=view, actionBasis=basis))
+    assert same_score == score
+    if (basis, view) in PUBLIC_ACTIONS:
+        assert (rows, withheld) == (published, 0)
+    else:  # the row stays (direction, status, dates); only the thesis is withheld, and it counts
+        assert (rows, withheld) == ([dict(published[0], thesis=None)], 1)
+
+
+@pytest.mark.parametrize("odd", sorted(ODD_ACTIONS))
+def test_a_missing_or_odd_action_withholds_the_thesis_and_keeps_the_row(odd):
+    published, _, _ = _one_note()
+    rows, _, withheld = _one_note(ODD_ACTIONS[odd])  # never a malformed notes part
+    assert (rows, withheld) == ([dict(published[0], thesis=None)], 1)
+
+
+def test_a_note_without_a_thesis_counts_nothing_whatever_its_action():
+    for thesis in ("", "  \n "):
+        rows, _, withheld = _one_note(lambda n: n.update(actionView="hold", actionBasis="position-aware"), thesis)
+        assert (rows[0]["thesis"], withheld) == (None, 0)
 
 
 def test_unavailable_reasons_are_plain_vietnamese_and_the_details_go_to_stderr(screen_dir, tmp_path, monkeypatch,
@@ -1330,6 +1670,57 @@ def test_a_kept_thesis_passes_the_privacy_filter_again(screen_dir, tmp_path, mon
     assert summary["thesesWithheld"] == 2 and summary["keptByPart"] == {"notes": 1, "candles": 1}
     assert summary["written"] == len(SYMBOLS) - 1
     assert not any("cash" in v for p in out.rglob("*.json") for v in _strings(json.loads(p.read_text("utf-8"))))
+
+
+def _forward_pairs(fake: FakeBackend, symbol: str = "MBB") -> dict[str, tuple[dict, dict]]:
+    """signal date -> the forward H=20 note that holds its bar's slot, and its direction-score item."""
+    return {web.session_of(n["signalBarOpenTimeMs"]): (n, i) for n, i in fake.journals[symbol]
+            if n["mode"] == "forward" and n["horizonSessions"] == 20 and i["status"] != "superseded-not-scored"}
+
+
+def test_a_note_that_may_know_the_users_holding_keeps_its_row_but_never_its_thesis(screen_dir, tmp_path, monkeypatch,
+                                                                                   capsys):
+    # X1, end to end: a clean technical thesis (one the filter publishes) under hold (SKILL.md Step 3: the user said
+    # they hold the stock) or under position-aware/reduce reaches no public file; the rows and the score stay.
+    fake = _market(Clock())
+    days, pairs = _mbb_days(), _forward_pairs(fake)
+    pairs[days[0]][0].update(actionView="hold")
+    pairs[days[0]][0]["body"]["thesis"] = R4_THESES[0]
+    pairs[days[1]][0].update(actionView="reduce", actionBasis="position-aware")
+    pairs[days[1]][0]["body"]["thesis"] = R4_THESES[1]
+    assert all(web.public_thesis(t) == (t, False) for t in R4_THESES[:2])
+    out = tmp_path / "data"
+    assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
+    summary = _summary_line(capsys)
+    mbb = _symbol(out, "MBB")
+    assert [(n["signalDate"], n["direction"], n["status"], n["thesis"]) for n in mbb["notes"][:4]] == [
+        (days[0], "up", "pending", None), (days[1], "down", "pending", None), (days[2], "sideways", "pending", None),
+        (days[3], "up", "pending", "first note on the bar")]
+    assert len(mbb["notes"]) == 60 and mbb["score"]["scored"] == 80
+    assert summary["thesesWithheld"] == 3  # these two and the fixture's planted one (days[2])
+    for p in out.rglob("*.json"):
+        values = list(_strings(json.loads(p.read_text(encoding="utf-8"))))
+        assert not any(t[:100] in v for t in R4_THESES[:2] for v in values), p.name
+
+
+def test_a_thesis_withheld_for_its_action_stays_withheld_when_the_notes_part_is_kept(screen_dir, tmp_path, monkeypatch,
+                                                                                    capsys):
+    # X1 on the kept path: the files carry no actionView/actionBasis, so a kept thesis is the one the check let
+    # through when it was first exported; a thesis it withheld is null in the file and stays null.
+    fake = _market(Clock())
+    _newest(fake)[0].update(actionView="hold")
+    _newest(fake)[0]["body"]["thesis"] = R4_THESES[0]
+    out = tmp_path / "data"
+    assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
+    first = _symbol(out, "MBB")
+    assert first["notes"][0]["thesis"] is None and first["notes"][1]["thesis"] == _thesis("MBB", 1)
+    capsys.readouterr()
+    assert _run(_market(Clock(), errors={("MBB", "research-notes"): [500]}), Clock(), screen_dir, out, monkeypatch) == 0
+    summary = _summary_line(capsys)
+    kept = _symbol(out, "MBB")
+    assert summary["keptByPart"] == {"notes": 1} and (kept["notes"], kept["score"]) == (first["notes"], first["score"])
+    assert not any(R4_THESES[0][:100] in v for p in out.rglob("*.json")
+                   for v in _strings(json.loads(p.read_text(encoding="utf-8"))))
 
 
 def _errors() -> dict:

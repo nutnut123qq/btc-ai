@@ -18,24 +18,66 @@ the notes part malformed. returnPct is direction-score-v1's target close / signa
 over the ticker's whole journal, copied from the direction-scores horizons[] entry with horizonSessions HORIZON
 (resolved, hits, baselinePrior.hits, status), so it does not depend on which notes are exported.
 
-thesis is published verbatim, so it first passes a fail-closed keyword filter that reads the whole text. The filter
-is a denylist (PRIVATE_TEXT): the listed words about positions, holdings, quantities, cost basis, money, settlement
-(T+n), stops, orders, trade set-ups and trading actions, in English in every inflection of each listed word
-(reduce/reduces/reduced/reducing) and with a space or a dash between the words of a listed phrase (stopped out,
-stopped-out), the first person (we, our, my, I'm), and their Vietnamese counterparts with and without diacritics;
-plus patterns for money amounts, "<number> <ticker>", URLs, IP addresses, ports, absolute and dotted file paths,
-e-mail addresses, long hex strings and digit runs, internal ids and secrets. A few chart phrases are blanked first,
-each only in its chart context ("range position 0.45", "selling pressure", "the sell-off", "support holds":
-TECHNICAL_PHRASES, CHART_BEFORE). One match anywhere withholds the whole thesis (null), and so does any character
-outside the short allowlist the lists can read (READABLE, _unreadable: printable ASCII, Latin-1, Vietnamese and a
-little typography; so a format or bidi control, a thin space, a Cyrillic, Greek, IPA or small-capital look-alike, an
-enclosed letter or a box-drawing dash withholds). When in doubt it withholds, so a purely technical thesis can be
-withheld too ("volatility reduced", "price is holding above SMA50"). Being a list of keywords it does not catch every
-way of phrasing advice or a position (advice sentences written without seeing the list still pass now and then:
-evidence/vn30-web-20261103/r3/W-exporter/review-fix/heldout); host names, relative paths without an extension, short
-hex ids and words glued to "_" or a digit ("buy18600") are not guaranteed to be caught, and the writer is told not to
-write them (ai/skills/equity-technical/SKILL.md, Step 4). A published thesis longer than THESIS_MAX characters is cut
-to THESIS_MAX - 1 characters followed by CUT.
+thesis is published verbatim, and only for a note whose actionBasis is market-only or insufficient-input and whose
+actionView is wait or none (market_only: PUBLIC_BASES, PUBLIC_VIEWS). Any other value, a missing field or a value that
+is not a string withholds the thesis and the note's row is still exported: a note written in a session that knew the
+user's holding (hold, reduce, sell, buy-more; position-aware) can carry it in its thesis. The previous run's files do
+not carry actionView/actionBasis, so a kept thesis (Parts) was checked this way when it was first exported; the theses
+exported before this check (VN30-WEB r4) all came from wait/market-only notes.
+
+A thesis that may be published first passes a fail-closed keyword filter that reads the whole text. The filter is a
+denylist (PRIVATE_TEXT): the listed words about positions, holdings, quantities, cost basis, money, settlement (T+n),
+stops, orders, trade set-ups and trading actions, the first person (we, our, my, I'm) and their Vietnamese
+counterparts with and without diacritics. An English word matches in the forms its pattern lists (reduce, reduces,
+reduced, reducing), which are not all the forms of every word ("stopping", "sidelining", "positioned", "going flat"
+and "went flat" are not listed). The words of a listed phrasal verb or compound match with a space or a dash between
+them (stopped out, stopped-out; scale in, stand aside, take profit, new money, falling knife, risk reward, break even,
+under water, margin call, net asset value, average price, target price, off the table); these match only with spaces:
+on margin, at an average of, on the books, basis of/is <number>, thousands of shares, I am/have/own, profits
+taken/booked, cut the loss, an order, place an order, order at <number>, long above <number>, a long at, long from,
+already long, already in the stock, short the bounce, fade the rally, lock in gains, book profits, fill at, pick up
+shares, close the trade, keep the stock, existing investors/owners, dot com (lock in gains, pick up shares and cut the
+loss also with a dash right after their first word), and so does every Vietnamese phrase; "sideline" matches only as
+one word or with a dash. "break even" right before lower, higher, further, more or deeper is chart prose ("broke even
+lower") and does not match.
+Amounts: between a number and the word after it, and between k or m and the currency word, there may be nothing, one
+space or one dash; before k or m only an optional space; after VND, vnđ, ₫, USD or $ an optional space (after VND,
+vnđ or ₫ also an optional colon first). Caught: a number and a scale word (million, mil, mio, mn, billion, bn, triệu,
+tỷ, tỉ, củ, tr: 63 million, a 63-million reserve); a number, k or m and a VND currency word (VND, vnđ, đ, ₫, đồng,
+dong, dongs: 50k VND, 120m dong, a 900k-dong buffer); a VND amount of a million or more ("," or "." or a space
+between the thousands, or 7 to 16 digits; up to two decimals) and VND, vnđ, đ, ₫, dong, dongs, Vietnamese dong or VN
+dong, these two with one space inside (63,000,000.00 VND, 63 000 000 VND, 63000000-dong; here đ also stands for any
+word that starts with it, such as đồng, while after k or m it counts only as a word of its own); VND, vnđ or ₫ before
+7 to 15 digits, a number of a million or more with these separators or a number and k or m (VND: 63,000,000, VND 63
+000 000, VND 120000000, VND 120m); $ or USD before a number; a number, k or m if any, and USD or dollar(s) (USD 50k,
+2.5m dollars, a 2,500-dollar reserve). A price such as 18,750 VND, 118500 VND or 61,000 dong is not an amount, and a
+currency word that does not stand next to the number is not caught ("63,000,000 in VND terms").
+Other patterns: a share count (3,000 shares, 3,000-share, 3 nghìn cp, thousands of shares); "<number> <ticker>"
+(3,000 MBB, 3K MBB, 3 nghìn MBB, also across a full stop; not after a dash, so not the end of a date, and not one of
+the indicator abbreviations SMA, EMA, RSI, ATR, OBV, POC, VAL, VAH, nor VND); a number that ends with a comma is read
+as a list ("+6.8, VCB +5.1" passes) unless the ticker after it is followed by a space and a digit ("MBB 3,000, BID
+1,500" withholds, and so do "MBB 18900, BID 31700" and "at 18,750, BID 1d"); URLs (scheme://, www.), host names
+(label.tld, localhost, a Windows default name); dotted IPv4 addresses (four numbers), IPv6 addresses written with "::"
+or in eight groups, host:port, a port of 4 or 5 digits after a colon that does not follow a letter, a digit or another
+colon (at :5197) and the word port; file paths (a backslash, a drive letter, a path that starts with /, ./, ../ or ~/
+and has a second slash, a listed root such as /home or evidence/, a listed file extension, a few folder names); e-mail
+addresses (@); hex strings and digit runs (16 or more hex characters, 8 to 15 with a letter and a digit, 12 or more
+digits, 0x and 8 hex digits, a run of 32 or more letters, digits, +, /, =, _ or -); internal ids and secrets. A few
+chart phrases are blanked first, each only in its chart context ("range position 0.45", "selling pressure", "the
+sell-off", "support holds": TECHNICAL_PHRASES, CHART_BEFORE). One match anywhere withholds the whole thesis (null), and
+so does any character outside the short allowlist the lists can read (READABLE, _unreadable: printable ASCII, Latin-1,
+Vietnamese and a little typography; so a format or bidi control, a thin space, a Cyrillic, Greek, IPA or small-capital
+look-alike, an enclosed letter or a box-drawing dash withholds). When in doubt it withholds, so a purely technical
+thesis can be withheld too ("volatility reduced", "price is holding above SMA50"). Being a list of keywords it does
+not catch every way of phrasing advice or a position: advice written around the listed words passes almost always
+(cold-check r3: 25 of 25 such English sentences, still 25 after r4), and so do natural position sentences without a
+listed word (11 of the 17 position sentences of that cold-check still pass after r4; in evidence/vn30-web-20261103:
+coldcheck-r3.md, r4/W-exporter/probe-r4.log and review-fix/probe-r4-after-review.log). Host names without a dot, an
+abbreviated or decimal IPv4 address ("127.1:5197"), relative paths without an extension, short hex ids, amounts
+written in words ("sixty-three million dong") and words glued to "_" or a digit ("buy18600") are not guaranteed to be
+caught. Writers following ai/skills/equity-technical/SKILL.md v7 or later are told not to write any of these (Step 4);
+notes written under an earlier version of the skill were not. A published thesis longer than THESIS_MAX characters is
+cut to THESIS_MAX - 1 characters followed by CUT.
 
 Parts: candles, technical (indicators + relativeStrength) and notes (notes + score) are read independently. A part
 that fails (an HTTP error, a 429 after the retry, a malformed payload or, for notes, a missing admin key) keeps the
@@ -53,7 +95,7 @@ that writes the notes: its calls start at least TECH_GAP_S apart (at most 4 per 
 waits RETRY_AFTER_S and retries once. A file is rewritten only when its bytes change, and meta.json keeps its
 generatedAtUtc when nothing else changed. Exit 1 when the backend is unreachable (nothing is written), 2 when the
 screen file is missing or invalid. The summary line on stdout (ASCII) counts the unavailable parts, the parts kept
-from the previous run and the withheld theses.
+from the previous run and the withheld theses (by market_only or by the filter, each thesis once).
 
 Usage (from ai/, venv python):
   python export_vn30_web.py [--out-dir DIR] [--screen-dir DIR] [--backend URL]
@@ -115,6 +157,12 @@ STATUS_OUT = {"resolved": "scored", "pending": "pending", "no-view": "no-view",
               "window-undetermined-not-scored": "window-undetermined-not-scored"}
 NOTE_STATUSES = frozenset(STATUS_OUT.values())
 PENDING_REASONS = frozenset({"immature", "target-bar-missing", "calendar-coverage-expired", "signal-bar-missing"})
+# The only actionBasis and actionView values of a note whose thesis may be published (contract r4 X1). The backend
+# accepts actionBasis position-aware, market-only, insufficient-input and actionView buy-more, hold, reduce, sell,
+# wait, none (EquityResearchNoteService.cs ActionBases, ActionViews). A note written in a session that knew the user's
+# holding (hold, reduce, sell, buy-more; position-aware) can carry it in its thesis, so that thesis never leaves.
+PUBLIC_BASES = frozenset({"market-only", "insufficient-input"})
+PUBLIC_VIEWS = frozenset({"wait", "none"})
 SAMPLE_STATUSES = frozenset({"no-data", "insufficient-sample", "ok"})
 SYMBOL_FIELDS = ("symbol", "label", "isBank", "candles", "indicators", "relativeStrength", "notes", "score")
 INDICATOR_FIELDS = ("date", "close", *INDICATORS)
@@ -170,9 +218,11 @@ def _chart_phrase(m: re.Match) -> str:
     return m.group(0)
 
 
-# Fail-closed denylist: one match anywhere withholds the whole thesis. A listed word matches in every inflection
-# (add/adds/added/adding) and the words of a listed phrase with a space or a dash between them (stopped out,
-# stopped-out), so a purely technical sentence can lose its thesis too ("MBB added 1.2%", "the stock sold off");
+# Fail-closed denylist: one match anywhere withholds the whole thesis. A listed word matches in the forms its pattern
+# lists (add/adds/added/adding; not every form of every word), and the words of a phrasal verb or compound with a
+# space or a dash between them (stopped out, stopped-out; "sideline" without the space), but many phrases only with
+# spaces (on the books, fill at, keep the stock; the module docstring lists which phrases take a dash and which do
+# not), so a purely technical sentence can lose its thesis too ("MBB added 1.2%", "the stock sold off");
 # "held" is deliberately not listed ("support held" is everyday chart language), nor a bare "stopped" or
 # "accumulation". It does not catch every phrasing of advice or of a position (see the module docstring). The
 # patterns are lowercase: they read the lowercased probe (_private). Every repetition is bounded or delimited, so a
@@ -181,27 +231,41 @@ PRIVATE_PATTERNS = (
     # positions, holdings, quantities, cost basis, money and settlement
     r"\bpositions?\b", r"\bholding", r"holders?\b", r"\bholds?\b", r"\bportfolios?\b", r"\bexposure\b",
     r"\ballocat", r"\b(?:over|under)weight\b", r"\bcash\b", r"\bbudget", r"\bcapital\b", r"\bcosts?\b",
-    r"\bmargin (?:loans?|calls?|accounts?|debt|trading|ratio|requirements?)\b", r"\bon margin\b",
+    r"\bmargin[- ](?:loans?|call(?:s|ed|ing)?|accounts?|debt|trading|ratio|requirements?|balances?|financ(?:ed|ing))\b",
+    r"\bon margin\b",
     # a cost basis: purchase, entry, cost and buy are listed words of their own ("average purchase price"), and the
     # volume-weighted average price is a chart line
-    r"\b(?:avg\.?|(?<!volume[- ]weighted )average|acquisition) ?(?:share |fill |execution |unit )?price\b",
+    r"\b(?:avg\.?|(?<!volume[- ]weighted )average|acquisition)[- ]?(?:(?:per[- ])?(?:share|fill|execution|unit)[- ])?"
+    r"prices?\b",
     r"\bat an average (?:price )?of\b",
-    r"\bbreak-?even\b", r"\bp ?[&/] ?l\b", r"\bpnl\b", r"\bunreali[sz]ed\b", r"\bunder-?water\b",
+    # "broke even lower" (further, ...) is chart prose
+    r"\b(?:break(?:s|ing)?|broke)[- ]?even\b(?! (?:lower|higher|further|more|deeper)\b)", r"\bp ?[&/] ?l\b",
+    r"\bpnl\b", r"\bunreali[sz]ed\b", r"\bunder[- ]?water\b",
     r"\bpa(?:y|ys|ying|id)\b", r"\bown(?:s|ed|ing)\b", r"\bon (?:the|its|their) books\b", r"\bnav\b",
-    r"\bnet asset value\b", r"\bstakes?\b", r"\bbasis (?:is |was |of |at |near )?\d",
+    r"\bnet[- ]asset[- ]values?\b", r"\bstakes?\b", r"\bbasis (?:is |was |of |at |near )?\d",
     r"\b(?:full|half|normal|starter|initial|partial|double|quarter|planned|usual|max|maximum|trade|lot)"
     r"[- ]size[sd]?\b",
     r"\b(?:hundreds?|thousands?|millions?|billions?) (?:of )?(?:shares?|units?|lots?)\b",
-    # a number read from its first digit (not after a digit, a comma or "<digit>."), then a share count or an amount
+    # a number read from its first digit (not after a digit, a comma or "<digit>."), then a share count or an amount: a
+    # scale word right after it or one space or dash apart ("a 63-million reserve"), or k or m (an optional space
+    # before) and, right after it or one space or dash apart, a VND currency word ("120m dong", "a 900k-dong buffer")
     r"\d(?<![\d,]\d)(?<!\d\.\d)[\d,.]{0,40}(?: ?(?:k|m|nghìn|ngàn)?[ -]?(?:shares?|units?|lots?|cp|cổ)\b"
-    r"| ?(?:million|mil|mio|mn|billion|bn|triệu|tỷ|tỉ|củ|tr)\b| ?(?:k|m) ?(?:vnd|vnđ|đồng|₫))",
-    r"\d{1,3}(?:[,.]\d{3}){2,6} ?(?:vnd|vnđ|đ|₫)",  # "đ" also starts "đồng"
-    r"(?:\bvnd|\bvnđ|₫) ?\d[\d,.]{0,20} ?[km]\b",  # "VND 120m" (million, bn... after a number withhold anyway)
-    r"(?:\bvnd|\bvnđ|₫) ?\d{1,3}(?:[,.]\d{3}){2,6}", r"\$ ?\d", r"\d ?(?:usd|dollars?)\b",
+    r"|[ -]?(?:million|mil|mio|mn|billion|bn|triệu|tỷ|tỉ|củ|tr)\b| ?(?:k|m)[ -]?(?:vnd|vnđ|đồng|đ\b|₫|dongs?\b))",
+    # a VND amount of a million or more: with ",", "." or a space between the thousands, or as 7 to 16 digits without
+    # them (12 or more are a digit run anyway; a VN30 price has at most 6: "118500 VND", "VND 18750" and "61,000 dong"
+    # are published), with up to two decimals, then right after it or one space or dash apart a VND currency word ("đ"
+    # also starts "đồng"); or after VND, vnđ or ₫, an optional colon and an optional space: 7 to 15 digits, two or more
+    # thousands groups, or a number and k or m ("VND 120m"; million, bn... after a number withhold anyway)
+    r"(?:\d{1,3}(?:[,. ]\d{3}){2,6}|\d(?<!\w\d)\d{6,15})(?:[.,]\d{1,2})?[ -]?(?:(?:vietnamese|vn) )?"
+    r"(?:vnd|vnđ|đ|₫|dongs?\b)",
+    r"(?:\bvnd|\bvnđ|₫):? ?(?:\d{7,15}|\d{1,3}(?:[,. ]\d{3}){2,6}|\d[\d,.]{0,20} ?[km]\b)",
+    # a dollar amount: $ or USD (an optional space after) before a number; or a number, then k or m if any (an optional
+    # space before), then right after it or one space or dash apart USD or dollar(s)
+    r"\$ ?\d", r"\busd ?\d", r"\d(?: ?[km])?[ -]?(?:usd|dollars?)\b",
     r"\bt ?\+ ?\d", r"\bsellable\b", r"\bsettlement\b", r"\bbrokers?\b", r"\busers?\b", r"\byou(?:rs?)?\b",
     # the writer's own: a thesis about the chart has no first person
     r"\b(?:we|our|ours|my|mine)\b", r"\bi(?:['’](?:m|ve|d|ll)| (?:am|have|had|own|would|will))\b",
-    # stops and trading actions, every inflection, a space or a dash between the words of a phrase
+    # stops and trading actions in the forms listed; a phrasal verb with a space or a dash between its words
     r"\bstop(?:s|-?loss(?:es)?)?\b", r"\bstop(?:ped|ping)[- ]out\b",
     r"\b(?:take|takes|taking|took|taken)(?:[- ][a-z]+){0,2}[- ]?profits?\b",
     r"\bprofits? (?:were |was |are |is |being |got )?(?:taken|booked|locked)\b",
@@ -227,7 +291,7 @@ PRIVATE_PATTERNS = (
     r"\b(?:get|gets|getting|got|gotten)[- ](?:long|short|in|out)(?!-)\b",
     r"\blighten(?:s|ed|ing)?[- ]up\b", r"\bload(?:s|ed|ing)?[- ]up\b", r"\bbail(?:s|ed|ing)?[- ]out\b",
     r"\bbottom[- ]?fish", r"\bfalling[- ]knife\b", r"\block(?:s|ed|ing)?[- ]in (?:[a-z]+ ){0,3}?(?:gains?|profits?)\b",
-    r"\bbook(?:s|ed|ing)? (?:[a-z]+ ){0,2}?(?:gains?|profits?|losses?)\b", r"\boff the table\b",
+    r"\bbook(?:s|ed|ing)? (?:[a-z]+ ){0,2}?(?:gains?|profits?|losses?)\b", r"\boff[- ](?:of[- ])?the[- ]table\b",
     r"\bstep(?:s|ped|ping)?[- ]aside\b", r"\bstay(?:s|ed|ing)?[- ]away\b(?! from)", r"\bset(?:s|ting)?[- ]aside\b",
     r"\bfill(?<!\bgap fill)(?<!\bgap was fill)(?:s|ed)? (?:at|near|around)\b",
     r"\bpick(?:s|ed|ing)?[- ]up (?:(?:some|more|the|a few|cheap) )?(?:shares?|stock)\b",
@@ -236,7 +300,7 @@ PRIVATE_PATTERNS = (
     r"\b(?:a|new) (?:long|short)s? (?:at|near|above|below)\b",
     r"\b(?:long|short) (?:from|since)\b", r"\bexisting (?:longs?|shorts?|investors?|owners?)\b",
     r"\balready (?:(?:long|short)(?!-)|in the (?:stock|name|trade))\b",
-    r"\bstay(?:s|ed|ing)?[- ](?:(?:long|short)(?!-)|out|aside|flat)\b", r"\b(?:target price|price target)s?\b",
+    r"\bstay(?:s|ed|ing)?[- ](?:(?:long|short)(?!-)|out|aside|flat)\b", r"\b(?:target[- ]price|price[- ]target)s?\b",
     # a trade set-up and its costs (from the held-out measurement, review-fix/heldout)
     r"\br ?[:/] ?r\b", r"\brisk[ /-]?(?:to[ -])?reward\b", r"\breward[ /-]?(?:to[ -])?risk\b",
     r"\b(?:fees?|commissions?|slippage)\b", r"\bquantit(?:y|ies)\b", r"\baffordab", r"\borders\b",
@@ -254,7 +318,8 @@ PRIVATE_PATTERNS = (
     r"|giai ngan|bat day|vao hang|thoat hang|so huu|nhan roi|so du|trung binh gia|cat giam|muc dung"
     r"|diem dung|dang am|dang loi|t[yi] trong|danh muc|vi the|tien mat|ngan sach|khuyen nghi|hanh dong|k[yi] quy"
     r"|xuong tien|om hang|tat tay|luot song|hang ve|tai khoan|gia von|gia binh quan|giu|lenh|trieu)\b",
-    # URLs, host names (label.tld, a Windows default name), IP addresses, ports
+    # URLs (scheme://, www.), host names (label.tld, a Windows default name), dotted IPv4 (four numbers) and IPv6
+    # ("::" or eight groups) addresses, host:port, ":port" after no letter, digit or colon, the word port
     r"[a-z][a-z0-9+.-]{0,30}://", r"\bwww\.", r"\blocalhost\b", r"\bloopback\b", r"\b(?:tailscale|ngrok)\b",
     r"\bbtc-(?:ai|be|fe)\b", r"\b(?:desktop|laptop)-[a-z0-9]{5,15}\b",
     r"[a-z0-9-]\.[a-z]{2,24}\b", r"\bdot (?:com|net|org|vn|io|dev|app)\b", r"\d(?<!\w\d)\d{0,2}(?:\.\d{1,3}){3}\b",
@@ -278,8 +343,13 @@ PRIVATE_PATTERNS = (
 # The same, where case decides: read on the probe as written
 _NOT_TICKER = r"(?!SMA|EMA|RSI|ATR|OBV|POC|VAL|VAH|VND)"  # the writer's indicator abbreviations, the currency
 CASED_PATTERNS = (
-    # "<number> <ticker>" (3,000 MBB, 3K MBB, 3 nghìn MBB), but not an indicator abbreviation (20 EMA, 18,750 VND)
-    r"\d(?<![\w.,/:-]\d)[\d,.]{0,20} ?(?:[kK]|nghìn|ngàn)? ?" + _NOT_TICKER + r"[A-Z]{3}\b",
+    # "<number> <ticker>" (3,000 MBB, 3K MBB, 3 nghìn MBB; also across a full stop: "closed 18750. MBB"), but not one of
+    # the abbreviations of _NOT_TICKER (20 EMA, 18,750 VND; any other one withholds: "the 200 DMA") and not a number
+    # that ends with a comma: a list ("+6.8, VCB +5.1", "18900, MBB's lowest close") ...
+    r"\d(?<![\w.,/:-]\d)[\d,.]{0,20}(?<!,) ?(?:[kK]|nghìn|ngàn)? ?" + _NOT_TICKER + r"[A-Z]{3}\b",
+    # ... unless the ticker after the comma has a number of its own: a list of counts written after the tickers ("MBB
+    # 3,000, BID 1,500"; so "MBB 18900, BID 31700" withholds too)
+    r"\d(?<![\w.,/:-]\d)[\d,.]{0,20}[kK]?, ?" + _NOT_TICKER + r"[A-Z]{3} \d",
     r"\b[Bb]ids?\b",  # an order; the ticker BID is written in capitals
     r"\b(?:TP|SL)\d?\b",  # take-profit and stop-loss levels ("TP 21,000, SL 18,500")
     r"\b[Kk]eep(?:s|ing)? " + _NOT_TICKER + r"[A-Z]{3}\b",  # "Keep MBB while ..."
@@ -535,8 +605,16 @@ def score_of(horizons: list) -> dict:
     return score
 
 
+def market_only(note: dict) -> bool:
+    """Whether a note's thesis may be published at all (contract r4 X1): actionBasis in PUBLIC_BASES and actionView in
+    PUBLIC_VIEWS. Any other value, a missing field or a value that is not a string says no (fail-closed)."""
+    basis, view = note.get("actionBasis"), note.get("actionView")
+    return isinstance(basis, str) and basis in PUBLIC_BASES and isinstance(view, str) and view in PUBLIC_VIEWS
+
+
 def note_rows(notes: dict, scores: dict) -> tuple[list[dict], dict, int]:
-    """(newest forward H=20 notes, whole-journal H=20 score, theses withheld); a malformed payload raises."""
+    """(newest forward H=20 notes, whole-journal H=20 score, theses withheld); a malformed payload raises. A note that
+    is not market_only keeps its row (direction, status, score) and loses its thesis, which counts as withheld."""
     score = score_of(scores["horizons"])
     by_id = {i["noteId"]: i for i in scores["items"]}
     forward = sorted((n for n in notes["items"] if n["mode"] == "forward" and n["horizonSessions"] == HORIZON),
@@ -558,6 +636,8 @@ def note_rows(notes: dict, scores: dict) -> tuple[list[dict], dict, int]:
         target, reason = s["targetBarOpenTimeMs"], s["pendingReason"]
         body = n.get("body")
         thesis, hidden = public_thesis(body.get("thesis") if isinstance(body, dict) else None)
+        if thesis is not None and not market_only(n):  # the writer may have known the user's holding
+            thesis, hidden = None, True
         withheld += hidden
         out.append({"signalDate": session_of(_num(n["signalBarOpenTimeMs"])), "horizonSessions": HORIZON,
                     "direction": _enum(n["direction"], DIRECTIONS), "thesis": thesis, "status": status,
@@ -568,6 +648,8 @@ def note_rows(notes: dict, scores: dict) -> tuple[list[dict], dict, int]:
 
 
 # --- the previous run's parts: our own earlier output, validated again (and theses filtered again) before reuse ---
+# market_only is not checked again: the files do not carry actionView/actionBasis, so a kept thesis passed it when it
+# was first exported (from VN30-WEB r4; every thesis exported before came from a wait/market-only note).
 
 def _fields(x: Any, names: tuple[str, ...]) -> dict:
     if not isinstance(x, dict) or set(x) != set(names):
