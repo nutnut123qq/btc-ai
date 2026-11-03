@@ -29,10 +29,36 @@ Review of round r4 (evidence/vn30-web-20261103/r4/review-W-exporter, fixes in r4
 forms the docstring names are caught (a dash before a scale word or a currency word, "đ" and "dong(s)" after k or m, a
 space between the thousands, decimals, "Vietnamese"/"VN dong", a colon after VND, USD before a number, k or m before
 USD or dollar(s)) and the one it names as not caught is published ("63,000,000 in VND terms"); a list of counts written
-after the tickers ("MBB 3,000, BID 1,500") is withheld again; "broke even lower" (higher, further, more, deeper) is
-chart prose; the cheap word forms of margin call, net asset value, average price and off the table are listed; and the
-docstring and data-contract.md give the same examples, each pinned to what the filter does (DOC_WITHHELD,
-DOC_PUBLISHED; data-contract.md is read only in the btc workspace)."""
+after the tickers with a space before each count ("MBB 3,000, BID 1,500") is withheld again (round r4b widens this:
+see below); "broke even lower" (higher, further, more, deeper) is chart prose; the cheap word forms of margin call, net
+asset value, average price and off the table are listed; and the docstring and data-contract.md give the same
+examples, each pinned to what the filter does (DOC_WITHHELD, DOC_PUBLISHED; data-contract.md is read only in the btc
+workspace).
+
+Round r4b (evidence/vn30-web-20261103/r4b/contract.md, findings of cold-check r4): what r3 withheld in the two families
+r4 relaxed is withheld again, and what r4 opened on purpose stays published (X2_LISTS). B1: "break-even" and
+"breakeven" (the noun) withhold before lower, higher, further, more and deeper too; only the verb written with a space
+("broke even lower") is chart prose (BREAK_EVEN_NOUN, BREAK_EVEN_PROSE). B2: a list of counts written after the
+tickers withholds in any of the connectors of _COUNT_AFTER_TICKER (a space, ":", ";", ",", "(", "[", "~", "×", "=",
+"≈", " x ", a spaced dash, about, roughly, around, some, approximately, approx., nearly, almost, or two of them), and so
+do a comma glued to the ticker ("2,600,MBB") and an unsigned count written first at the end of a clause ("3,000,
+MBB."); a sign, "'s", at, near or another word after the ticker is still a list (X2_COUNTS, X2_LISTS). B3: the VND
+amount rules start at seven digits (VND_EDGE). B4: b (billion) before a currency word and after VND/₫, and "Vietnam" /
+"Viet Nam dong" (COLDCHECK_R4_LEAKS, X3_PRIVATE, X3_TECHNICAL). B5: the docstring and data-contract.md state the limit
+of the action check and that kept theses passed it from r4 on, and name the connectors the filter reads
+(test_the_docstring_names_the_connectors_of_a_count_and_the_limit_of_the_action_check and the data-contract test). The
+sentences of cold-check r4 are pinned verbatim, alone, in a carrier and inside a real thesis (COLDCHECK_R4_LEAKS).
+
+Review of round r4b (evidence/vn30-web-20261103/r4b/review-W-exporter, fixes in r4b/W-exporter/review-fix): the
+optional space before k, m or b is pinned in each of its three rules (X3_PRIVATE, DOC_WITHHELD); the country's name
+(Vietnamese, Vietnam, Viet Nam, Việt Nam, VN) also stands between k, m or b and the currency word, and Việt Nam also
+after an amount of a million or more, while a price written with it stays published (X3_PRIVATE, X3_TECHNICAL);
+approx without its dot and two dashes with a space on each side are connectors of a count (X2_COUNTS); whitespace
+that ends the text ends the clause, and a count in double quotation marks withholds
+(test_an_unsigned_count_written_first_withholds_at_the_end_of_the_text_too); the docstring and data-contract.md also
+pin the skill's default and where the theses exported before r4 came from, and name what the chart exception of the
+spaced "broke even" lets through (DOC_PUBLISHED). The reviewer's sentences are pinned verbatim like the cold-check ones
+(REVIEW_R4B_LEAKS)."""
 import io
 import json
 import os
@@ -647,6 +673,13 @@ X2_LISTS = (
     "Against the peers over 20 sessions: VCB +5.1, CTG -2.4, BID +6.8 points.",
     "The close was 31700, BID's lowest close since July.",
     "MBB at 18900, BID at 31700 and VCB at 61000 all sit below SMA50.",
+    # round r4b: a signed value after a connector of _COUNT_AFTER_TICKER is a list ...
+    "Against the bank peers over 20 sessions: BID: +6.8, VCB: +5.1, CTG: -2.4 points.",
+    "vs BID +6.8, VCB (+5.1) and CTG (-2.4) points over 20 sessions.",
+    # ... and a count written first withholds only at the end of a clause: not before a space, a comma or an
+    # apostrophe (straight or curly), and never after a signed number ("+6.8, VCB" above)
+    "After touching 18,550, MBB bounced to 18,900.", "In 2025, MBB, BID and VCB all rallied into the summer.",
+    "The close was 18900, MBB’s lowest close since July.",
 )
 # ... while a number right before a ticker is still withheld, also across a full stop (SKILL.md v7 Step 4 tells the
 # writer to avoid that, and test_equity_technical_skill.py pins it as withheld), and so is a list of counts written
@@ -655,7 +688,26 @@ X2_LISTS = (
 X2_COUNTS = ("closed 18750. MBB", "It closed 18750. MBB is weak", "3,000 MBB", "3.000 MBB", "3k MBB", "3K MBB",
              "3 nghìn MBB", "Book: MBB 3,000, BID 1,500", "Lines: MBB 3,000, BID 1,500, VCB 800",
              "As of Friday: MBB 3,000, BID 1,500", "In the account: MBB 3K, BID 1.5K",
-             "In the account: MBB 3k, BID 1.5k")
+             "In the account: MBB 3k, BID 1.5k",
+             # round r4b (cold-check r4, privacy lens MINOR 2 and its triage): one sentence for each connector of
+             # _COUNT_AFTER_TICKER, written so that only that connector withholds it (a K count, or a space before
+             # the connector, keeps the end-of-clause rule out: review-fix/mutants.py takes each one out in turn) ...
+             "As of Friday: MBB 3K, BID: 1.5K", "On the ledger, 2.6K, MBB; 1.2K, BID", "BID 1,200, MBB, 2,600",
+             "Size by name: BID 1,200, MBB (2,600)", "BID 1,200, MBB [2,600]", "BID 1,200, MBB ~2,600",
+             "MBB 3,000, BID ×1,500", "BID 1,200, MBB = 2,600", "BID 1,200, MBB ≈ 2,600",
+             "MBB 3,000, BID x 1,500", "BID 1,200, MBB – 2,600", "BID 1,200, MBB about 2,600",
+             "The book stood at BID 1,200, MBB roughly 2,600 at the close", "BID 1,200, MBB around 2,600",
+             "MBB 3,000, BID some 1,500", "BID 1,200, MBB approximately 2,600", "BID 1,200, MBB approx. 2,600",
+             "BID 1,200, MBB nearly 2,600", "BID 1,200, MBB almost 2,600",
+             # (review of r4b, NIT 3: approx without its dot, and two dashes with a space on each side)
+             "BID 1,200, MBB approx 2,600", "BID 1,200, MBB -- 2,600",
+             # ... two connectors, and the forms of the triage ...
+             "BID 1,200, MBB (~2,600)", "BID 1,200, MBB (about 2,600)", "BID 1,200, MBB: ~2,600",
+             "BID 1,200, MBB: 2,600", "Book: MBB: 3,000, BID: 1,500", "MBB 3,000, BID: 1,500",
+             "On the ledger, 2,600, MBB; 1,200, BID",
+             # ... a comma glued to the ticker, and an unsigned count written first at the end of a clause
+             "Lines of 2,600,MBB and 1,200,BID rolled over the weekend", "3,000, MBB", "1,200, MBB;", "1,200, MBB:",
+             "(1,200, MBB)", "Is it 1,200, MBB?", "It was 1,200, MBB!", "The book has 3,000, MBB and 1,500, BID")
 # Round r4 X3: the sentences of cold-check r3 (lens privacy finding 2 and its triage), withheld alone, in a carrier and
 # inside a real thesis like REVIEW_LEAKS ...
 COLDCHECK_R3_LEAKS = (
@@ -690,6 +742,15 @@ X3_PRIVATE = (
     "Average prices for the two October lots were 21,500 and 21,800", "The average per-share price is 21,500",
     "The average per share price is 21,500", "Taking some money off of the table near 20,133",
     "Chips come off-of-the-table near 20,133",
+    # round r4b B4: b (billion) before USD or dollar(s) (the VND forms are COLDCHECK_R4_LEAKS)
+    "A 1.2B USD reserve is idle", "1.2b dollars sit idle",
+    # review of r4b (MINOR 1): the optional space before k, m or b, in each of its three rules (the reviewer's K3, K4
+    # and K10 took it out with the whole file green) ...
+    "1.2 B VND", "63 m dong", "a 900 k-dong buffer", "VND 1.2 B", "VND 120 m", "₫ 63 m", "1.2 B USD", "2.5 m dollars",
+    # ... and (MINOR 2) the country's name between k, m or b and the currency word, one form each, and Việt Nam after
+    # an amount of a million or more
+    "63m Vietnamese dong", "1.2B Vietnam dong", "900k Viet Nam đồng", "2B Việt Nam đồng", "63m VN dong",
+    "63,000,000 Việt Nam đồng",
 )
 # ... while a VND price stays published: under a million with thousands separators, or at most 6 digits without them.
 X3_TECHNICAL = (
@@ -699,12 +760,58 @@ X3_TECHNICAL = (
     # review of r4: one thousands group with a space or after a colon, "dongs" and "VN dong" stay a price
     "VND 18 750 was the close; the close was 18 750 VND; VND: 18,750 was the 2026-11-03 close.",
     "61,000 dongs was the VCB close and 18,750 VN dong the MBB close.",
+    # round r4b B4: a price with "Vietnam" or "Viet Nam dong" stays a price, and a b that starts a word or labels a
+    # wave is not a billion
+    "61,000 Vietnam dong was the VCB close and 18,750 Viet Nam dong the MBB close.",
+    "VND 18750 by the end of the session was the close; wave 3b ended near 18,550 VND.",
+    # review of r4b (MINOR 2): and so with Việt Nam
+    "VCB closed at 61,000 Việt Nam đồng and MBB at 18,750 Việt Nam dong.",
 )
+# Round r4b B3 (cold-check r4, reviewer MINOR): the VND amount rules start at seven digits, a million; six digits are a
+# price (a VN30 price has at most six). Relaxing either rule by one digit (\d{6,15} -> \d{7,15} after a number, VND
+# \d{7,15} -> \d{8,15} before one: the reviewer's M9 and M10) publishes a seven-digit amount; tightening it withholds
+# a six-digit price.
+VND_EDGE = {"1200000 VND": True, "VND 1200000": True, "999999 VND": False, "VND 999999": False}
 # Review of r4 (NIT 3): "break even" before lower, higher, further, more or deeper is chart prose (x3_probe.py).
 BREAK_EVEN_PROSE = (
     "The close broke even lower on 2026-11-02, under the lower band.",
     "Price broke even further below SMA50 after the gap.", "The close broke even higher above the upper band.",
     "Price broke even more sharply below SMA50.", "Price broke even deeper into the gap.",
+)
+# Round r4b B1 (cold-check r4, privacy lens MINOR 1, triage: real): that exception is for the verb written with a
+# space; "break-even" and "breakeven" (the noun, withheld unconditionally in r3) withhold before those words too.
+BREAK_EVEN_NOUN = (
+    "With the break-even higher than the 60-session high, a +5% move would still leave the October lot short of it.",
+    "The break-even further up at 21,450 sits 11.6% above the close.",
+    "A breakeven more than 11% above the close leaves the late-October lot exposed to the 18,550 low.",
+    "The breakeven deeper in the old range, near 21,450, is out of reach in 20 sessions.",
+    "The break-even lower down, near 20,100, applies to the second tranche.",
+    "Break-even higher up the chart, at 21,450, is 11.6% above the close.",
+)
+# Round r4b: the sentences of cold-check r4 (privacy lens MINOR 1, 2 and 3, the triage's "Book: MBB: 3,000, BID:
+# 1,500."), verbatim; each is withheld alone, in a carrier and inside a real thesis like REVIEW_LEAKS.
+COLDCHECK_R4_LEAKS = BREAK_EVEN_NOUN + (
+    "Carried into today's session: MBB: 2,600, BID: 1,200.", "BID 1,200, MBB: 2,600.",
+    "The book stood at BID 1,200, MBB roughly 2,600 at the close.",
+    "BID 1,200, MBB about 2,600 and VCB around 900 at the close.", "BID 1,200, MBB ~2,600 rolled into November.",
+    "Size by name: BID 1,200, MBB (2,600).", "On the ledger, 2,600, MBB; 1,200, BID.",
+    "Lines of 2,600,MBB and 1,200,BID rolled over the weekend.", "Book: MBB: 3,000, BID: 1,500.",
+    "The 1.2B VND reserve set apart for this name is untouched.", "VND1.2B sits unused while the 18,550 low holds.",
+    "A cushion of VND 1,2B is idle.", "₫1.2B is unused.",
+    "About 63,000,000 Vietnam dong stays idle beside this chart.", "Roughly 63,000,000 Viet Nam dong is unused.",
+)
+# Review of round r4b (r4b/review-W-exporter: space_km_check.py, adversary.py): the reviewer's sentences that r4b
+# published, verbatim; each is withheld alone, in a carrier and inside a real thesis like REVIEW_LEAKS.
+REVIEW_R4B_LEAKS = (
+    # MINOR 1: what the mutants K3, K4 and K10 published (a space before k, m or b)
+    "A 1.2 B VND reserve is idle.", "63 m dong is idle.", "A 900 k-dong buffer is idle.", "VND 1.2 B is idle.",
+    "VND 120 m is idle.", "₫ 63 m is idle.", "2.5 m dollars sit idle.", "1.2 B USD sits idle.",
+    # MINOR 2 (b4-05, b4-06, b4-07, b4-15, b4-16): the country's name after k, m or b; Việt Nam after a million or more
+    "A 2B Vietnam dong cushion is untouched.", "About 900k Vietnamese dong is untouched.",
+    "63,000,000 Việt Nam đồng stays idle.", "2B Viet Nam dong is idle.", "A 63m Viet Nam dong reserve is untouched.",
+    # NIT 3 (b2-13, b2-17, b2-18): approx without its dot, two dashes with a space on each side
+    "Overnight carry: VCB 900, CTG approx 1,100.", "Overnight carry: VCB 900, CTG -- 1,100.",
+    "Overnight carry: VCB 900, CTG (approx 1,100).",
 )
 # Round r4 X4: what the module docstring says about separators, phrase by phrase (r4/W-exporter/phrase_forms.py lists
 # every multi-word phrase of the filter), as docstring text: an example. These match with a space and with a dash ...
@@ -1352,7 +1459,7 @@ def test_every_cold_check_r2_leak_sentence_is_withheld(text):
     assert web.public_thesis(f"MBB 1d closes near SMA50. {text}. View: sideways, for reference only.") == (None, True)
 
 
-@pytest.mark.parametrize("text", REVIEW_LEAKS + COLDCHECK_R3_LEAKS)
+@pytest.mark.parametrize("text", REVIEW_LEAKS + COLDCHECK_R3_LEAKS + COLDCHECK_R4_LEAKS + REVIEW_R4B_LEAKS)
 def test_every_review_r3_probe_sentence_is_withheld_alone_in_a_carrier_and_in_a_real_thesis(text):
     real = REAL_THESES[0]
     half = real.find(". ", len(real) // 2) + 2  # a sentence boundary in the middle of a published thesis
@@ -1424,6 +1531,18 @@ def test_a_number_before_a_ticker_and_every_new_amount_or_phrase_form_withholds_
     assert web.public_thesis(CARRIER.format(text)) == (None, True)
 
 
+def test_an_unsigned_count_written_first_withholds_at_the_end_of_the_text_too():
+    # round r4b B2: the end-of-clause rule reads the end of the text as well (the CARRIER always adds ". View: ...");
+    # review of r4b: whitespace that ends the text is the end (NIT 3: the probe folds it into one space), and a double
+    # quotation mark after the ticker is a character other than a space, a comma or an apostrophe (NIT 5, K31)
+    for text in ("Book: 3,000, MBB", "The book has 3,000, MBB and 1,500, BID", "Overnight carry: 900, VCB ",
+                 "Overnight carry: 900, VCB\n", "Overnight carry: 900, VCB\r\n", "Overnight carry: 900, VCB ",
+                 'The log line read "900, VCB" at the close', "The log line read “900, VCB” at the close"):
+        assert web.public_thesis(text) == (None, True), text
+    for text in ("vs BID +6.8, VCB", "vs BID +6.8, VCB "):  # a signed number is a list, whatever ends the text
+        assert web.public_thesis(text) == (text, False), text
+
+
 def _dashed(text: str) -> str:
     """Every space between two words with a letter written as a dash ("average price 21,500": "average-price 21,500")."""
     words = text.split(" ")
@@ -1454,6 +1573,36 @@ def _says_the_separators(text: str) -> None:
     assert '"sideline" matches only as one word or with a dash' in flat
     assert ('"break even" right before lower, higher, further, more or deeper is chart prose ("broke even lower")'
             in flat)
+    # round r4b B1: the exception is for the verb written with a space only
+    assert 'written with a dash or as one word, the noun always matches ("the break-even higher", "breakeven higher")' \
+        in flat
+
+
+def _says_the_count_connectors(text: str) -> None:
+    """Round r4b B2/B5: the text names every connector of _COUNT_AFTER_TICKER (its character class in order, " x ", the
+    spaced dash and its words in order, up to two of them) and the two other exceptions to the list reading."""
+    flat = _flat(text)
+    source = web._COUNT_AFTER_TICKER
+    chars = re.search(r"\[([^\]]+)\]", source).group(1)
+    words = re.search(r"\(\?:(about\|[^)]*)\)", source).group(1).replace("\\.", ".").split("|")
+    assert "one or two of " + ", ".join(f'"{c}"' for c in chars[:-1]) + f' and "{chars[-1]}"' in flat, chars
+    assert ('" x ", one or two dashes with a space on each side, ' + ", ".join(words[:-1]) + f" and {words[-1]}"
+            in flat), words
+    assert "{1,2}" in source and " x ?| --? | ?(?:" in source  # what the two sentences above describe
+    assert "the comma is glued to the ticker" in flat
+    assert "the number has no sign and the ticker is followed by the end of the text or by a character other than a " \
+           "space, a comma or an apostrophe" in flat
+    assert "whitespace at the end of the text counting as the end" in flat  # review of r4b, NIT 3
+
+
+def _says_the_limit_of_the_action_check(text: str) -> None:
+    """Round r4b B5: a wait/market-only note of a session that knew the holding passes the action check, which is
+    the skill's default (review of r4b, NIT 5: the reviewer's K34), and a kept thesis passed it only from r4 on."""
+    flat = _flat(text)
+    assert "in a session that knew the holding passes it and only the keyword filter below reads its thesis" in flat
+    assert "writes hold only when the user says they hold the stock" in flat
+    assert "wait with market-only is its default" in flat
+    assert "r4 on, a kept thesis passed this check when it was first exported" in flat
 
 
 # Review of r4 (MINOR 1 and NIT 5): the examples the docstring and data-contract.md give for amounts and for
@@ -1461,9 +1610,20 @@ def _says_the_separators(text: str) -> None:
 DOC_WITHHELD = ("63 million", "a 63-million reserve", "50k VND", "120m dong", "a 900k-dong buffer", "63,000,000.00 VND",
                 "63 000 000 VND", "63000000-dong", "VND: 63,000,000", "VND 63 000 000", "VND 120000000", "VND 120m",
                 "USD 50k", "2.5m dollars", "a 2,500-dollar reserve", "3,000 MBB", "3K MBB", "3 nghìn MBB",
-                "MBB 3,000, BID 1,500", "MBB 18900, BID 31700", "at 18,750, BID 1d")
+                "MBB 3,000, BID 1,500", "MBB 18900, BID 31700", "at 18,750, BID 1d",
+                # round r4b: B1, B2, B3 and B4
+                "the break-even higher", "breakeven higher", "MBB: 3,000, BID: 1,500", "BID 1,200, MBB (2,600)",
+                "BID 1,200, MBB: ~2,600", "2,600,MBB", "3,000, MBB.", "1200000 VND", "1.2B VND", "VND1.2B",
+                "1.2B USD", "63,000,000 Vietnam dong",
+                # review of r4b: a space before k, m or b in each of its rules, and the country's name
+                "63 m dong", "VND 120 m", "1.2 B USD", "1.2B Vietnam dong", "63,000,000 Việt Nam đồng")
 DOC_PUBLISHED = ("18,750 VND", "118500 VND", "61,000 dong", "63,000,000 in VND terms", "+6.8, VCB +5.1",
-                 "broke even lower")
+                 "broke even lower",
+                 # round r4b: a six-digit price, what r4 opened on purpose, and the residual it names as not caught
+                 "999999 VND", "+6.8, VCB", "18,550, MBB bounced", "In 2025, MBB, BID and VCB", "18900, MBB's lowest",
+                 "MBB at 18900, BID at 31700", "3,000, MBB and 1,500, BID at the close",
+                 # review of r4b (NIT 4): what the chart exception of the spaced verb lets through, named as such
+                 "broke even more than a week ago")
 
 
 def _says_the_examples(text: str) -> None:
@@ -1503,6 +1663,15 @@ def test_the_docstring_examples_of_amounts_and_tickers_are_what_the_filter_does(
     assert web.public_thesis(CARRIER.format("the 200 DMA")) == (None, True)  # not one of them: withheld
 
 
+def test_the_docstring_names_the_connectors_of_a_count_and_the_limit_of_the_action_check():
+    # round r4b B5: widening or narrowing _COUNT_AFTER_TICKER, or dropping the X1 caveat, turns this red until the
+    # docstring says so (and the next test: until data-contract.md does)
+    _says_the_count_connectors(web.__doc__)
+    _says_the_limit_of_the_action_check(web.__doc__)
+    # review of r4b (NIT 5, the reviewer's K33): where the theses exported before r4 came from
+    assert "the theses exported before r4 all came from wait/market-only notes" in _flat(web.__doc__)
+
+
 def test_the_data_contract_says_what_the_docstring_says():
     contract = AI_ROOT.parent / "evidence" / "vn30-web-20261103" / "data-contract.md"
     if not contract.is_file():
@@ -1510,6 +1679,13 @@ def test_the_data_contract_says_what_the_docstring_says():
     text = contract.read_text(encoding="utf-8")
     _says_the_separators(text)
     _says_the_examples(text)
+    _says_the_count_connectors(text)
+    _says_the_limit_of_the_action_check(text)
+    # round r4b B5: "Kept parts" says the action check holds for a kept thesis from r4 on, not before
+    kept = _flat(text.split("## Kept parts", 1)[1].split("\n## ", 1)[0])
+    assert "From r4 on, a kept thesis is one that check let through when it was first exported" in kept
+    # review of r4b (NIT 5): where the theses exported before r4 came from
+    assert "all come from forward notes stored with actionView wait and actionBasis market-only" in _flat(text)
 
 
 @pytest.mark.parametrize("text", BREAK_EVEN_PROSE)
@@ -1518,6 +1694,20 @@ def test_broke_even_lower_and_its_kin_are_chart_prose(text):
     for thesis in (text, CARRIER.format(text.rstrip("."))):
         assert web.public_thesis(thesis) == (thesis, False), thesis
     assert web.public_thesis(CARRIER.format(text.replace("broke even", "broke even near 21,500, and"))) == (None, True)
+
+
+@pytest.mark.parametrize("text", BREAK_EVEN_NOUN)
+def test_break_even_with_a_dash_or_as_one_word_withholds_before_lower_higher_and_kin(text):
+    # round r4b B1: the noun matches whatever follows it, as in r3; only the spaced verb has the chart exception
+    # (BREAK_EVEN_PROSE is the guard the other way: widening this back over "broke even lower" turns it red)
+    for thesis in (text, CARRIER.format(text.rstrip(".")), R4_THESES[0] + " " + text):
+        assert web.public_thesis(thesis) == (None, True), thesis
+
+
+@pytest.mark.parametrize("text", sorted(VND_EDGE))
+def test_a_vnd_amount_starts_at_seven_digits(text):
+    thesis = CARRIER.format(text)
+    assert web.public_thesis(thesis) == ((None, True) if VND_EDGE[text] else (thesis, False))
 
 
 def _one_note(change=None, thesis: str = REAL_THESES[0]) -> tuple[list[dict], dict, int]:

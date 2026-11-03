@@ -21,9 +21,12 @@ over the ticker's whole journal, copied from the direction-scores horizons[] ent
 thesis is published verbatim, and only for a note whose actionBasis is market-only or insufficient-input and whose
 actionView is wait or none (market_only: PUBLIC_BASES, PUBLIC_VIEWS). Any other value, a missing field or a value that
 is not a string withholds the thesis and the note's row is still exported: a note written in a session that knew the
-user's holding (hold, reduce, sell, buy-more; position-aware) can carry it in its thesis. The previous run's files do
-not carry actionView/actionBasis, so a kept thesis (Parts) was checked this way when it was first exported; the theses
-exported before this check (VN30-WEB r4) all came from wait/market-only notes.
+user's holding (hold, reduce, sell, buy-more; position-aware) can carry it in its thesis. The check reads only these
+two fields, so a note recorded with wait and market-only in a session that knew the holding passes it and only the
+keyword filter below reads its thesis (the skill writes hold only when the user says they hold the stock; wait with
+market-only is its default). The previous run's files do not carry actionView/actionBasis: from VN30-WEB r4 on, a kept
+thesis passed this check when it was first exported (Parts), and the theses exported before r4 all came from
+wait/market-only notes.
 
 A thesis that may be published first passes a fail-closed keyword filter that reads the whole text. The filter is a
 denylist (PRIVATE_TEXT): the listed words about positions, holdings, quantities, cost basis, money, settlement (T+n),
@@ -39,30 +42,44 @@ already long, already in the stock, short the bounce, fade the rally, lock in ga
 shares, close the trade, keep the stock, existing investors/owners, dot com (lock in gains, pick up shares and cut the
 loss also with a dash right after their first word), and so does every Vietnamese phrase; "sideline" matches only as
 one word or with a dash. "break even" right before lower, higher, further, more or deeper is chart prose ("broke even
-lower") and does not match.
-Amounts: between a number and the word after it, and between k or m and the currency word, there may be nothing, one
-space or one dash; before k or m only an optional space; after VND, vnđ, ₫, USD or $ an optional space (after VND,
-vnđ or ₫ also an optional colon first). Caught: a number and a scale word (million, mil, mio, mn, billion, bn, triệu,
-tỷ, tỉ, củ, tr: 63 million, a 63-million reserve); a number, k or m and a VND currency word (VND, vnđ, đ, ₫, đồng,
-dong, dongs: 50k VND, 120m dong, a 900k-dong buffer); a VND amount of a million or more ("," or "." or a space
-between the thousands, or 7 to 16 digits; up to two decimals) and VND, vnđ, đ, ₫, dong, dongs, Vietnamese dong or VN
-dong, these two with one space inside (63,000,000.00 VND, 63 000 000 VND, 63000000-dong; here đ also stands for any
-word that starts with it, such as đồng, while after k or m it counts only as a word of its own); VND, vnđ or ₫ before
-7 to 15 digits, a number of a million or more with these separators or a number and k or m (VND: 63,000,000, VND 63
-000 000, VND 120000000, VND 120m); $ or USD before a number; a number, k or m if any, and USD or dollar(s) (USD 50k,
-2.5m dollars, a 2,500-dollar reserve). A price such as 18,750 VND, 118500 VND or 61,000 dong is not an amount, and a
-currency word that does not stand next to the number is not caught ("63,000,000 in VND terms").
+lower") and does not match; written with a dash or as one word, the noun always matches ("the break-even higher",
+"breakeven higher"). So the spaced form before those words passes even when it is about a cost ("broke even more than
+a week ago").
+Amounts: between a number and the word after it, and between k, m or b and the currency word, there may be nothing,
+one space or one dash, and before a VND currency word also Vietnamese, Vietnam, Viet Nam, Việt Nam or VN and one
+space (1.2B Vietnam dong, 63,000,000 Việt Nam đồng); before k, m or b only an optional space (63 m dong, VND 120 m,
+1.2 B USD); after VND, vnđ, ₫, USD or $ an optional space (after VND, vnđ or ₫ also an optional colon first). Caught:
+a number and a scale word (million, mil, mio, mn, billion, bn, triệu, tỷ, tỉ, củ, tr: 63 million, a 63-million
+reserve); a number, k, m or b and a VND currency word (VND, vnđ, đ, ₫, đồng, dong, dongs: 50k VND, 120m dong, a
+900k-dong buffer, 1.2B VND); a VND amount of a million or more ("," or "." or a space between the thousands, or 7 to
+16 digits; up to two decimals) and VND, vnđ, đ, ₫, dong or dongs (63,000,000.00 VND, 63 000 000 VND, 63000000-dong,
+63,000,000 Vietnam dong; here đ also stands for any word that starts with it, such as đồng, while after k, m or b it
+counts only as a word of its own); VND, vnđ or ₫ before 7 to 15 digits, a number of a million or more with these
+separators or a number and k, m or b (VND: 63,000,000, VND 63 000 000, VND 120000000, VND 120m, VND1.2B); $ or USD
+before a number; a number, k, m or b if any, and USD or dollar(s) (USD 50k, 2.5m dollars, 1.2B USD, a 2,500-dollar
+reserve). A price such as 18,750 VND, 118500 VND or 61,000 dong is not an amount (a VN30 price has at most six
+digits: 999999 VND is published, 1200000 VND is not), and a currency word that does not stand next to the number is
+not caught ("63,000,000 in VND terms").
 Other patterns: a share count (3,000 shares, 3,000-share, 3 nghìn cp, thousands of shares); "<number> <ticker>"
 (3,000 MBB, 3K MBB, 3 nghìn MBB, also across a full stop; not after a dash, so not the end of a date, and not one of
 the indicator abbreviations SMA, EMA, RSI, ATR, OBV, POC, VAL, VAH, nor VND); a number that ends with a comma is read
-as a list ("+6.8, VCB +5.1" passes) unless the ticker after it is followed by a space and a digit ("MBB 3,000, BID
-1,500" withholds, and so do "MBB 18900, BID 31700" and "at 18,750, BID 1d"); URLs (scheme://, www.), host names
-(label.tld, localhost, a Windows default name); dotted IPv4 addresses (four numbers), IPv6 addresses written with "::"
-or in eight groups, host:port, a port of 4 or 5 digits after a colon that does not follow a letter, a digit or another
-colon (at :5197) and the word port; file paths (a backslash, a drive letter, a path that starts with /, ./, ../ or ~/
-and has a second slash, a listed root such as /home or evidence/, a listed file extension, a few folder names); e-mail
-addresses (@); hex strings and digit runs (16 or more hex characters, 8 to 15 with a letter and a digit, 12 or more
-digits, 0x and 8 hex digits, a run of 32 or more letters, digits, +, /, =, _ or -); internal ids and secrets. A few
+as a list ("+6.8, VCB +5.1" passes) except in three cases, which withhold: the ticker after it has a count of its own,
+after one space or after one or two of ":", ";", ",", "(", "[", "~", "×", "=" and "≈" (each with an optional space
+on either side), " x ", one or two dashes with a space on each side, about, roughly, around, some, approximately,
+approx., approx, nearly and almost ("MBB 3,000, BID 1,500", "MBB: 3,000, BID: 1,500", "BID 1,200, MBB (2,600)", "BID
+1,200, MBB: ~2,600", and so "MBB 18900, BID 31700" and "at 18,750, BID 1d" too); the comma is glued to the ticker
+("2,600,MBB"); or the number has no sign and the ticker is followed by the end of the text or by a character other
+than a space, a comma or an apostrophe, whitespace at the end of the text counting as the end ("3,000, MBB."; "+6.8,
+VCB", "18,550, MBB bounced", "In 2025, MBB, BID and VCB" and "18900, MBB's lowest" pass). A sign, "'s", at, near,
+of, with or another word or symbol after the ticker keeps the list reading ("MBB at 18900, BID at 31700" passes), so
+a count written first and followed by a word is not caught ("3,000, MBB and 1,500, BID at the close"). Also caught:
+URLs (scheme://, www.), host names (label.tld, localhost, a Windows default name); dotted IPv4 addresses (four
+numbers), IPv6 addresses written with "::" or in eight groups, host:port, a port of
+4 or 5 digits after a colon that does not follow a letter, a digit or another colon (at :5197) and the word port; file
+paths (a backslash, a drive letter, a path that starts with /, ./, ../ or ~/ and has a second slash, a listed root
+such as /home or evidence/, a listed file extension, a few folder names); e-mail addresses (@); hex strings and digit
+runs (16 or more hex characters, 8 to 15 with a letter and a digit, 12 or more digits, 0x and 8 hex digits, a run of
+32 or more letters, digits, +, /, =, _ or -); internal ids and secrets. A few
 chart phrases are blanked first, each only in its chart context ("range position 0.45", "selling pressure", "the
 sell-off", "support holds": TECHNICAL_PHRASES, CHART_BEFORE). One match anywhere withholds the whole thesis (null), and
 so does any character outside the short allowlist the lists can read (READABLE, _unreadable: printable ASCII, Latin-1,
@@ -70,14 +87,16 @@ Vietnamese and a little typography; so a format or bidi control, a thin space, a
 look-alike, an enclosed letter or a box-drawing dash withholds). When in doubt it withholds, so a purely technical
 thesis can be withheld too ("volatility reduced", "price is holding above SMA50"). Being a list of keywords it does
 not catch every way of phrasing advice or a position: advice written around the listed words passes almost always
-(cold-check r3: 25 of 25 such English sentences, still 25 after r4), and so do natural position sentences without a
-listed word (11 of the 17 position sentences of that cold-check still pass after r4; in evidence/vn30-web-20261103:
-coldcheck-r3.md, r4/W-exporter/probe-r4.log and review-fix/probe-r4-after-review.log). Host names without a dot, an
-abbreviated or decimal IPv4 address ("127.1:5197"), relative paths without an extension, short hex ids, amounts
-written in words ("sixty-three million dong") and words glued to "_" or a digit ("buy18600") are not guaranteed to be
-caught. Writers following ai/skills/equity-technical/SKILL.md v7 or later are told not to write any of these (Step 4);
-notes written under an earlier version of the skill were not. A published thesis longer than THESIS_MAX characters is
-cut to THESIS_MAX - 1 characters followed by CUT.
+(cold-check r3: 25 of 25 such English sentences, still 25 after r4 and r4b), and so do natural position sentences
+without a listed word (11 of the 17 position sentences of that cold-check still pass after r4 and r4b; of the 60 new
+leak sentences of cold-check r4's privacy lens, 25 still pass after r4b; in evidence/vn30-web-20261103:
+coldcheck-r3.md, r4/W-exporter/probe-r4.log, review-fix/probe-r4-after-review.log, r4b/W-exporter/logs/claims-r4b.log
+and probe-r4b.log). Host names without a dot, an abbreviated or decimal IPv4 address ("127.1:5197"),
+relative paths without an extension, short hex ids, amounts written in words ("sixty-three million dong") and words
+glued to "_" or a digit ("buy18600") are not guaranteed to be caught. Writers following
+ai/skills/equity-technical/SKILL.md v7 or later are told not to write any of these (Step 4); notes written under an
+earlier version of the skill were not. A published thesis longer than THESIS_MAX characters is cut to THESIS_MAX - 1
+characters followed by CUT.
 
 Parts: candles, technical (indicators + relativeStrength) and notes (notes + score) are read independently. A part
 that fails (an HTTP error, a 429 after the retry, a malformed payload or, for notes, a missing admin key) keeps the
@@ -227,6 +246,9 @@ def _chart_phrase(m: re.Match) -> str:
 # "accumulation". It does not catch every phrasing of advice or of a position (see the module docstring). The
 # patterns are lowercase: they read the lowercased probe (_private). Every repetition is bounded or delimited, so a
 # 4000-character thesis is scanned in linear time.
+# The VND currency word after an amount may follow the country's name and one space ("1.2B Vietnam dong", "63,000,000
+# Việt Nam đồng"): the same words in the k, m or b amount and in the amount of a million or more below.
+_NATION = r"(?:(?:vietnamese|vietnam|viet nam|việt nam|vn) )?"
 PRIVATE_PATTERNS = (
     # positions, holdings, quantities, cost basis, money and settlement
     r"\bpositions?\b", r"\bholding", r"holders?\b", r"\bholds?\b", r"\bportfolios?\b", r"\bexposure\b",
@@ -238,8 +260,9 @@ PRIVATE_PATTERNS = (
     r"\b(?:avg\.?|(?<!volume[- ]weighted )average|acquisition)[- ]?(?:(?:per[- ])?(?:share|fill|execution|unit)[- ])?"
     r"prices?\b",
     r"\bat an average (?:price )?of\b",
-    # "broke even lower" (further, ...) is chart prose
-    r"\b(?:break(?:s|ing)?|broke)[- ]?even\b(?! (?:lower|higher|further|more|deeper)\b)", r"\bp ?[&/] ?l\b",
+    # "broke even lower" (further, ...) is chart prose: only the verb written with a space; "break-even" and "breakeven"
+    # (the noun, as in r3) always match ("the break-even higher up at 21,450")
+    r"\b(?:break(?:s|ing)?|broke)(?:-?even\b| even\b(?! (?:lower|higher|further|more|deeper)\b))", r"\bp ?[&/] ?l\b",
     r"\bpnl\b", r"\bunreali[sz]ed\b", r"\bunder[- ]?water\b",
     r"\bpa(?:y|ys|ying|id)\b", r"\bown(?:s|ed|ing)\b", r"\bon (?:the|its|their) books\b", r"\bnav\b",
     r"\bnet[- ]asset[- ]values?\b", r"\bstakes?\b", r"\bbasis (?:is |was |of |at |near )?\d",
@@ -247,21 +270,23 @@ PRIVATE_PATTERNS = (
     r"[- ]size[sd]?\b",
     r"\b(?:hundreds?|thousands?|millions?|billions?) (?:of )?(?:shares?|units?|lots?)\b",
     # a number read from its first digit (not after a digit, a comma or "<digit>."), then a share count or an amount: a
-    # scale word right after it or one space or dash apart ("a 63-million reserve"), or k or m (an optional space
-    # before) and, right after it or one space or dash apart, a VND currency word ("120m dong", "a 900k-dong buffer")
+    # scale word right after it or one space or dash apart ("a 63-million reserve"), or k, m or b (an optional space
+    # before: "63 m dong") and, right after it or one space or dash apart, a VND currency word, also after _NATION
+    # ("120m dong", "a 900k-dong buffer", "1.2B VND", "1.2B Vietnam dong")
     r"\d(?<![\d,]\d)(?<!\d\.\d)[\d,.]{0,40}(?: ?(?:k|m|nghìn|ngàn)?[ -]?(?:shares?|units?|lots?|cp|cổ)\b"
-    r"|[ -]?(?:million|mil|mio|mn|billion|bn|triệu|tỷ|tỉ|củ|tr)\b| ?(?:k|m)[ -]?(?:vnd|vnđ|đồng|đ\b|₫|dongs?\b))",
+    r"|[ -]?(?:million|mil|mio|mn|billion|bn|triệu|tỷ|tỉ|củ|tr)\b| ?(?:k|m|b)[ -]?" + _NATION
+    + r"(?:vnd|vnđ|đồng|đ\b|₫|dongs?\b))",
     # a VND amount of a million or more: with ",", "." or a space between the thousands, or as 7 to 16 digits without
     # them (12 or more are a digit run anyway; a VN30 price has at most 6: "118500 VND", "VND 18750" and "61,000 dong"
     # are published), with up to two decimals, then right after it or one space or dash apart a VND currency word ("đ"
-    # also starts "đồng"); or after VND, vnđ or ₫, an optional colon and an optional space: 7 to 15 digits, two or more
-    # thousands groups, or a number and k or m ("VND 120m"; million, bn... after a number withhold anyway)
-    r"(?:\d{1,3}(?:[,. ]\d{3}){2,6}|\d(?<!\w\d)\d{6,15})(?:[.,]\d{1,2})?[ -]?(?:(?:vietnamese|vn) )?"
-    r"(?:vnd|vnđ|đ|₫|dongs?\b)",
-    r"(?:\bvnd|\bvnđ|₫):? ?(?:\d{7,15}|\d{1,3}(?:[,. ]\d{3}){2,6}|\d[\d,.]{0,20} ?[km]\b)",
-    # a dollar amount: $ or USD (an optional space after) before a number; or a number, then k or m if any (an optional
-    # space before), then right after it or one space or dash apart USD or dollar(s)
-    r"\$ ?\d", r"\busd ?\d", r"\d(?: ?[km])?[ -]?(?:usd|dollars?)\b",
+    # also starts "đồng"), also after _NATION; or after VND, vnđ or ₫, an optional colon and an optional space: 7 to 15
+    # digits, two or more thousands groups, or a number and k, m or b ("VND 120m", "VND1.2B"; million, bn... after a
+    # number withhold anyway)
+    r"(?:\d{1,3}(?:[,. ]\d{3}){2,6}|\d(?<!\w\d)\d{6,15})(?:[.,]\d{1,2})?[ -]?" + _NATION + r"(?:vnd|vnđ|đ|₫|dongs?\b)",
+    r"(?:\bvnd|\bvnđ|₫):? ?(?:\d{7,15}|\d{1,3}(?:[,. ]\d{3}){2,6}|\d[\d,.]{0,20} ?[kmb]\b)",
+    # a dollar amount: $ or USD (an optional space after) before a number; or a number, then k, m or b if any (an
+    # optional space before), then right after it or one space or dash apart USD or dollar(s)
+    r"\$ ?\d", r"\busd ?\d", r"\d(?: ?[kmb])?[ -]?(?:usd|dollars?)\b",
     r"\bt ?\+ ?\d", r"\bsellable\b", r"\bsettlement\b", r"\bbrokers?\b", r"\busers?\b", r"\byou(?:rs?)?\b",
     # the writer's own: a thesis about the chart has no first person
     r"\b(?:we|our|ours|my|mine)\b", r"\bi(?:['’](?:m|ve|d|ll)| (?:am|have|had|own|would|will))\b",
@@ -342,14 +367,27 @@ PRIVATE_PATTERNS = (
 )
 # The same, where case decides: read on the probe as written
 _NOT_TICKER = r"(?!SMA|EMA|RSI|ATR|OBV|POC|VAL|VAH|VND)"  # the writer's indicator abbreviations, the currency
+# A count of the ticker's own right after it: one space, or one or two of ":", ";", ",", "(", "[", "~", "×", "=" or "≈"
+# (an optional space on each side; "[" is a literal inside the class), " x ", one or two dashes with a space on each
+# side, about, roughly, around, some, approximately, approx., approx, nearly or almost ("MBB 3,000", "MBB: ~2,600",
+# "MBB (about 2,600)", "MBB -- 2,600"). Not a sign, "'s", at, near or another word or symbol: "VCB +5.1", "MBB's
+# 20-session low", "BID at 31700" are lists of a chart.
+_COUNT_AFTER_TICKER = (r"(?:(?: ?[:;,([~×=≈] ?| x ?| --? | ?(?:about|roughly|around|some|approximately"
+                       r"|approx\.|approx|nearly|almost) ){1,2}| )\d")
 CASED_PATTERNS = (
     # "<number> <ticker>" (3,000 MBB, 3K MBB, 3 nghìn MBB; also across a full stop: "closed 18750. MBB"), but not one of
     # the abbreviations of _NOT_TICKER (20 EMA, 18,750 VND; any other one withholds: "the 200 DMA") and not a number
     # that ends with a comma: a list ("+6.8, VCB +5.1", "18900, MBB's lowest close") ...
     r"\d(?<![\w.,/:-]\d)[\d,.]{0,20}(?<!,) ?(?:[kK]|nghìn|ngàn)? ?" + _NOT_TICKER + r"[A-Z]{3}\b",
-    # ... unless the ticker after the comma has a number of its own: a list of counts written after the tickers ("MBB
-    # 3,000, BID 1,500"; so "MBB 18900, BID 31700" withholds too)
-    r"\d(?<![\w.,/:-]\d)[\d,.]{0,20}[kK]?, ?" + _NOT_TICKER + r"[A-Z]{3} \d",
+    # ... unless the ticker after the comma has a count of its own: a list of counts written after the tickers ("MBB
+    # 3,000, BID 1,500", "MBB: 3,000, BID: 1,500", "BID 1,200, MBB (2,600)"; so "MBB 18900, BID 31700" withholds too),
+    r"\d(?<![\w.,/:-]\d)[\d,.]{0,20}[kK]?, ?" + _NOT_TICKER + r"[A-Z]{3}" + _COUNT_AFTER_TICKER,
+    # the comma is glued to the ticker ("2,600,MBB"),
+    r"\d," + _NOT_TICKER + r"[A-Z]{3}\b",
+    # or the number has no sign and the ticker ends the clause: a count written first ("3,000, MBB."; not before a
+    # space and a word, a comma or an apostrophe: "18,550, MBB bounced", "In 2025, MBB, BID and VCB", "18900, MBB's";
+    # "+6.8, VCB" is a list). The space the probe makes of whitespace that ends the text is the end ("3,000, MBB\n").
+    r"\d(?<![+\w.,/:-]\d)[\d,.]{0,20}, ?" + _NOT_TICKER + r"[A-Z]{3}\b(?![,'’]| \S)",
     r"\b[Bb]ids?\b",  # an order; the ticker BID is written in capitals
     r"\b(?:TP|SL)\d?\b",  # take-profit and stop-loss levels ("TP 21,000, SL 18,500")
     r"\b[Kk]eep(?:s|ing)? " + _NOT_TICKER + r"[A-Z]{3}\b",  # "Keep MBB while ..."
