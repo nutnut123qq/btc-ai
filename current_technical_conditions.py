@@ -83,8 +83,8 @@ class UnknownTimeframeError(ValueError):
 class UnsupportedCapabilityError(ValueError):
     """Raised when a known instrument lacks the technical-analysis capability.
 
-    Context-only peers (VCB, CTG) and the VNINDEX benchmark are ingested but do
-    not carry technical conditions (spec instrument scope).
+    The VNINDEX benchmark is ingested but does not carry technical conditions;
+    every VN30 equity does (VN30-TA).
     """
 
 

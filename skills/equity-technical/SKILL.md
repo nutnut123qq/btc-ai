@@ -1,9 +1,9 @@
 ---
 name: equity-technical
-description: Technical-only (candles and indicators) analysis session for the Vietnamese bank equities MBB and BID in the btc repo. It reads one backend payload, GET /api/equities/{symbol}/technical (plus /candles for more history), forms a direction view up/down/sideways/no-view over 20 or 60 sessions without inventing any probability, records it as a forward journal note bound to the payload's snapshot, and later reads how past calls were scored by the backend rule direction-score-v1. Use it when the user asks for a technical, chart, candle or "phân tích kỹ thuật / nến" view of MBB or BID, or asks how earlier technical calls scored. Never reads fundamentals, events, documents or news (out of scope). Do not use it for BTC/crypto or for changing the app's code.
+description: Technical-only (candles and indicators) analysis session for the 30 VN30 constituents (Vietnamese equities such as MBB, BID, VCB, FPT, HPG) in the btc repo. It reads one backend payload, GET /api/equities/{symbol}/technical (plus /candles for more history), forms a direction view up/down/sideways/no-view over 20 or 60 sessions without inventing any probability, records it as a forward journal note bound to the payload's snapshot, and later reads how past calls were scored by the backend rule direction-score-v1. Use it when the user asks for a technical, chart, candle or "phân tích kỹ thuật / nến" view of a VN30 stock, or asks how earlier technical calls scored. Never reads fundamentals, events, documents or news (out of scope). Do not use it for BTC/crypto, for VNINDEX itself or for changing the app's code.
 ---
 
-# equity-technical (MBB / BID, candles only)
+# equity-technical (VN30 constituents, candles only)
 
 The backend computes every number (candles, indicators, patterns, conditions, base rates, scores).
 This session reads them, judges a direction, writes it down once, and lets the backend score it.
@@ -40,7 +40,14 @@ First create the session folder (see "Where things go") and work inside it.
 
 ## Scope (hard limits)
 
-- **Symbols:** `MBB` or `BID` only.
+- **Symbols:** the 30 VN30 constituents that carry technical analysis in the backend catalog:
+  - `MBB`, `BID`: 1h and 1d, plus the decision lane (base rates, position);
+  - `VCB`, `CTG`, `ACB`, `BSR`, `FPT`, `GAS`, `GVR`, `HDB`, `HPG`, `LPB`, `MCH`, `MSN`, `MWG`, `SAB`,
+    `SHB`, `SSB`, `SSI`, `STB`, `TCB`, `TCX`, `VHM`, `VIB`, `VIC`, `VJC`, `VNM`, `VPB`, `VPL`, `VRE`
+    (the other 28): 1d only, no decision lane.
+
+  Anything else (VNINDEX, BTC/crypto, stocks outside VN30) is out of scope; for VNINDEX
+  `GET technical` answers 400 `UNSUPPORTED_CAPABILITY`.
 - **Endpoints, and nothing else:**
   - `GET /api/equities/{symbol}/technical`: the whole input.
   - `GET /api/equities/{symbol}/candles?timeframe=..&limit=..&endTimeMs=..`: more history (bars with
@@ -59,8 +66,9 @@ Save the raw response bytes in the session folder
 `?bars=` sets the window, default 100, at most 500; the call can take close to a minute on a busy
 machine), then read these fields by these exact names:
 
-- `timeframes[]`: one entry per timeframe the catalog lists for the symbol. Use whatever timeframes
-  are present; a timeframe that is absent has no data, so do not infer it. Each entry has:
+- `timeframes[]`: one entry per timeframe the catalog lists for the symbol (1h and 1d for MBB/BID, 1d
+  for the other 28). Use whatever timeframes are present; a timeframe that is absent has no data, so do
+  not infer it. Each entry has:
   - `candles` (ascending; the last one is the latest finalized bar);
   - `freshness` (`isStale`, `staleRule`, `reason`): a stale timeframe goes into the note's
     `limitations`;
@@ -80,17 +88,27 @@ machine), then read these fields by these exact names:
     timeframe. `available` true or false; when false, give `reason` (`no-verified-evidence-bundle`,
     `statistical-evidence-unavailable`, `evidence-scope-mismatch`, `evidence-contract-hash-unverifiable`,
     `contract-definitions-sha-mismatch`, `evidence-catalog-unavailable`) and use no stand-in.
-    `cutoffMs` is where the bundle's history ends; `evidenceAgeBars` is the time from `cutoffMs` to
-    the conditions' `asOfMs` (the latest closed bar, not now) divided by the bar length, so nights and
-    weekends count (calendar days on 1d, clock hours on 1h, not sessions or HOSE bars). How to read
-    the cells is in Step 2, "Condition statistics";
+    Only MBB and BID have verified per-symbol bundles. For the other 28 expect `available` false with
+    `no-verified-evidence-bundle` and every cell `tested: false` with `evidence-unavailable`: the
+    symbol has no historical statistics. Say so once, cite no cell, and never borrow numbers from MBB,
+    BID or BTCUSDT. `cutoffMs` is where the bundle's history ends; `evidenceAgeBars` is the time from
+    `cutoffMs` to the conditions' `asOfMs` (the latest closed bar, not now) divided by the bar length,
+    so nights and weekends count (calendar days on 1d, clock hours on 1h, not sessions or HOSE bars).
+    How to read the cells is in Step 2, "Condition statistics";
   - `conditions.payload.conflicts[]`: horizons where at least one bullish and one bearish condition
     both pass the declared gate (`horizon`, `metric`, `bullish[]`, `bearish[]`);
   - `dataQuality`: copy every `dataQuality.caveats[].code` with its text into the note's `limitations`
     (e.g. `missing-expected-bars`, `session-open-1h-bars-missing`, `unexpected-session-bars`,
     `below-calendar-coverage`).
-- `baseRates` (`status`, `reasons[]`, `configs[]`), `relativeStrength`, `calendar.forwardNoteOpen`,
-  `calendar.nextSessionOpenUtcMs`.
+- `baseRates` (`status`, `reasons[]`, `configs[]`). It is `null`, with `baseRatesUnavailableReason`
+  `no-decision-capability`, for every symbol except MBB and BID (Step 2, "Base rates").
+- `relativeStrength`: the symbol's close-to-close return minus each benchmark's over 20 and 60 aligned
+  daily sessions (`benchmarks[].returns["20"|"60"].excess`, with `status` and `lagSessions`). The
+  benchmarks are VNINDEX plus the banks MBB, BID, VCB, CTG (without the symbol itself), for every
+  symbol. For a non-bank name, weigh VNINDEX and say that the bank benchmarks are not its peers. The
+  banks among the 30 are `MBB`, `BID`, `VCB`, `CTG`, `ACB`, `HDB`, `LPB`, `SHB`, `SSB`, `STB`, `TCB`,
+  `VIB`, `VPB`.
+- `calendar.forwardNoteOpen`, `calendar.nextSessionOpenUtcMs`.
 - `noteBinding.snapshotId`, `noteBinding.snapshotSha256`, `noteBinding.requestedAsOf`,
   `noteBinding.signalBarOpenTimeMs`: the binding for the note (Step 4). If `noteBinding` is null, give
   `noteBindingUnavailableReason` and do not record.
@@ -100,10 +118,10 @@ machine), then read these fields by these exact names:
 Cite payload items as `technical:<field path>`, and array items by their key, e.g.
 `technical:timeframes[1d].conditions[REGIME_SIDEWAYS_NORMAL]`.
 
-The signal bar is the latest finalized **1d** bar. Horizons count 1d HOSE sessions; 1h bars are context
-only. Prices are latest-adjusted: the providers back-adjust the whole history at every ex-date (stock
-dividend, bonus, cash dividend), so a past level differs from what was on screen then. Reason in
-returns, not levels across an ex-date.
+The signal bar is the latest finalized **1d** bar. Horizons count 1d HOSE sessions; 1h bars (MBB/BID
+only) are context only. Prices are latest-adjusted: the providers back-adjust the whole history at
+every ex-date (stock dividend, bonus, cash dividend), so a past level differs from what was on screen
+then. Reason in returns, not levels across an ex-date.
 
 ## Step 2: Honesty rules
 
@@ -112,7 +130,11 @@ returns, not levels across an ex-date.
 - **Base rates are unvalidated.** While `baseRates.status` is `abstained` with `gate-not-passed` in
   `baseRates.reasons`, the kNN artifact failed its out-of-sample gate, so every base-rate number
   (including configs showing `abstained: false`) is research-only and **unvalidated**. Quote one only
-  with that word next to it, and never as a reason on its own.
+  with that word next to it, and never as a reason on its own. Every symbol except MBB and BID has no
+  base rates at all (`baseRates` null, `baseRatesUnavailableReason` `no-decision-capability`): say so
+  once, quote no base-rate number from another symbol, judge from candles, indicators, conditions and
+  relative strength alone, and put this sentence in `body.limitations`:
+  `"no base rates: no decision lane for this symbol (no-decision-capability)"`.
 - **Condition statistics are descriptive history, not a forecast.** Each condition carries
   `evidence["1"|"3"|"6"]["forwardReturn"|"mfe"|"mae"]`, one cell per horizon and metric:
   - The horizon keys count bars **of that timeframe**: on 1d, 1/3/6 sessions; on 1h, 1/3/6 hourly
@@ -158,12 +180,14 @@ returns, not levels across an ex-date.
     history cases do not overlap). The interval is still wide, so this does not prove that no edge
     exists, but any edge is too small to see at this size. Neither test is a forward journal: that is
     the `direction-scores` record. Nothing has been tested for H = 60.
+  - Both tests used MBB and BID only. For the other 28 symbols no blind test exists, so nothing has
+    measured this kind of call on them at all.
 
   Therefore:
   - say in `report.md`, next to the view, that it is for reference only and has not beaten "always
-    sideways";
+    sideways" (for the other 28: that it has never been tested on them);
   - put that sentence in `body.limitations` of every note:
-    `"no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20); view is for reference only"`;
+    `"no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20), on MBB/BID only (none for other symbols); view is for reference only"`;
   - never present the direction as a reason to trade.
 
   Drop this only when `direction-scores` shows the horizon with `status` `ok` (`nEffective >= 30`) and
@@ -195,7 +219,8 @@ returns, not levels across an ex-date.
   Use `market-only` with `wait` by default, or `hold` only when the user says they already hold the
   stock; or `insufficient-input` with `none` when the view is `no-view` for lack of data. A bullish
   view does not imply `buy-more`.
-  For holdings, stop levels, sellable shares or buy capacity, point to the `equity-position` skill.
+  For holdings, stop levels, sellable shares or buy capacity, point to the `equity-position` skill
+  (MBB and BID only; the other 28 have no position lane, so say holdings and stops are not covered).
 - Give scenarios with invalidation levels (from the payload or a script) for the same horizon.
 
 ## Step 4: Record the note (once)
@@ -204,7 +229,7 @@ returns, not levels across an ex-date.
   before `calendar.nextSessionOpenUtcMs` (the next session's 09:00 ICT open). Otherwise record it as
   `retrospective` (stored for the record, never scored) unless the user says not to record.
 - Top level: `noteBinding` copied verbatim into `snapshotId`, `snapshotSha256`, `requestedAsOf` (a
-  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v5"` and
+  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v6"` and
   `methodVersion: "equity-technical-method-v1"`.
 - Top-level enums: `mode` forward | retrospective; `direction` up | down | sideways | no-view;
   `actionView` buy-more | hold | reduce | sell | wait | none; `actionBasis` position-aware |
@@ -223,9 +248,9 @@ returns, not levels across an ex-date.
     `invalidation`); `outcomeCheck`: `{ "how", "dueAfterSessions" (> 0) }`;
   - `probability`: always `null` here.
 - `body.limitations` carries the payload `limitations`, every `dataQuality` caveat, the "no edge
-  shown" sentence (Step 2) and, when a condition cell is cited, the condition-statistics sentence
-  (Step 2). `body.missingData` says fundamentals and news were deliberately not read.
-  `body.outcomeCheck.how` states the `direction-score-v1` rule and thresholds for the chosen horizon.
+  shown" sentence (Step 2), for a symbol without base rates the "no base rates" sentence (Step 2) and,
+  when a condition cell is cited, the condition-statistics sentence (Step 2). `body.missingData` says
+  fundamentals and news were deliberately not read. `body.outcomeCheck.how` states the `direction-score-v1` rule and thresholds for the chosen horizon.
 - Notes are immutable once recorded. The response carries `noteId`
   (`session/{SYMBOL}/{signalBarOpenTimeMs}/{shortid}`); put it in `report.md`.
 
@@ -239,7 +264,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
   "snapshotId": "snap/MBB/1792309500000/0123456789ab",
   "snapshotSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "horizonSessions": 20,
-  "skillVersion": "equity-technical-v5",
+  "skillVersion": "equity-technical-v6",
   "methodVersion": "equity-technical-method-v1",
   "direction": "sideways",
   "actionView": "wait",
@@ -250,7 +275,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
     "evidence": [{ "claim": "close above SMA50 on 1d", "evidenceIds": ["technical:timeframes[1d].indicators"] }],
     "counterEvidence": [],
     "scenarios": [{ "name": "base", "horizonSessions": 20, "description": "range", "invalidation": ["1d close < level"] }],
-    "limitations": ["no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20); view is for reference only", "base rates unvalidated (gate-not-passed)"],
+    "limitations": ["no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20), on MBB/BID only (none for other symbols); view is for reference only", "base rates unvalidated (gate-not-passed)"],
     "missingData": ["fundamentals and news not read (technical-only skill)"],
     "outcomeCheck": { "how": "direction-score-v1: R = close(signal+20 sessions)/signal close - 1 (adjusted); R >= +5% up, R <= -4% down, else sideways", "dueAfterSessions": 20 },
     "probability": null
@@ -313,7 +338,7 @@ the git repos; one folder per symbol): `technical.json`, `scripts/` (scripts, th
 
 ## Versions
 
-`skillVersion: "equity-technical-v5"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
+`skillVersion: "equity-technical-v6"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
 version when this file's rules change and the method version when the analysis procedure changes. v2
 (2026-10-30, after the first trial run): record by posting the file with a long timeout and check
 before re-posting, payload structure of `conditions` and `freshness`, real caveat codes, binding stays
@@ -324,4 +349,8 @@ in, no path into `investment-research`); found automatically through the `D:\cod
 `conditions.payload.evidence` and the per-condition cells (descriptive only, sample gate, horizons in
 bars, tests declared on BTCUSDT); the conditions candle module's own rule set (no Marubozu). v5
 (2026-10-31, after the 60-case anonymised blind test): "No edge yet" quotes both blind tests, 28/74
-together against 34/74 for always sideways, and the `body.limitations` sentence says so.
+together against 34/74 for always sideways, and the `body.limitations` sentence says so. v6
+(2026-11-03, VN30-TA): scope widened from MBB/BID to the 30 VN30 constituents with technical analysis
+(the other 28 are 1d only, no decision lane); how to work without base rates (`no-decision-capability`)
+and without a verified evidence bundle; the blind tests and the `body.limitations` sentence are
+named as MBB/BID only; relative strength for non-bank names weighs VNINDEX.

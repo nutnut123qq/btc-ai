@@ -218,9 +218,9 @@ def test_mbb_rejects_4h_and_unknown_symbol():
     with pytest.raises(ctc.UnknownTimeframeError):
         build_conditions_payload("4h", [], [], [], now_ms=0, symbol="MBB")
     with pytest.raises(ctc.UnknownSymbolError):
-        build_conditions_payload("1h", [], [], [], now_ms=0, symbol="VNM")
+        build_conditions_payload("1h", [], [], [], now_ms=0, symbol="XYZ")
     with pytest.raises(ctc.UnknownSymbolError):
-        ctc.get_current_conditions("1h", symbol="VNM")
+        ctc.get_current_conditions("1h", symbol="XYZ")
     with pytest.raises(ctc.UnknownTimeframeError):
         ctc.get_current_conditions("4h", symbol="MBB")
 
@@ -309,14 +309,32 @@ def test_bid_hourly_conditions_on_instrument_candles():
     assert payload["latestClosedBar"]["openTimeMs"] == int(rows[-1]["OpenTimeMs"])
 
 
-def test_bid_rejects_4h_and_context_only_symbols_rejected():
+def test_bid_rejects_4h_and_vnindex_has_no_technical_analysis():
     with pytest.raises(ctc.UnknownTimeframeError):
         build_conditions_payload("4h", [], [], [], now_ms=0, symbol="BID")
-    for symbol in ("VCB", "CTG", "VNINDEX"):
-        with pytest.raises(ctc.UnsupportedCapabilityError):
-            build_conditions_payload("1d", [], [], [], now_ms=0, symbol=symbol)
-        with pytest.raises(ctc.UnsupportedCapabilityError):
-            ctc.get_current_conditions("1d", symbol=symbol)
+    with pytest.raises(ctc.UnsupportedCapabilityError):
+        build_conditions_payload("1d", [], [], [], now_ms=0, symbol="VNINDEX")
+    with pytest.raises(ctc.UnsupportedCapabilityError):
+        ctc.get_current_conditions("1d", symbol="VNINDEX")
+    # VN30-TA: non-decision equities carry technical analysis on their only timeframe, 1d.
+    for symbol in ("VCB", "CTG", "ACB"):
+        with pytest.raises(ctc.UnknownTimeframeError):
+            build_conditions_payload("1h", [], [], [], now_ms=0, symbol=symbol)
+        with pytest.raises(ctc.UnknownTimeframeError):
+            ctc.get_current_conditions("1h", symbol=symbol)
+
+
+@pytest.mark.parametrize("symbol", ["VCB", "CTG", "ACB", "VRE"])
+def test_non_decision_vn30_daily_conditions_on_instrument_candles(symbol):
+    rows = _mbb_daily_rows(_trading_days(date(2026, 8, 3), 40), first_close=25_000.0)
+    payload = build_conditions_payload(
+        "1d", rows, [], sorted(CANONICAL_SMC_COLUMNS),
+        now_ms=int(rows[-1]["CloseTimeMs"]), symbol=symbol.lower(),
+    )
+    assert (payload["symbol"], payload["timeframe"]) == (symbol, "1d")
+    assert payload["analysisWindow"]["bars"] == 40
+    assert payload["analysisWindow"]["contiguous"] is True
+    assert payload["unavailableModules"] == []
 
 
 class TestEndpointBid:
@@ -343,4 +361,20 @@ class TestEndpointBid:
     def test_bid_4h_and_vnindex_return_400(self):
         assert self.client.get("/api/current-conditions?timeframe=4h&symbol=BID").status_code == 400
         assert self.client.get("/api/current-conditions?timeframe=1d&symbol=VNINDEX").status_code == 400
-        assert self.client.get("/api/current-conditions?timeframe=1d&symbol=VCB").status_code == 400
+        assert self.client.get("/api/current-conditions?timeframe=1h&symbol=VCB").status_code == 400
+        assert self.client.get("/api/current-conditions?timeframe=1h&symbol=ACB").status_code == 400
+
+    def test_daily_only_vn30_symbol_payload_carries_no_statistical_evidence(self):
+        # VN30-TA: ACB (TA, 1d only, no decision, no evidence bundle) is served like BID 1d. The payload
+        # is computed from candles alone: no bundle is read and none is claimed, so the backend join
+        # (CurrentConditionsService) reports evidence.available=false, "no-verified-evidence-bundle".
+        rows = _mbb_daily_rows(_trading_days(date(2026, 8, 3), 30), first_close=25_000.0)
+        with patch.object(ctc, "_load_inputs", return_value=(rows, [], ["EventId"], None)) as loader:
+            response = self.client.get("/api/current-conditions?timeframe=1d&symbol=acb")
+        assert response.status_code == 200
+        payload = response.json()
+        assert (payload["symbol"], payload["timeframe"]) == ("ACB", "1d")
+        assert loader.call_args[0][:2] == ("ACB", "1d")
+        assert payload["conditions"]
+        assert "evidence" not in payload
+        assert all("evidence" not in condition for condition in payload["conditions"])

@@ -32,8 +32,8 @@ _NO_CRYPTO_CAPABILITIES: Dict[str, bool] = {
 def _equity(symbol: str, label: str, timeframes: tuple[str, ...], *, decision: bool) -> Dict[str, Any]:
     """HOSE equity on the VCI adjusted series (mirrors backend InstrumentCatalog.Equity).
 
-    ``decision`` instruments (MBB, BID) carry the position/decision/base-rates lane and
-    technical analysis; context-only peers (VCB, CTG) are ingestion-only.
+    Every equity here is a VN30 constituent and carries technical analysis (VN30-TA);
+    only ``decision`` instruments (MBB, BID) carry the position/decision/base-rates lane.
     """
     return {
         "symbol": symbol,
@@ -49,7 +49,7 @@ def _equity(symbol: str, label: str, timeframes: tuple[str, ...], *, decision: b
         "timeframes": timeframes,
         "default_timeframe": "1d",
         "enabled": False,
-        "capabilities": {**_NO_CRYPTO_CAPABILITIES, "technical_analysis": decision,
+        "capabilities": {**_NO_CRYPTO_CAPABILITIES, "technical_analysis": True,
                          "ingestion": True, "decision": decision},
     }
 
@@ -111,6 +111,34 @@ INSTRUMENTS: Dict[str, Dict[str, Any]] = {
         "capabilities": {**_NO_CRYPTO_CAPABILITIES, "technical_analysis": False,
                          "ingestion": True, "decision": False},
     },
+    # VN30-DATA: the rest of the VN30 basket in effect from 2026-08-03; 1d candles and
+    # technical analysis (VN30-TA), no decision lane. Same order as the backend catalog.
+    "ACB": _equity("ACB", "ACB (ACB)", ("1d",), decision=False),
+    "BSR": _equity("BSR", "BSR (Binh Son Refining)", ("1d",), decision=False),
+    "FPT": _equity("FPT", "FPT (FPT)", ("1d",), decision=False),
+    "GAS": _equity("GAS", "GAS (PV Gas)", ("1d",), decision=False),
+    "GVR": _equity("GVR", "GVR (Vietnam Rubber Group)", ("1d",), decision=False),
+    "HDB": _equity("HDB", "HDB (HDBank)", ("1d",), decision=False),
+    "HPG": _equity("HPG", "HPG (Hoa Phat)", ("1d",), decision=False),
+    "LPB": _equity("LPB", "LPB (LPBank)", ("1d",), decision=False),
+    "MCH": _equity("MCH", "MCH (Masan Consumer)", ("1d",), decision=False),
+    "MSN": _equity("MSN", "MSN (Masan Group)", ("1d",), decision=False),
+    "MWG": _equity("MWG", "MWG (Mobile World)", ("1d",), decision=False),
+    "SAB": _equity("SAB", "SAB (Sabeco)", ("1d",), decision=False),
+    "SHB": _equity("SHB", "SHB (SHB)", ("1d",), decision=False),
+    "SSB": _equity("SSB", "SSB (SeABank)", ("1d",), decision=False),
+    "SSI": _equity("SSI", "SSI (SSI Securities)", ("1d",), decision=False),
+    "STB": _equity("STB", "STB (Sacombank)", ("1d",), decision=False),
+    "TCB": _equity("TCB", "TCB (Techcombank)", ("1d",), decision=False),
+    "TCX": _equity("TCX", "TCX (Techcom Securities)", ("1d",), decision=False),
+    "VHM": _equity("VHM", "VHM (Vinhomes)", ("1d",), decision=False),
+    "VIB": _equity("VIB", "VIB (VIB)", ("1d",), decision=False),
+    "VIC": _equity("VIC", "VIC (Vingroup)", ("1d",), decision=False),
+    "VJC": _equity("VJC", "VJC (Vietjet)", ("1d",), decision=False),
+    "VNM": _equity("VNM", "VNM (Vinamilk)", ("1d",), decision=False),
+    "VPB": _equity("VPB", "VPB (VPBank)", ("1d",), decision=False),
+    "VPL": _equity("VPL", "VPL (Vinpearl)", ("1d",), decision=False),
+    "VRE": _equity("VRE", "VRE (Vincom Retail)", ("1d",), decision=False),
 }
 KNOWN_SYMBOLS: tuple[str, ...] = tuple(INSTRUMENTS)
 

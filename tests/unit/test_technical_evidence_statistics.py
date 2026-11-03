@@ -165,7 +165,7 @@ def test_output_scope_names_the_evaluated_instrument_and_schema_tracks_the_regis
         report = build_statistical_evidence([], {}, symbol=symbol, **arguments)
         assert report["scope"] == {"symbol": symbol, "timeframe": "1d"}
     with pytest.raises(ValueError, match="Unknown symbol"):
-        build_statistical_evidence([], {}, symbol="VNM", **arguments)
+        build_statistical_evidence([], {}, symbol="XYZ", **arguments)
 
 
 def test_effect_null_multiple_testing_stability_and_sample_diagnostics_are_complete():

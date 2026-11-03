@@ -18,6 +18,7 @@ AI_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(AI_ROOT))
 
 import equity_base_rates as ebr
+import trading_config
 
 SKILL_DIR = AI_ROOT / "skills" / "equity-technical"
 SKILL_PATH = SKILL_DIR / "SKILL.md"
@@ -64,8 +65,43 @@ def test_front_matter_names_the_skill(skill):
     fields = dict(re.findall(r"^(name|description):[ \t]*([^\r\n]+)", m.group(1), flags=re.M))
     assert fields.get("name", "").strip() == "equity-technical"
     description = fields.get("description", "")
-    assert "MBB" in description and "BID" in description
+    assert "MBB" in description and "BID" in description and "30 VN30 constituents" in description
     assert "/api/equities/{symbol}/technical" in description
+
+
+def _symbols(line: str) -> set[str]:
+    return set(re.findall(r"`([A-Z]{3,})`", line))
+
+
+def test_symbol_scope_equals_the_technical_analysis_registry(skill):
+    # VN30-TA: the skill's symbol list is the registry's TA equities (imported, never re-typed),
+    # split by the decision lane that only MBB/BID carry.
+    scope = re.search(r"- \*\*Symbols:\*\*(.*?)\r?\n- \*\*Endpoints", skill, flags=re.S)
+    assert scope, "Scope must list the symbols before the endpoints"
+    decision_line, rest = scope.group(1).split("plus the decision lane", 1)
+    others = rest.split("1d only, no decision lane", 1)[0]
+    equities = {s: d for s, d in trading_config.INSTRUMENTS.items() if d["asset_class"] == "equity"}
+    assert all(d["capabilities"]["technical_analysis"] for d in equities.values())
+    decision = {s for s, d in equities.items() if d["capabilities"]["decision"]}
+    assert _symbols(decision_line) == decision == {"MBB", "BID"}
+    assert _symbols(others) == set(equities) - decision
+    assert len(equities) == 30 and "(the other 28)" in others
+    assert all(equities[s]["timeframes"] == ("1d",) for s in set(equities) - decision)
+    banks = re.search(r"The banks among the 30 are (.*?)\.", " ".join(skill.split()))
+    # the relative-strength advice hinges on this list, so pin it exactly (TPB left VN30 on 2026-08-03)
+    assert banks and _symbols(banks.group(1)) == {"MBB", "BID", "VCB", "CTG", "ACB", "HDB", "LPB", "SHB", "SSB",
+                                                  "STB", "TCB", "VIB", "VPB"}
+
+
+def test_non_decision_symbols_work_without_base_rates_or_a_bundle(skill):
+    flat = " ".join(skill.split())
+    assert "`baseRatesUnavailableReason` `no-decision-capability`" in flat
+    assert '`"no base rates: no decision lane for this symbol (no-decision-capability)"`' in flat
+    assert "Only MBB and BID have verified per-symbol bundles." in flat
+    assert "the symbol has no historical statistics" in flat and "never borrow numbers from MBB, BID or BTCUSDT" in flat
+    assert "For a non-bank name, weigh VNINDEX" in flat
+    assert "Both tests used MBB and BID only. For the other 28 symbols no blind test exists" in flat
+    assert "`equity-position` skill (MBB and BID only;" in flat
 
 
 def test_threshold_table_equals_barrier_configs(skill):
@@ -99,8 +135,8 @@ def test_only_the_config_horizons_are_allowed(skill, note_example):
 def test_names_rule_versions_and_endpoints(skill):
     assert "direction-score-v1" in skill
     assert "scoring.ruleVersion" in skill
-    assert 'skillVersion: "equity-technical-v5"' in skill
-    assert "equity-technical-v4\"" not in skill  # no stale version left anywhere in the file
+    assert 'skillVersion: "equity-technical-v6"' in skill
+    assert "equity-technical-v5\"" not in skill  # no stale version left anywhere in the file
     assert 'methodVersion: "equity-technical-method-v1"' in skill
     assert "GET /api/equities/{symbol}/technical" in skill
     assert "GET /api/equities/{symbol}/research-notes/direction-scores" in skill
@@ -113,7 +149,7 @@ def test_names_rule_versions_and_endpoints(skill):
 def test_note_example_has_null_probability_and_versions(skill, note_example):
     assert "`body.probability` is always `null`" in skill
     assert "probability" in note_example["body"] and note_example["body"]["probability"] is None
-    assert note_example["skillVersion"] == "equity-technical-v5"
+    assert note_example["skillVersion"] == "equity-technical-v6"
     assert note_example["methodVersion"] == "equity-technical-method-v1"
     assert note_example["mode"] == "forward"
     assert note_example["actionBasis"] == "market-only"
@@ -152,8 +188,8 @@ def test_only_technical_endpoints_are_named(skill):
     assert "--include-portfolio" not in skill
 
 
-NO_EDGE_SENTENCE = ("no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20); "
-                    "view is for reference only")
+NO_EDGE_SENTENCE = ("no edge shown: blind tests 2026-10-30/31 scored 28/74 vs 34/74 for always sideways (H20), "
+                    "on MBB/BID only (none for other symbols); view is for reference only")
 
 
 def test_states_no_edge_from_the_blind_tests(skill, note_example):

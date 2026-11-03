@@ -160,7 +160,10 @@ def test_retention_is_scoped_to_one_instrument_directory(tmp_path, monkeypatch):
 def test_retention_rejects_unknown_symbol_and_a_foreign_run_index(tmp_path, monkeypatch):
     monkeypatch.setenv(vn.NON_TRADING_DATES_ENV, "2000-01-03")
     with pytest.raises(ValueError, match="Unknown symbol"):
-        build_retention_plan(tmp_path, keep_successful_runs=2, symbol="VNM")
+        build_retention_plan(tmp_path, keep_successful_runs=2, symbol="XYZ")
+    # VN30-TA: a known symbol without any bundle (ACB) is reported as missing evidence, not unknown.
+    with pytest.raises(FileNotFoundError, match="evidence directory does not exist"):
+        build_retention_plan(tmp_path, keep_successful_runs=2, symbol="ACB")
     _run_equity(tmp_path, "MBB", 6, 0)
     # MBB's run copied under BID/ must not be planned as BID's.
     (tmp_path / "BID").mkdir()

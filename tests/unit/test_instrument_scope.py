@@ -22,8 +22,13 @@ from trading_config import (
 )
 
 
+# VN30-DATA: the rest of the VN30 basket (with MBB, BID, VCB, CTG), backend catalog order.
+VN30_DATA_ONLY = ("ACB", "BSR", "FPT", "GAS", "GVR", "HDB", "HPG", "LPB", "MCH", "MSN", "MWG", "SAB", "SHB",
+                  "SSB", "SSI", "STB", "TCB", "TCX", "VHM", "VIB", "VIC", "VJC", "VNM", "VPB", "VPL", "VRE")
+
+
 def test_registry_declares_btc_and_mbb_contract():
-    assert KNOWN_SYMBOLS == ("BTCUSDT", "MBB", "BID", "VCB", "CTG", "VNINDEX")
+    assert KNOWN_SYMBOLS == ("BTCUSDT", "MBB", "BID", "VCB", "CTG", "VNINDEX", *VN30_DATA_ONLY)
 
     btc = INSTRUMENTS["BTCUSDT"]
     assert btc["asset_class"] == "crypto"
@@ -105,16 +110,17 @@ def test_symbol_aware_timeframes_fail_closed_on_unknown_symbols():
 
 
 # --- EQX: registry parity with backend InstrumentCatalog (spec §1, instrument-catalog-v2) ---
-# Covers the instruments the AI side serves; the 26 VN30-DATA data-only constituents are backend-only.
+# Covers every instrument; VN30-TA gives VCB, CTG and the 26 VN30-DATA constituents technical analysis (1d only).
 
 # symbol -> (asset_class, currency, price_basis, timeframes, ingestion, technical_analysis, decision)
 _SPEC_SCOPE = {
     "BTCUSDT": ("crypto", "USDT", "raw", ("1h", "4h", "1d"), False, True, False),
     "MBB": ("equity", "VND", "adjusted", ("1h", "1d"), True, True, True),
     "BID": ("equity", "VND", "adjusted", ("1h", "1d"), True, True, True),
-    "VCB": ("equity", "VND", "adjusted", ("1d",), True, False, False),
-    "CTG": ("equity", "VND", "adjusted", ("1d",), True, False, False),
+    "VCB": ("equity", "VND", "adjusted", ("1d",), True, True, False),
+    "CTG": ("equity", "VND", "adjusted", ("1d",), True, True, False),
     "VNINDEX": ("index", "index-points", "raw", ("1d",), True, False, False),
+    **{symbol: ("equity", "VND", "adjusted", ("1d",), True, True, False) for symbol in VN30_DATA_ONLY},
 }
 _CRYPTO_ONLY_FLAGS = ("news", "sentiment", "futures", "liquidation", "order_book",
                       "execution", "paper_trading")
@@ -153,8 +159,8 @@ def test_bid_accepts_1h_and_1d_like_mbb():
     for timeframe in ("4h", "15m", "1w"):
         with pytest.raises(ValueError, match="Inactive production timeframe"):
             require_active_timeframe(timeframe, "BID")
-    # Context-only peers stay daily-only.
-    for symbol in ("VCB", "CTG"):
+    # Non-decision equities stay daily-only.
+    for symbol in ("VCB", "CTG", *VN30_DATA_ONLY):
         assert active_timeframes_for(symbol) == ("1d",)
         with pytest.raises(ValueError, match="Inactive production timeframe"):
             require_active_timeframe("1h", symbol)
@@ -175,7 +181,7 @@ def test_active_symbols_stay_btc_only():
     from trading_config import require_active_symbol
 
     assert ACTIVE_SYMBOLS == ["BTCUSDT"]
-    for symbol in ("BID", "MBB", "VCB", "CTG", "VNINDEX"):
+    for symbol in set(KNOWN_SYMBOLS) - {DEFAULT_SYMBOL}:
         assert require_known_symbol(symbol) == symbol
         with pytest.raises(ValueError, match="Unsupported symbol"):
             require_active_symbol(symbol)

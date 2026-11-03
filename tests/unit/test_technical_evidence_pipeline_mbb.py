@@ -420,10 +420,10 @@ def test_mbb_pipeline_rejects_undeclared_timeframes_fail_closed(tmp_path):
                 cutoff_ms=10**15,
             ),
         )
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Unknown symbol"):
         pipeline.run_pipeline(
             tmp_path,
-            symbol="VNM",
+            symbol="XYZ",
             forced_cutoff_ms=10**15,
             bootstrap_samples=10,
             now=lambda: FIXED,
