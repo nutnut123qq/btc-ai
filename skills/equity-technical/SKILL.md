@@ -229,7 +229,7 @@ then. Reason in returns, not levels across an ex-date.
   before `calendar.nextSessionOpenUtcMs` (the next session's 09:00 ICT open). Otherwise record it as
   `retrospective` (stored for the record, never scored) unless the user says not to record.
 - Top level: `noteBinding` copied verbatim into `snapshotId`, `snapshotSha256`, `requestedAsOf` (a
-  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v6"` and
+  JSON string) and `signalBarOpenTimeMs`, plus `skillVersion: "equity-technical-v7"` and
   `methodVersion: "equity-technical-method-v1"`.
 - Top-level enums: `mode` forward | retrospective; `direction` up | down | sideways | no-view;
   `actionView` buy-more | hold | reduce | sell | wait | none; `actionBasis` position-aware |
@@ -239,7 +239,37 @@ then. Reason in returns, not levels across an ex-date.
   - keys `schemaVersion` (`"equity-research-note-v1"`), `thesis`, `evidence`, `counterEvidence`,
     `scenarios`, `limitations`, `missingData`, `outcomeCheck`, `probability`; any other key is
     rejected, and all but `probability` are required;
-  - `thesis`: non-empty string, at most 4000 characters; the whole `body` at most 64 KiB;
+  - `thesis`: non-empty string, at most 4000 characters; the whole `body` at most 64 KiB. The thesis of
+    a **forward** note is published verbatim on the public VN30 website after a fail-closed keyword
+    filter, and a thesis the filter withholds is not shown at all (one flagged word hides the whole
+    text); the site cuts a thesis longer than 1500 characters. So write it in English (no Greek letters
+    such as σ), keep it within 1500 characters and describe only the candles and indicators:
+    - no action words, even in their market sense and in any form (buys, buying, bought): buy, sell,
+      hold, holder, reduce, add, accumulate, trim, enter, entry, exit, wait, stop, stop-loss, stopped
+      out, take profit, profit-taking, cut loss, stand aside, sideline, new money, limit or market
+      order, scale in or out, average down, go long or short, shorting, short-sell, recommend.
+      Describe the move instead ("rose 1.2%", "moved into oversold"), not by an event name
+      (`RSI_ENTER_OVERSOLD` belongs in `evidence`); write "the decline" or "fell 4%", not "sell-off"
+      or "sold off"; say "for reference only", not "not a recommendation". These are fine: "selling
+      pressure", "buying pressure", "accumulation/distribution", "support held", "price stopped at the
+      low". Gluing a word to "_" or a digit does not make it fine ("buy18600"). The action goes only
+      in `actionView` (Step 3), never in the thesis;
+    - no position, number of shares, price paid, cost, money amount, budget, NAV or "T+n" (write "20
+      sessions later", not "close(T+20)"); where the close sits in a range is fine as a fraction
+      ("range position 0.45");
+    - no URL, host name, file path, dotted field path (`conditions.payload`), id, epoch timestamp
+      ("2026-11-02", not "1792281600000"), code of 32 or more characters
+      (`contract-definitions-sha-mismatch`) or the word "snapshot" (cite field paths and codes in
+      `evidence` and `limitations` instead);
+    - volume as a multiple of its average ("volume 2.1x its 20-session average"), never a share count;
+      "20- and 60-session", not "20-session/60-session"; "ex-date adjustment", not "cash dividend";
+    - numbers: "SMA50 19877", not "SMA50:19877"; a space after the full stop that ends a sentence
+      ("19600. The close", not "19600.The close"); never a ticker or another three-capital word right
+      after a number, even across a full stop ("SMA200", not "200 DMA"; "closed 18750. The stock", not
+      "closed 18750. MBB"): the filter can read it as a share count;
+    - the filter withholds more words than these lists, so a purely technical thesis can be hidden too:
+      write "not yet confirmed", not "awaiting confirmation"; "is flat", not "stays flat";
+      "measured-move level", not "price target"; and never address the reader ("you").
   - `evidence[]` (at most 100): `{ "claim", "evidenceIds": [strings] }`; `counterEvidence[]` (at most
     100): plain strings or the same `{claim, evidenceIds}` shape;
   - `scenarios[]` (at most 20): `{ "name", "horizonSessions" (> 0), "description", "invalidation":
@@ -264,7 +294,7 @@ Minimal shape (values are placeholders; the binding values come from `noteBindin
   "snapshotId": "snap/MBB/1792309500000/0123456789ab",
   "snapshotSha256": "0000000000000000000000000000000000000000000000000000000000000000",
   "horizonSessions": 20,
-  "skillVersion": "equity-technical-v6",
+  "skillVersion": "equity-technical-v7",
   "methodVersion": "equity-technical-method-v1",
   "direction": "sideways",
   "actionView": "wait",
@@ -338,7 +368,7 @@ the git repos; one folder per symbol): `technical.json`, `scripts/` (scripts, th
 
 ## Versions
 
-`skillVersion: "equity-technical-v6"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
+`skillVersion: "equity-technical-v7"`, `methodVersion: "equity-technical-method-v1"`. Bump the skill
 version when this file's rules change and the method version when the analysis procedure changes. v2
 (2026-10-30, after the first trial run): record by posting the file with a long timeout and check
 before re-posting, payload structure of `conditions` and `freshness`, real caveat codes, binding stays
@@ -353,4 +383,8 @@ together against 34/74 for always sideways, and the `body.limitations` sentence 
 (2026-11-03, VN30-TA): scope widened from MBB/BID to the 30 VN30 constituents with technical analysis
 (the other 28 are 1d only, no decision lane); how to work without base rates (`no-decision-capability`)
 and without a verified evidence bundle; the blind tests and the `body.limitations` sentence are
-named as MBB/BID only; relative strength for non-bank names weighs VNINDEX.
+named as MBB/BID only; relative strength for non-bank names weighs VNINDEX. v7 (2026-11-03, VN30-WEB):
+the thesis of a forward note is published verbatim on the public VN30 website after a fail-closed
+keyword filter, so Step 4 says how to write it (English, within 1500 characters, candles and indicators
+only; no action words in any form, holdings, money, paths, ids, long codes or event names; numbers
+written so the filter cannot misread them; the action stays in `actionView`).

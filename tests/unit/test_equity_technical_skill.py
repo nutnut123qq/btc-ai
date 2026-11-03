@@ -4,6 +4,10 @@ Pins the chat skill against the code it describes: the direction-score-v1
 thresholds and horizons must equal the barrier configs of ``equity_base_rates``
 (imported, never re-typed), the note it records must carry no probability, and
 it may only point the session at the technical/candles/research-notes endpoints.
+Since v7 (VN30-WEB) the forward thesis is published verbatim on the public site
+behind the keyword filter of ``export_vn30_web``: the Step 4 writing rule is
+pinned, and its own examples are parsed back out of it and run through that
+filter in every natural position of a sentence.
 Reads files only — no DB, no network.
 """
 
@@ -22,6 +26,7 @@ import trading_config
 
 SKILL_DIR = AI_ROOT / "skills" / "equity-technical"
 SKILL_PATH = SKILL_DIR / "SKILL.md"
+SKILL_VERSION = "equity-technical-v7"
 
 ALLOWED_API_PATHS = {
     "/api/equities/{symbol}/technical",
@@ -135,8 +140,9 @@ def test_only_the_config_horizons_are_allowed(skill, note_example):
 def test_names_rule_versions_and_endpoints(skill):
     assert "direction-score-v1" in skill
     assert "scoring.ruleVersion" in skill
-    assert 'skillVersion: "equity-technical-v6"' in skill
-    assert "equity-technical-v5\"" not in skill  # no stale version left anywhere in the file
+    assert f'skillVersion: "{SKILL_VERSION}"' in skill
+    # no stale version left anywhere in the file (the Versions history names old ones as "v6 (", never quoted)
+    assert set(re.findall(r'"equity-technical-v(\d+)"', skill)) == {"7"}
     assert 'methodVersion: "equity-technical-method-v1"' in skill
     assert "GET /api/equities/{symbol}/technical" in skill
     assert "GET /api/equities/{symbol}/research-notes/direction-scores" in skill
@@ -149,7 +155,7 @@ def test_names_rule_versions_and_endpoints(skill):
 def test_note_example_has_null_probability_and_versions(skill, note_example):
     assert "`body.probability` is always `null`" in skill
     assert "probability" in note_example["body"] and note_example["body"]["probability"] is None
-    assert note_example["skillVersion"] == "equity-technical-v6"
+    assert note_example["skillVersion"] == SKILL_VERSION
     assert note_example["methodVersion"] == "equity-technical-method-v1"
     assert note_example["mode"] == "forward"
     assert note_example["actionBasis"] == "market-only"
@@ -301,3 +307,249 @@ def test_evidence_fields_and_reasons_exist_in_the_backend_cells(skill):
     assert 'StatisticalMetrics = ["forwardReturn", "mfe", "mae"]' in source
     for envelope in ("available", "reason", "cutoffMs", "evidenceAgeBars"):
         assert f'["{envelope}"]' in source and f"`{envelope}`" in skill
+
+
+# --- v7 (VN30-WEB): the forward thesis is published verbatim, behind a fail-closed keyword filter ---
+
+# Contract VN30-WEB r3 E1: the canonical action-word list of the thesis filter (export_vn30_web.py), as the skill
+# names it; "in any form" stands for the inflections the filter withholds too. "held", a bare "stopped" and
+# "accumulation" are not on the list (the filter lets them through), so the skill may allow them.
+THESIS_ACTION_WORDS = (
+    "buy", "sell", "hold", "holder", "reduce", "add", "accumulate", "trim", "enter", "entry", "exit", "wait",
+    "stop", "stop-loss", "stopped out", "take profit", "profit-taking", "cut loss", "stand aside", "sideline",
+    "new money", "limit or market order", "scale in or out", "average down", "go long or short", "shorting",
+    "short-sell", "recommend",
+)
+# Every "quoted" or `code` item of Step 4's `thesis` bullet is either one of THESIS_RULE_NAMES or one of the rule's
+# examples, sorted into the three tuples below. The test parses them back out of the rule both ways, so an example
+# added later fails until it is sorted here, and then meets the filter.
+# - THESIS_PUBLISHABLE: what the rule calls fine or tells the writer to write. The filter must publish each one in
+#   every position of THESIS_POSITIONS.
+THESIS_PUBLISHABLE = (
+    "rose 1.2%", "moved into oversold", "the decline", "fell 4%", "for reference only", "selling pressure",
+    "buying pressure", "accumulation/distribution", "support held", "price stopped at the low", "20 sessions later",
+    "range position 0.45", "volume 2.1x its 20-session average", "20- and 60-session", "ex-date adjustment",
+    "SMA50 19877", "19600. The close", "SMA200", "closed 18750. The stock", "2026-11-02", "not yet confirmed",
+    "is flat", "measured-move level",
+)
+# - THESIS_WITHHELD: what the rule tells the writer not to write because the filter withholds it; the filter must
+#   withhold each one in every position. Since r3 this includes phrasing the filter withholds beyond the word lists
+#   ("<number> <ticker>" also across a full stop, a 13-digit epoch, awaiting, stays flat, price target), so a filter
+#   change that publishes one of them turns this test red and the rule is brought back in line.
+THESIS_WITHHELD = (
+    "not a recommendation", "close(T+20)", "20-session/60-session", "cash dividend", "conditions.payload",
+    "contract-definitions-sha-mismatch", "snapshot", "1792281600000", "sold off", "SMA50:19877", "19600.The close",
+    "200 DMA", "closed 18750. MBB", "awaiting confirmation", "stays flat", "price target", "you",
+)
+# - THESIS_AVOIDED: what the rule tells the writer not to write for a reason other than the filter withholding it.
+#   The skill may be stricter than the filter, never looser, so these meet no filter check: a word glued to "_" or a
+#   digit and an event name (the filter is not built to read them, contract r3 E4), the placeholder "T+n", and
+#   "sell-off" (a form of "sell"; the r3 filter lets it through as a noun after a word, "the sell-off", and withholds
+#   it after ". ", ", ", "; " or ": ").
+THESIS_AVOIDED = ("RSI_ENTER_OVERSOLD", "buy18600", "T+n", "sell-off")
+# Quoted or `code` items of the rule that are names, not phrases: note fields and the character "_".
+THESIS_RULE_NAMES = ("body", "actionView", "evidence", "limitations", "_")
+THESIS_CARRIER = "MBB 1d closed near SMA50 ({}). View: sideways over 20 sessions, for reference only."
+# Where a phrase can stand in a thesis, as (template, capitalised): inside "( ... )" (THESIS_CARRIER), first word of
+# the thesis, after ". ", ", " and "; ", after a word, and after ": " at the very end. The filter reads what stands
+# around a word (review r3: the r3 filter publishes "(sell-off" and withholds "Sell-off volume faded"), so a phrase
+# is fine only when it is fine in all of them.
+THESIS_POSITIONS = (
+    ("MBB 1d closed near SMA50 ({}). View: sideways over 20 sessions, for reference only.", False),
+    ("{} on the last bar. View: sideways over 20 sessions, for reference only.", True),
+    ("MBB 1d closed near SMA50. {} on the last bar.", True),
+    ("MBB 1d closed near SMA50, {} on the last bar.", False),
+    ("MBB 1d closed near SMA50; {} on the last bar.", False),
+    ("MBB 1d closed near SMA50 with {} on the last bar.", False),
+    ("MBB 1d, last bar: {}", False),
+)
+_QUOTED = r'(?:"[^"]+"|`[^`]+`)'
+
+
+def _section(skill: str, heading: str) -> str:
+    m = re.search(rf"^## {re.escape(heading)}[ \t]*\n(.*?)(?=^## |\Z)", skill, flags=re.S | re.M)
+    assert m, f"missing section ## {heading}"
+    return m.group(1)
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def _thesis_rule(skill: str) -> tuple[str, list[str]]:
+    """Step 4's `thesis` bullet: its lead text and its sub-bullets, each flattened."""
+    step4 = _section(skill, "Step 4: Record the note (once)")
+    m = re.search(r"^  - `thesis`:(.*?)(?=^  - `evidence\[\]`)", step4, flags=re.S | re.M)
+    assert m, "Step 4 must keep the `thesis` bullet right before `evidence[]`"
+    lead, *items = re.split(r"^    - ", m.group(1), flags=re.M)
+    return _flat(lead), [_flat(item) for item in items]
+
+
+def _rule_item(items: list[str], start: str) -> str:
+    found = [item for item in items if item.startswith(start)]
+    assert len(found) == 1, f"the thesis rule needs one sub-bullet starting {start!r}"
+    return found[0]
+
+
+def _names(text: str, word: str) -> bool:
+    return re.search(rf"(?<![\w-]){re.escape(word)}(?![\w-])", text) is not None
+
+
+def _items(text: str) -> list[str]:
+    """The "quoted" and `code` items of a text, in order."""
+    return [quoted or code for quoted, code in re.findall(r'"([^"]+)"|`([^`]+)`', text)]
+
+
+def _thesis_examples(rule: str) -> tuple[set[str], set[str]]:
+    """The rule's examples by what the rule says of them: (fine, not). Fine: the "These are fine:" list, the
+    "Describe the move instead (...)" list and every X of 'X, not Y'; not: every Y. X is one or more items joined by
+    ", " or " or ", Y one or more joined by " or "."""
+    fine, avoid = [], []
+    for x, y in re.findall(rf"({_QUOTED}(?:(?:, | or ){_QUOTED})*), not ({_QUOTED}(?: or {_QUOTED})*)", rule):
+        fine += _items(x)
+        avoid += _items(y)
+    listed = re.search(rf"These are fine: ({_QUOTED}(?:(?:, | or | and ){_QUOTED})*)\.", rule)
+    moves = re.search(rf"Describe the move instead \(({_QUOTED}(?:, {_QUOTED})*)\)", rule)
+    assert listed and moves, "the rule must keep its fine list and its describe-the-move examples"
+    return set(fine + _items(listed.group(1)) + _items(moves.group(1))), set(avoid)
+
+
+def _in_position(position: tuple[str, bool], phrase: str) -> str:
+    template, capitalised = position
+    return template.format(phrase[:1].upper() + phrase[1:] if capitalised else phrase)
+
+
+def test_forward_thesis_is_written_for_the_public_site(skill):
+    # The exporter publishes the forward thesis verbatim (ai/export_vn30_web.py); the writer is the cheap
+    # lever against both a leak and a thesis withheld for a technical sentence.
+    lead, items = _thesis_rule(skill)
+    assert lead.startswith("non-empty string, at most 4000 characters; the whole `body` at most 64 KiB.")
+    assert ("The thesis of a **forward** note is published verbatim on the public VN30 website after a "
+            "fail-closed keyword filter, and a thesis the filter withholds is not shown at all (one flagged word "
+            "hides the whole text);") in lead
+    # the filter also withholds a thesis with Greek, Cyrillic or modifier letters (contract VN30-WEB r3 E4)
+    assert "So write it in English (no Greek letters such as σ)" in lead
+    assert "describe only the candles and indicators:" in lead
+    assert len(items) == 6
+
+
+def test_thesis_length_rule_matches_the_export_cut(skill):
+    # Review r3: "published verbatim" holds only up to export_vn30_web.THESIS_MAX characters; a longer thesis is cut
+    # on the site (its closing view and "for reference only" can go), so the rule names the same number.
+    import export_vn30_web as web
+
+    lead, _ = _thesis_rule(skill)
+    assert f"the site cuts a thesis longer than {web.THESIS_MAX} characters" in lead
+    assert f"keep it within {web.THESIS_MAX} characters" in lead
+    text = (THESIS_CARRIER.format("RSI14 45") + " ") * (2 * web.THESIS_MAX // len(THESIS_CARRIER))
+    whole, longer = text[:web.THESIS_MAX], text[:web.THESIS_MAX + 1]
+    assert web.public_thesis(whole) == (whole, False)
+    shown, withheld = web.public_thesis(longer)
+    assert not withheld and len(shown) == web.THESIS_MAX and shown != longer
+
+
+def test_thesis_rule_bans_every_filtered_action_word_and_keeps_the_action_in_action_view(skill):
+    _, items = _thesis_rule(skill)
+    actions = _rule_item(items, "no action words")
+    assert actions.startswith("no action words, even in their market sense and in any form (buys, buying, bought): ")
+    named = [word.strip() for word in actions.split(": ", 1)[1].split(".", 1)[0].split(",")]
+    assert len(named) == len(set(named)), named
+    assert set(named) == set(THESIS_ACTION_WORDS), set(named) ^ set(THESIS_ACTION_WORDS)
+    assert '"for reference only", not "not a recommendation"' in actions
+    # Review r3: the r3 filter withholds "sell-off" at the start of a sentence or after ", ", "; " or ": ", so the
+    # rule offers "the decline" instead and never calls it fine.
+    assert 'write "the decline" or "fell 4%", not "sell-off" or "sold off"' in actions
+    allowed = re.search(r"These are fine: (.*?)\. Gluing", actions)
+    assert allowed and _items(allowed.group(1)) == [
+        "selling pressure", "buying pressure", "accumulation/distribution", "support held", "price stopped at the low"]
+    # The filter does not read a word glued to "_" or a digit (contract r3 E4, export_vn30_web docstring: "the writer
+    # is told not to write them"); the conditions' event names glue listed words that way (RSI_ENTER_OVERSOLD).
+    assert 'Gluing a word to "_" or a digit does not make it fine ("buy18600").' in actions
+    assert "not by an event name (`RSI_ENTER_OVERSOLD` belongs in `evidence`)" in actions
+    contract = json.loads((AI_ROOT / "contracts" / "technical-module-contract.json").read_text(encoding="utf-8"))
+    declared = {name for module in contract["modules"].values() for name in module["parameters"]["eventTypes"]}
+    assert "RSI_ENTER_OVERSOLD" in declared
+    assert "The action goes only in `actionView` (Step 3), never in the thesis" in actions
+    # actionView keeps its own default: the thesis rule does not change Step 3.
+    assert ("Use `market-only` with `wait` by default, or `hold` only when the user says they already hold the "
+            "stock") in _flat(skill)
+
+
+def test_thesis_rule_bans_holdings_money_and_internal_identifiers(skill):
+    _, items = _thesis_rule(skill)
+    holdings = _rule_item(items, "no position")
+    for word in ("position", "number of shares", "price paid", "cost", "money amount", "budget", "NAV", '"T+n"'):
+        assert _names(holdings, word), word
+    identifiers = _rule_item(items, "no URL")
+    for word in ("URL", "host name", "file path", "dotted field path", "id", "epoch timestamp",
+                 "code of 32 or more characters", 'the word "snapshot"'):
+        assert _names(identifiers, word), word
+    # review r3: the binding's signalBarOpenTimeMs is the epoch a writer could copy; the filter reads it as a digit run
+    assert 'epoch timestamp ("2026-11-02", not "1792281600000")' in identifiers
+    assert "cite field paths and codes in `evidence` and `limitations` instead" in identifiers
+    phrasing = _rule_item(items, "volume as a multiple")
+    assert '"volume 2.1x its 20-session average"' in phrasing and "never a share count" in phrasing
+    assert '"20- and 60-session", not "20-session/60-session"' in phrasing
+    assert '"ex-date adjustment", not "cash dividend"' in phrasing
+
+
+def test_thesis_rule_warns_about_numbers_and_words_beyond_its_lists(skill):
+    # Review r3: the filter also withholds plain chart phrasing the lists never named: "SMA50:19877" reads as
+    # host:port, "19600.The" as a host name, a number right before three capitals as "<number> <ticker>" (r3, even
+    # across a full stop), and words such as awaiting, stays flat, price target or you (whether the filter really
+    # withholds each of them is checked in test_thesis_rule_examples_agree_with_the_export_filter).
+    _, items = _thesis_rule(skill)
+    numbers = _rule_item(items, "numbers:")
+    for text in ('"SMA50 19877", not "SMA50:19877"', '("19600. The close", not "19600.The close")',
+                 '("SMA200", not "200 DMA"; "closed 18750. The stock", not "closed 18750. MBB")',
+                 "even across a full stop", "the filter can read it as a share count"):
+        assert text in numbers, text
+    beyond = _rule_item(items, "the filter withholds more words")
+    assert beyond.startswith("the filter withholds more words than these lists, so a purely technical thesis can be "
+                             "hidden too: ")
+    for text in ('"not yet confirmed", not "awaiting confirmation"', '"is flat", not "stays flat"',
+                 '"measured-move level", not "price target"', 'never address the reader ("you")'):
+        assert text in beyond, text
+
+
+def _shown(web, text: str) -> bool:
+    return web.public_thesis(text) == (text, False)
+
+
+def test_thesis_rule_examples_agree_with_the_export_filter(skill, note_example):
+    # Producer -> consumer (AGENTS.md #10): every example of the rule, parsed back out of it, goes through the real
+    # filter in every position of THESIS_POSITIONS. The skill never calls fine what the site withholds wherever it
+    # stands in a sentence, and what it says the site withholds is withheld wherever it stands.
+    import export_vn30_web as web
+
+    lead, items = _thesis_rule(skill)
+    rule = " ".join([lead, *items])
+    examples = THESIS_PUBLISHABLE + THESIS_WITHHELD + THESIS_AVOIDED
+    assert len(examples) == len(set(examples)), "an example is sorted twice"
+    assert set(_items(rule)) - set(THESIS_RULE_NAMES) == set(examples), set(_items(rule)) ^ set(examples)
+    fine, avoid = _thesis_examples(rule)
+    assert fine <= set(THESIS_PUBLISHABLE), fine - set(THESIS_PUBLISHABLE)
+    assert avoid <= set(THESIS_WITHHELD + THESIS_AVOIDED), avoid - set(THESIS_WITHHELD + THESIS_AVOIDED)
+    assert THESIS_POSITIONS[0] == (THESIS_CARRIER, False)
+    # no position withholds a neutral phrase by itself (otherwise the withheld check below would pass for nothing)
+    assert [p for p in THESIS_POSITIONS if not _shown(web, _in_position(p, "RSI14 45"))] == []
+    lost = [_in_position(p, phrase) for phrase in THESIS_PUBLISHABLE for p in THESIS_POSITIONS
+            if not _shown(web, _in_position(p, phrase))]
+    assert lost == [], lost
+    published = [_in_position(p, phrase) for phrase in THESIS_WITHHELD for p in THESIS_POSITIONS
+                 if web.public_thesis(_in_position(p, phrase)) != (None, True)]
+    assert published == [], published
+    example = note_example["body"]["thesis"]  # a forward note: this is what the site would show
+    assert note_example["mode"] == "forward" and _shown(web, example)
+
+
+def test_skill_version_is_v7_in_all_three_places(skill, note_example):
+    step4 = _flat(_section(skill, "Step 4: Record the note (once)"))
+    assert f'plus `skillVersion: "{SKILL_VERSION}"` and `methodVersion: "equity-technical-method-v1"`' in step4
+    assert note_example["skillVersion"] == SKILL_VERSION
+    versions = _flat(_section(skill, "Versions"))
+    assert versions.startswith(f'`skillVersion: "{SKILL_VERSION}"`, `methodVersion: "equity-technical-method-v1"`.')
+    v7 = re.search(r"\bv7 \(2026-11-03, VN30-WEB\): (.*)$", versions)
+    assert v7, "Versions must log v7 (2026-11-03, VN30-WEB)"
+    assert "the thesis of a forward note is published verbatim on the public VN30 website" in v7.group(1)
+    assert set(re.findall(r'"equity-technical-v(\d+)"', skill)) == {"7"}

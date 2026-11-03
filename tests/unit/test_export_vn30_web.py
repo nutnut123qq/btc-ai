@@ -2,10 +2,24 @@
 forward 20-session notes and score is the backend's whole-journal H=20 total; a value outside the contract enums makes
 the notes part malformed; a thesis passes a fail-closed privacy filter and carries a cut marker; a part that fails
 keeps the previous v2 run's values (400 UNSUPPORTED_CAPABILITY never does); /technical calls start 15 s apart; a file
-is rewritten only when its bytes change."""
+is rewritten only when its bytes change.
+
+Round r3 (evidence/vn30-web-20261103/r3/contract.md): the filter's action words match in every inflection (E1) and
+every dash it reads is "-"; the technical phrases it blanks are anchored so that they cannot carry a private word (E2);
+positions, quantities, cost basis and money amounts are withheld (E3), and so is a thesis with a character the lists
+cannot read (E4). The leak sentences of cold-check r2 (R2_LEAKS) are pinned verbatim. meta.unavailable reasons are
+plain Vietnamese without internal codes; the details go to stderr (E5).
+
+Review of round r3 (evidence/vn30-web-20261103/r3/W-exporter/review-fix): the reviewer's probe sentences
+(REVIEW_LEAKS) are pinned verbatim; every listed phrase matches with a space or a dash between its words; each chart
+phrase is blanked only in its chart context (E2_PRIVATE has a private sentence around each context rule); the
+characters the lists can read are an allowlist, in the text as written and after NFKC (E4); and every single rule,
+alternative and guard of the filter is locked: taking any one of them out turns a test red (ONE_RULE, one sentence per
+rule, and the tuples above; review-fix/mutants.py)."""
 import io
 import json
 import os
+import re
 import sys
 import urllib.error
 from datetime import date, datetime, timedelta, timezone
@@ -23,9 +37,12 @@ SESSION = "2026-11-02"
 SYMBOLS = ("VIC", "MBB", "VCB", "ACB")  # the screen's rank order, not alphabetical
 KEPT = "; giữ dữ liệu lượt trước"
 NOTHING_KEPT = "; chưa có dữ liệu lượt trước"
-UNSUPPORTED = "backend chưa hỗ trợ mã này (UNSUPPORTED_CAPABILITY)"
+# meta.unavailable reasons as the public site shows them (contract r3 E5), typed here rather than imported
+UNSUPPORTED = "backend chưa hỗ trợ mã này"
 NO_KEY = "thiếu quyền đọc nhật ký nhận định"
-NO_STRENGTH = "chưa có sức mạnh tương đối so VNINDEX ở phiên mới nhất"
+NO_STRENGTH = "dữ liệu VNINDEX chưa khớp tới phiên mới nhất của mã"
+NO_INDICATORS = "backend chưa có chỉ báo 1d"
+MALFORMED = "phản hồi sai định dạng"
 INDICATOR_NAMES = ["sma50", "sma200", "ema12", "ema26", "ema50", "ema200", "rsi14", "macd", "macdSignal",
                    "macdHistogram", "bollingerUpper", "bollingerMiddle", "bollingerLower", "atr14"]
 META_KEYS = ["schema", "generatedAtUtc", "session", "symbols", "unavailable", "source"]
@@ -108,6 +125,419 @@ PRIVATE_THESES = COLDCHECK_PRIVATE + (
     "\uff42\uff55\uff59 the dip",  # full-width letters
     "T\uff0b2",  # a full-width plus sign
 )
+# Cold-check r2 (coldcheck-r2.md): every distinct leak sentence of the main reviewer's, the privacy lens's and the
+# triages' probes, each published by the r2 filter or used there as a leak control; frozen from their scripts by
+# evidence/vn30-web-20261103/r3/W-exporter/collect_vectors.py and gen_test_vectors.py. Left out on purpose (the
+# filter does not claim them, contract r3 E4/E6): "BUY_ZONE 18600" and "buy18600" (a word glued to "_" or a
+# digit), "see the backend on my-pc" (a free-form host name) and "127.1" (an abbreviated IPv4 address reads as a
+# decimal number).
+R2_LEAKS = (
+    # reviewer
+    "Consider adding on dips toward 18,600.", "Adding on a retest of 18,600 is reasonable.",
+    "Reducing into strength above 20,100.", "Trimming above 20,100 makes sense.", "Exiting on a close below 18,500.",
+    "Entering on a close above 20,100.", "Waiting for a close above 20,100 is prudent.", "Taking profits near 21,000.",
+    "Profit-taking near 21,000 is likely.", "Average down below 18,500.", "Scale in on weakness.",
+    "Lighten up above 20,100.", "Liquidate on a close below 18,500.", "We are long from 24,000.", "We own 2,000 MBB.",
+    "Position: 45% of NAV.", "position 45%", "Investors should consider accumulating.", "Short it below 18,500.",
+    "Hedge the exposure", "added 1000 MBB yesterday", "mua them khi vuot 20.100", "ban bot tren 20.100",
+    "cat lo duoi 18.500", "xả hàng trên 20.100", "nắm giữ tiếp", "giá mục tiêu 21.000", "buy", "buys", "buying",
+    "bought", "sell", "sells", "selling", "sold", "hold", "holding", "reduce", "reduces", "reduced", "reducing", "add",
+    "adds", "added", "adding", "wait", "waiting", "exit", "exiting", "enter", "entering", "trim", "trimming",
+    "take profit", "taking profits",
+    # lens
+    "Waiting for a daily close above 20100 before acting is the more conservative choice.",
+    "Staying on the sidelines until a close above 20100 is prudent.",
+    "New money is better kept on the sidelines until the range resolves.", "Consider reducing on a close below 18600.",
+    "Reducing into strength near 20100 would be reasonable.", "Adding near the 18600 support is premature.",
+    "Accumulating on dips toward 18600 is reasonable.",
+    "Trimming into strength near 20500 locks in part of the rebound.",
+    "Taking profits near the upper Bollinger band is sensible.", "Profit-taking near 21000 is advisable.",
+    "Exiting on a break of 18600 limits the downside.", "Entering here offers a poor risk/reward.",
+    "Purchasing near 18600 is better than chasing 20100.", "Averaging down below 18600 is not advised.",
+    "Avoid catching the falling knife until the price bases.",
+    "A long from 18700 targets 20100 with invalidation at 18500.", "Get long near 18600 and get out below 18500.",
+    "Lighten up near 20500; load up again near 18600.", "Place a limit order at 18600.",
+    "Bids at 18600 and 18300 are reasonable; offer at 20500.",
+    "Investors already in the stock can keep it while price stays above 18600.", "Stay long while 18600 holds.",
+    "Liquidate below 18500.", "Bail out on a close below 18500.", "Cuts losses quickly below 18500.",
+    "Open a position in the 18600-18900 range with invalidation below 18500.",
+    "Build a position within the 18600-18900 band.", "Scale into a position in the lower band.",
+    "Start a position in a buy range of 18600-18900.", "MBB position: 30% of NAV.",
+    "Buying power of 50 million VND remains.", "Remaining buying power is 120m VND, enough for 3,000 more.",
+    "Sell-off half at 20500.", "The 3,000-share lot acquired at 21,500 is 12.8% underwater.",
+    "The average purchase price of 21,500 is 12.8% above the close.", "My average price is 21,500.",
+    "Down 12.8% from the 21,500 average paid.", "3,000 MBB are owned at 21,500.",
+    "With 3,000 MBB on the books at 21,500, the drawdown is 12.8%.", "Of the 3,000 MBB, 1,000 settle on Wednesday.",
+    "The account has 120 million VND available.", "Funds available: 120 million VND.",
+    "Dry powder of 50m VND is set aside for MBB.", "Weight: 30% of NAV.", "Long 3,000 MBB since 21,500.",
+    "Đợi giá đóng cửa trên 20.100 rồi mới tham gia.", "Có thể bắt đáy quanh 18.600.",
+    "Canh vào hàng khi giá về 18.600.", "Thoát hàng nếu thủng 18.600.", "Xả bớt khi chạm 20.500.",
+    "Trung bình giá xuống quanh 18.600.", "Đang âm 12%.", "Tiền nhàn rỗi 120 triệu.",
+    "Cân nhắc chốt một phần quanh 20.500.", "Cắt giảm khi thủng 18.600.", "Quan sát thêm, chưa tham gia.",
+    "Gia tăng quanh 18.600.", "Nắm 3 nghìn MBB từ 21.500.", "Mức dừng 18.500.",
+    "nen ban ra, cho xac nhan, cat lo duoi 18.500", "BUY.", "SELL!", "(hold)", "Wait-and-see.", "buy/sell",
+    "action=buy", "MUA", "BÁN", "GIỮ", "CHỜ", "ĐỨNG NGOÀI", "Mua.", "bán,", "giữ;", "\u0441ell near 20500",
+    "b\u0443y the dip", "\u202eyub", "s\u00adell", "\U0001d41b\U0001d42e\U0001d432", "ba\u02can", "POS\u0130T\u0130ON",
+    "Blind tests (evidence/blind-test-20261030) found no edge.", "levels from scripts/levels output", "DESKTOP-7QK2LM",
+    "the previous call f0e364fd", "binding 2bb65c32d3d5", "requested as of 1792315293201",
+    "someone at example dot com", "backend at :5197", "loopback backend", "Take\u2011profit at 21000.",
+    "Cut-loss at 18500.", "Cutloss below 18500.", "Keep buying power in reserve until a close above 20100.",
+    "Stand aside until a close above 20100.", "Patience: no new money until a close above 20100.",
+    "For existing longs, 18500 is the line in the sand.", "For new money, the better entry is lower.",
+    # triage1
+    "Reduce on a close below 18600.", "Wait for a daily close above 20100.", "Add on a retest of 18600.",
+    "Take profit near 20500.", "Cut losses below 18500.", "Exit on a break of 18600.", "Chờ giá đóng cửa trên 20.100.",
+    "Chốt lời quanh 20.500.", "Exposure is best reduced on a close below 18600.",
+    "The view waits for a daily close above 20100.", "Adding on a retest of 18600 is reasonable.",
+    "Trimming into strength near 20500 is sensible.", "Entering near 18600 offers a tight invalidation.",
+    "Profit-taking near 20500 is sensible.", "Take\u2013profit at 21000.", "Stopped out below 18500.",
+    "Stay on the sidelines until a close above 20100.", "Scale in near 18600 and scale out near 20500.",
+    "Average down only above 18500.", "Lighten up near 20500.", "Open a long near 18600 with invalidation at 18500.",
+    "Bottom-fishing near 18600 is premature.", "Hạ tỉ lệ nắm giữ khi thủng 18.600.", "Đặt lệnh ở 18.600.",
+    "Tham gia khi giá vượt 20.100.", "Đứng ngoài cho tới khi vượt 20.100.",
+    # triage2
+    "Open a position in the 18,600-18,900 range.", "Open a position in the 18.600-18.900 range.",
+    "Open a position in the range.", "Hold a position in the range.", "Add a position in the lower band.",
+    "Take a position in the support band near 18600.", "Initiate a position in a 3% band.", "MBB position 30%.",
+    "Position = 45% of NAV.", "Selling power is limited to 1,000.", "My buying power is 50m.",
+    "Our position in the MBB channel is 30% of NAV.", "We sold out; position: 0% now.",
+    "Open a position in the 18600-18900 range with invalidation below 18500",
+    "Build a position within the 18600-18900 band", "Scale into a position in the lower band",
+    "Start a position in a buy range of 18600-18900", "Buying power of 50 million VND remains",
+    "Remaining buying power is 120m VND, enough for 3,000 more", "MBB position: 30% of NAV",
+    "Keep buying power in reserve until a close above 20100", "Open a position in the range",
+    "Build a position within the 20-session range", "Take a position in the 60-session band near 18600",
+    "Selling power is limited to 1,000",
+    # triage3
+    "Buying power: 120 million VND.", "Available buying power is 120 million VND.", "Position: 30% of NAV.",
+    "Purchase price 21,500; the close is 12.8% below it.", "Acquired 3,000 MBB at 21,500.",
+    "VND 120m is available for MBB.", "1.2 bn VND sits idle.", "3,000-share position",
+    "Giá trung bình 21.500, đang âm 12%.", "Số dư tài khoản 120 triệu.", "Sở hữu 3.000 MBB giá 21.500.",
+    "Còn 1,2 tỷ đồng chưa dùng.", "User holds 3,000 MBB at avg cost 21,500.", "Your 3,000 shares at 21,500.",
+    "The 3,000 shares acquired at 21,500.", "avg price 21,500", "cost basis 21,500", "cash 120 million VND",
+    "tiền mặt 120 triệu", "giá vốn 21.500", "đang nắm 3.000 cp", "Số dư 120.000.000 đồng.",
+)
+# The reviewer's probe sentences of round r3 (review-W-exporter/probe_leaks.py, groups A-F), every one published by the
+# reviewed filter; pinned verbatim like R2_LEAKS.
+REVIEW_LEAKS = (
+    # A: a form of the canonical list
+    "We shorted MBB near 20,100", "Got stopped-out below 18,500 on the last attempt", "Use a limit-order at 18,600",
+    "A scale-in near 18,600 keeps the risk small", "Take quick profits near 21,000", "TP 21,000, SL 18,500",
+    "Loss-cut at 18,500", "Reentry above 20,100 is cleaner", "Rebuy near 18,600",
+    "An average-down below 18,500 is not advised", "We are paying up above 20,100",
+    "The book has gotten long near 18,600", "Stopping out below 18,500 is the plan", "Market-orders at the open",
+    "Scaled-out near 20,500", "Take early profits near 21,000", "Taking small profits near 21,000",
+    "Resold near 20,500", "Reentered above 20,100",
+    # B: synonyms of the listed actions
+    "Long above 20,100, short below 18,500", "Short the bounce toward 20,100",
+    "Fade rallies toward 20,100 while price is below SMA50", "Lock in gains near 20,500", "Book profits near 21,000",
+    "Take some money off the table near 21,000", "Step aside until a close above 20,100",
+    "Stay away until a close above 20,100", "Fresh money is better deployed above 20,100", "Place an order at 18,600",
+    "Offer at 20,500", "Get in near 18,600", "Pick up shares near 18,600", "Dump the stock below 18,500",
+    "Close the trade below 18,500", "Keep MBB while the support holds", "Go flat below 18,500",
+    "Cover shorts near 18,600", "Double down below 18,500", "Acquired at 21,500 in October",
+    "Favor longs above 20,100", "Shorts are favored below 18,500",
+    # C: position, quantity, cost basis, money
+    "Our weighted average price is 21,500", "My average share price is 21,500", "Average fill price 21,500",
+    "MBB is on our books at 21,500", "Weight: 30% of net asset value", "3K MBB remain", "We own MBB from 21,500",
+    "We are invested since 21,500", "We got in at 21,500", "Filled at 21,500 last week", "Our basis is 21,500",
+    "Underwater by 12.8% from 21,500", "Three thousand shares at 21,500", "2,000 units of MBB at 21,500",
+    "Our stake is 2% of equity", "Half size near 18,600, full size above 20,100", "$5,000 is set aside for MBB",
+    "120 mil VND set aside", "Our loss is 12.8% since 21,500", "MBB: 3,000 at an average of 21,500",
+    # D: Vietnamese
+    "Có thể xuống tiền quanh 18.600", "Tiếp tục ôm hàng trên 18.600", "Cầm tiếp nếu còn trên 18.600",
+    "Nhặt dần quanh 18.600", "Tất tay quanh 18.600", "Thoát nếu thủng 18.600", "Cắt nếu thủng 18.600",
+    "Chốt hết khi chạm 20.500", "Đang lời 8%", "Đang có 3 nghìn cổ MBB", "Còn 120 củ chưa dùng", "Tài khoản còn 120tr",
+    "Con 120 trieu tien mat", "Còn 120.000.000đ chưa dùng", "Giá bình quân 21.500", "Hàng về ngày thứ Tư",
+    "bat day quanh 18.600", "chot mot phan quanh 20.500", "Lướt sóng trong biên 18.600-20.100",
+    # E: a chart phrase around a private word
+    "Build a small position 0.5 of full size near 18,600", "Keep the position 0.5 of normal size",
+    "Open a range position of 0.5 near 18,600", "Stay patient and position in the 20-session range near its low",
+    "Close position in the 20-session range near 20,100", "Our buying interest sits near 18,600",
+    "We have buying interest near 18,600", "Plan a partial sell-off near 20,500", "Then sell-off half at 20,500",
+    "Plan: position in the 20-session range near its low", "Build a starter position 0.3 near 18,600",
+    # F: Latin look-alikes, spaces and dashes outside the readable set
+    "\u0299\u1d1c\u028f the dip", "\ua731\u1d07\u029f\u029f near 20,500", "ho\u01c0d above 18,600",
+    "\u0251dd near 18,600", "sell\u0131ng near 20,500", "b\u200auy the dip", "s\u2009ell near 20,500",
+    "\u249d\u24b0\u24b4 the dip", "\U0001f171\U0001f184\U0001f188 the dip", "take\u2500profit at 21,000",
+    "cut\u23afloss at 18,500", "the 3,000\u2500share lot",
+)
+# Contract r3 E1: every word of the canonical action list (the equity-technical skill names the same list) in every
+# form, and the Vietnamese additions; withheld inside a technical sentence.
+E1_FORMS = (
+    "buy", "buys", "buying", "bought", "sell", "sells", "selling", "sold", "hold", "holds", "holding", "holder",
+    "holders", "reduce", "reduces", "reduced", "reducing", "add", "adds", "added", "adding", "accumulate",
+    "accumulates", "accumulated", "accumulating", "trim", "trims", "trimmed", "trimming", "enter", "enters", "entered",
+    "entering", "entry", "entries", "exit", "exits", "exited", "exiting", "wait", "waits", "waited", "waiting", "stop",
+    "stops", "stop-loss", "stopped out", "take profit", "takes profit", "taking profits", "took profit",
+    "taken profits", "take some profit", "profit-taking", "profit taking", "cut loss", "cuts losses",
+    "cutting losses", "cut-loss", "cutloss", "stand aside", "stands aside", "standing aside", "stood aside",
+    "sideline", "sidelines", "sidelined", "new money", "limit order", "limit orders", "market order", "market orders",
+    "scale in", "scales out", "scaled in", "scaling out", "scale into", "average down", "averages down",
+    "averaged down", "averaging down", "go long", "go short", "going long", "goes short", "went long", "shorting",
+    "short-sell", "short sell", "recommend", "recommends", "recommended", "recommendation",
+    # review r3: a dash between the words of a phrase, more words between take and profit, more forms
+    "stopped-out", "stopping out", "stopping-out", "take quick profits", "take early profits", "taking small profits",
+    "loss-cut", "losscut", "stand-aside", "new-money", "limit-order", "market-orders", "limitorder", "scale-in",
+    "scaled-out", "average-down", "go-long", "gone short", "shorted", "side-line", "sidelines",
+)
+E1_VI = ("đợi", "xả", "bắt đáy", "vào hàng", "thoát hàng", "tham gia", "chốt lời", "chốt lãi", "chốt một phần",
+         "chốt bớt", "nắm", "sở hữu", "nhàn rỗi", "số dư", "trung bình giá")
+# Left out of the list on purpose, so published: "held" (everyday chart language), a bare "stopped", "accumulation".
+E1_NOT_LISTED = (
+    "Support held at 18600 twice and the low held again on 2026-11-02.",
+    "Price stopped at the low of the day.",
+    "Accumulation/distribution turned up while selling pressure eased.",
+    # "long"/"short" before "-term" are chart words, not the position phrases of ACTION_EXTRAS
+    "RSI14 is already short-term oversold and the trend stays long-term bearish.",
+    "Giá vào vùng 18.600 rồi bật lên.",  # "giá vào vùng": the price reaches a zone, not an entry price
+)
+# More action words and position phrasings of the same kind, each the only listed word of its sentence (the cold-check
+# r2 leak sentences in R2_LEAKS use them inside longer text).
+ACTION_EXTRAS = (
+    "awaiting a close above 20,100", "Purchasing near 18600 is better than chasing 20100", "hedge below 18,500",
+    "Liquidate below 18500", "Get long near 18600", "get out below 18500", "Lighten up near 20500",
+    "load up near 18600", "Bail out on a close below 18500", "Bottom-fishing near 18600 is premature",
+    "Avoid catching the falling knife", "Open a long near 18600 with invalidation at 18500", "Remain long from 24,000",
+    "For existing longs, 18500 is the line in the sand", "Investors already in the stock can keep it",
+    "Stay long above 18600", "Stay flat until a close above 20,100", "Short it below 18,500", "We're long",
+    "price target 21,000",
+    "Bids at 18600 and 18300 are reasonable; offer at 20500", "giá mục tiêu 21.000", "Cắt giảm khi thủng 18.600",
+    "Gia tăng quanh 18.600", "Mức dừng 18.500", "Đang âm 12%", "nen ban ra, cho xac nhan, cat lo duoi 18.500",
+    "the backend on loopback", "DESKTOP-7QK2LM", "someone at example dot com", "backend at :5197",
+    "Blind tests (evidence/blind-test-20261030) found no edge", "the previous call f0e364fd",
+    "binding 0123456789abcdef0123", "requested as of 1792315293201",
+    "s\u0336ell near 20500",  # a combining mark outside the readable set withholds (review r3: READABLE)
+    "the 3,000 M\u0336BB lot",  # ... before the case-sensitive rules would read it too
+    "b\u0301uy the dip",  # a readable combining mark that composes with nothing is removed before the lists read it
+    "the 3,000 MB\u0301B lot",  # ... before the case-sensitive rules read it too
+)
+
+# Contract r3 E2: each technical phrase the filter blanks, in the writer's words and in each place it may stand, is
+# published unchanged ...
+E2_TECHNICAL = (
+    "Excess -3.04% vs VNINDEX; position in 60-session range 0.255.",  # a real claim, MBB 20261030-1535
+    "Price is mid-range (60-day position 0.34) and position within its 20-session range is 0.31.",
+    "The close sits at a range position of 0.45; channel position 0.8 on 1h.",
+    "Buying climax volume faded after the gap and selling exhaustion followed near the lower band.",
+    "Volume rose on the day (sell-off, 2.1x its 20-session average); the 2026-10-29 sell-off broke the range.",
+    "If the 18600 level holds, the 20-session range stays intact; the 60-session low holds too.",
+    # review r3: every place of CHART_BEFORE, each in a sentence of its own
+    "Position 0.45 of the 20-session range.", "The close is at position 0.45.", "The close is position 0.45.",
+    "The close sits mid-range, position 0.45.", "The close sits mid-range: position 0.45.",
+    "The close sits mid-range. Position 0.45 is the reading.", "The close sits in the top half of position 0.9.",
+    "The 20-session position 0.45 is mid-range.", "The 20-bar position 0.45 is mid-range.",
+    "Range position 0.45 on 1d.", "The range position was 0.45 on 1d.", "Its range position 0.45 is mid-range.",
+    "RSI14 is 34 and range position is 0.03 of the 20-session range.",  # the v7 thesis BID 20261103-2002
+    "RSI14 is 34 with range position 0.45.", "The close is at a range position of 0.45.", "It is the range position 0.45.",
+    "It was a range position of 0.45.", "RSI14 is 34 with a range position of 0.45.", "The 60-day range position 0.4.",
+    "RSI14 is 34 and the range position is 0.4.", "The close of a range position 0.45.",
+    "The band position at 0.9 is high.", "Its 60-session band position is 0.2.",
+    "Position in the 20-session range 0.25 on 1d.", "The close's position in the 20-session range is 0.25.",
+    "Price position in the 20-session range 0.25.", "Its position in the 20-session range is 0.25.",
+    "The close is position in the 20-session range 0.25.", "The close is at position in the 20-session range 0.25.",
+    "A reading of position in the 20-bar band 0.25.", "Mid-range (position in the 20-session range) on 1d.",
+    "Buying pressure and selling flows, buying waves, selling momentum and buying volume all eased.",
+    "After the sell-off on 2026-11-02 the close fell 4%.", "Its sell-off broke the low.", "That sell-off of 4% ended.",
+    "This sell-off; then a doji.", "The 2026-11-02 sell-off, on 2.85x volume.", "A 4.2% sell-off on heavy volume.",
+    "The low held after a sell-off", "The support holds; the floor holds; the zone holds; resistance holds; range holds.",
+)
+# ... and a private sentence built around each one is withheld: the blanked phrase never takes the private word along.
+E2_PRIVATE = (
+    "Position: 30%",  # "position N%" is a weight, never a range position
+    "Build a position 0.5 of full size near 18600", "Keep our position 0.5 of full size",
+    "Open a range position near 18600",  # "<range> position" only with its fraction
+    "Build a small position within the 20-session range",  # "position in the N-session range" only after "(", ...
+    "Open a position in the 18600-18900 range", "Take a long position in the 20-session range",
+    "Keep buying power in reserve until a close above 20100",  # never "buying power"
+    "Sell-off half at 20500",  # "sell-off" only as a noun
+    "Hold above 18600 while the support holds",  # "<support> holds" blanks two words, never a third
+    # review r3: one sentence per context rule, which only that rule withholds
+    "Build a starter position 0.3 near 18,600", "Build my position 0.5 of full size", "Open a long position 0.5",
+    "Keep the short position 0.5", "Take an position 0.5 near 18,600",  # frac: not after another word
+    "Open a range position of 0.5 near 18,600", "Keep the range position 0.5 near 18,600",  # rpos: nor after a verb
+    "Stay patient and position in the 20-session range near its low",  # inrange: a trade has no fraction
+    "Build a position in the 20-session range 0.5 near 18,600",  # inrange: not after an article
+    "Close position in the 20-session range 0.5 near 20,100",  # inrange: not after "close"
+    "Buying interest is planned near 18,600", "Selling activity is planned above 20,500",  # press: not interest
+    "Then sell-off half at 20,500", "Then sell-off on strength",  # selloff: not after another word
+    "Do a sell-off near 20,500",  # selloff: not before another word
+    "The fund holds MBB",  # holds: only after support, level...
+)
+
+# Contract r3 E3: holdings, quantities, cost basis and money amounts, each pattern alone in its sentence ...
+E3_PRIVATE = (
+    "The 3,000-share lot is 12.8% under water", "My average price is 21,500", "acquisition price 21,500",
+    "Down 12.8% from the 21,500 average paid", "The stock is owned since 21,500", "The family owns it",
+    "owning it since 21,500", "on the books since 21,500", "Weight: 30% of NAV",
+    "The account has 120 million VND available", "1.2 bn VND sits idle", "Còn 1,2 tỷ đồng chưa dùng",
+    "Dry powder of 50m VND is set aside", "a balance of 120,000,000 VND", "VND 120m is available for MBB",
+    "VND 120,000,000 is available", "Of the 3,000 MBB, 1,000 settle on Wednesday", "3k MBB remain",
+    # review r3: each pattern and alternative alone in its sentence
+    "The weighted average price is 21,500", "The average share price is 21,500", "Average fill price 21,500",
+    "Average execution price 21,500", "Average cost price 21,500", "Average unit price 21,500",
+    "MBB sits on their books at 21,500", "MBB is on its books at 21,500", "Weight: 30% of net asset value",
+    "3K MBB remain", "Còn 120 triệu chưa dùng", "1.2 billion VND sits idle", "Còn 1,2 tỉ chưa dùng",
+    "Còn 1,2 tỷ chưa dùng", "1.2 bn sits idle", "120 million sits idle", "3 nghìn cổ phiếu", "3 ngàn cp",
+    "3.000 cổ phiếu", "3,000 shares", "3,000 share lot", "3k shares", "3m shares", "3 mn shares", "3 million shares",
+    "Còn 120.000.000 đồng", "120.000.000₫ available", "120.000.000 VNĐ available", "Có 3 nghìn MBB", "Có 3 ngàn MBB",
+    "MBB: 3,000 at an average of 21,500", "Underwater by 12.8% from 21,500", "Under-water by 12.8%",
+    "The basis is 21,500", "A stake of 2% in MBB", "Half size near 18,600", "Full-size near 18,600",
+    "A starter size near 18,600", "Three thousand shares at 21,500", "Hundreds of units at 21,500", "2,000 units",
+    "2,000 lots", "$5,000 is set aside", "5,000 USD is set aside", "5,000 dollars is set aside", "120 mil set aside",
+    "120 mio set aside", "120 mn set aside", "Còn 120 củ chưa dùng", "Còn 120tr chưa dùng", "50 m VND set aside",
+    "50k VND set aside", "Còn 120.000.000đ chưa dùng", "The paying side near 20,100", "It pays 2% a year",
+)
+# ... while an indicator abbreviation after a number, a price in VND and a volume-weighted average price are published.
+E3_TECHNICAL = (
+    "Price crossed above the 20 EMA and the 50 SMA; on 2026-11-02 MBB closed at 18,750 VND on 1.4x volume.",
+    "Close 18750 below the 14 RSI midline; 14 ATR 1.6%, 20 OBV falling; 100 POC 20133, VAL 18852, VAH 20560.",
+    "Volume weighted average price 18,900 caps the close; the 6m and 12m excess returns are negative.",
+    "The volume-weighted average price 18,900 caps the close; the close is 18.600đ on a daily basis.",
+)
+
+# Review r3 (finding 5): every rule of PRIVATE_PATTERNS and CASED_PATTERNS, every alternative and every character of a
+# class of literal characters, in a sentence that only it withholds (review-fix/hits.py lists one pattern for each, and
+# review-fix/mutants.py takes each out in turn and needs a red case). Several are not private by themselves: they pin a
+# word of the denylist.
+ONE_RULE = (
+    # positions, holdings, cost basis
+    "the exposure is large", "an allocation of 10%", "MBB is overweight", "MBB is underweight", "cash remains",
+    "the budget", "the capital", "the cost", "margin loans", "a margin call", "a margin account", "margin debt",
+    "margin trading", "the margin ratio", "a margin requirement", "held on margin", "avg price 21,500",
+    "avg. price 21,500", "average price 21,500", "acquisition price 21,500", "break-even at 21,500",
+    "breakeven at 21,500", "the p&l is red", "the p/l is red", "the pnl is red", "unrealised", "unrealized",
+    "pay up", "paid up", "basis 21,500", "basis was 21,500", "basis of 21,500", "basis at 21,500", "basis near 21,500",
+    "normal size", "initial size", "partial size", "double size", "quarter size", "planned size", "usual size",
+    "max size", "maximum size", "trade size", "the lot size", "half sized", "full sizes", "stakes",
+    "hundreds of shares", "millions of shares", "billions of shares", "thousand lots", "thousands of units",
+    # numbers: a share count or an amount
+    "3,000 units", "3,000 lots", "3,000 cp", "3 nghìn cổ", "3,000-share", "3 k shares", "120 million", "120 mil",
+    "120 mio", "120 mn", "1.2 billion", "1.2 bn", "120 triệu", "1,2 tỷ", "1,2 tỉ", "120 củ", "120tr", "50k VND",
+    "50m VND", "50k vnđ", "50k đồng", "50k ₫", "120,000,000 VND", "120.000.000 vnđ", "120.000.000đ",
+    "120.000.000 ₫", "VND 120m", "vnđ 120k", "₫120m", "VND 120,000,000", "VNĐ 120.000.000", "₫ 120,000,000",
+    "VND 120.000.000", "$5,000 remains", "5,000 usd remains", "5,000 dollars remain", "1 dollar remains",
+    "T+2 on Wednesday", "sellable from Wednesday", "the settlement", "the broker", "the brokers", "the user",
+    "the users", "if you like", "your view", "yours",
+    # first person
+    "we see", "our view", "ours", "my view", "mine", "I'm", "I\u2019m", "I've", "I'd", "I'll", "I am", "I have",
+    "I had", "I own", "I would", "I will",
+    # stops and trading actions
+    "stoploss", "stop-losses", "profit was taken", "profits were taken", "profits are taken", "profit is taken",
+    "profits being taken", "profits got taken", "profits taken", "profits booked", "profits locked",
+    "take-partial-profits", "cut the loss", "cut some losses", "loss cut", "reentry", "reentries", "reenter",
+    "reenters", "reentered", "reentering", "rebuy", "rebuys", "rebuying", "rebought", "resold", "resell", "resells",
+    "reselling", "repurchase", "repurchases", "repurchased", "repurchasing", "new funds", "fresh fund",
+    "fresh money", "place order", "places order", "placed order", "placing order", "put order", "puts order",
+    "putting order", "set order", "sets order", "setting order", "an order", "the order", "order at 18,600",
+    "order near 18,600", "offer above 20,500", "offer below 20,500", "offer around 20,500", "double down",
+    "doubles down", "doubled down", "doubling down", "double-down", "go flat", "go-flat", "shortselling", "the longs",
+    "the shorts", "long above 20,100", "short below 18,500", "long over 20,100", "long under 18,500",
+    "long near 18,600", "long at 18,600", "long into 20,100", "long toward 20,100", "long towards 20,100",
+    "short this", "short them", "short into strength", "short strength", "short it", "fades the rally",
+    "faded any bounce", "fading every rip", "fade a pop", "fade this breakout", "fade rallies", "fade bounces",
+    "fade strength", "fade the rips", "fade the pops", "fade breakouts", "await", "awaits", "awaited",
+    "purchase", "purchases", "purchased", "purchasing", "hedge", "hedges", "hedged", "hedging", "liquidate",
+    "liquidates", "liquidated", "liquidating", "acquire", "acquires", "acquiring", "invest", "invests", "invested",
+    "investing", "dump", "dumps", "dumped", "dumping", "get long", "gets short", "getting long", "got in",
+    "gotten out", "get-out", "lightens up", "lightened up", "lightening up", "lighten-up", "loads up", "loaded up",
+    "loading up", "load-up", "bails out", "bailed out", "bailing out", "bail-out", "bottom fishing",
+    "bottomfishing", "falling-knife", "lock in gains", "locks in gains", "locked in profits", "locking in gains",
+    "lock-in gains", "book profits", "books gains", "booked losses", "booking profits", "off the table",
+    "steps aside", "stepped aside", "stepping aside", "step-aside", "stays away", "stayed away", "staying away",
+    "stay-away", "set aside", "sets aside", "setting aside", "set-aside", "fill at 21,500", "fills at 21,500",
+    "filled near 21,500", "filled around 21,500", "picks up shares", "picked up shares", "picking up shares",
+    "pick up some shares", "pick up more shares", "pick up the shares", "pick up a few shares", "pick up cheap shares",
+    "pick up stock", "pick-up shares", "open the trade", "manage the trade", "closes the trade", "closed the trade",
+    "closing the trade", "opens the trade", "close this trade", "close that trade", "close a trade", "close any trade",
+    "close each trade", "close new trades", "keep the stock", "keeps the stock", "keeping the stock",
+    "keep the shares", "keep the name", "a long near the low", "a short above the high", "new long below the low",
+    "a long at the low", "long from the low", "short from the high", "long since the low", "existing long",
+    "existing short", "existing investors", "existing owners", "already long", "already short", "already in the name",
+    "already in the trade", "already in the stock", "stays long", "stayed short", "staying out", "stay aside",
+    "stay-out", "stay flat", "target price 21,000", "price targets",
+    # a trade set-up and its costs (review r3, the held-out measurement)
+    "an r:r of 2", "r/r 1.5", "risk reward", "risk/reward", "risk-reward", "risk to reward", "risk-to-reward",
+    "reward risk", "reward/risk", "reward-risk", "reward to risk", "reward-to-risk", "the fee", "a commission",
+    "slippage", "the quantity", "quantities", "affordable", "affordability", "rejects orders", "mục tiêu", "nhắm",
+    "giá vào", "chi phí", "phí giao dịch",
+    # Vietnamese, and typed without diacritics
+    "gom", "nên", "lãi", "lỗ", "lời", "lệnh", "vốn", "mua", "bán", "giữ", "chờ", "nhặt", "chốt", "cắt", "thoát",
+    "cầm tiếp", "cầm hàng", "cầm cổ", "cầm chắc", "giải ngân", "xuống tiền", "ôm hàng", "tất tay", "lướt sóng",
+    "hàng về", "tài khoản", "giá bình quân", "bình quân giá", "vào hàng", "gia tăng tại", "gia tăng thêm",
+    "gia tăng quanh", "mức dừng", "điểm dừng", "the tỷ trọng", "the tỉ trọng", "danh mục", "vị thế", "tiền mặt",
+    "ngân sách", "khuyên", "khuyến nghị", "hành động", "đứng ngoài", "ký quỹ", "kí quỹ", "tôi", "chúng ta", "mình",
+    "bạn", "mục tiêu giá", "ban ra", "ban bot", "ban het", "cat lo", "chot loi", "chot lai", "chot mot phan",
+    "chot bot", "chot het", "nen ban", "nen cho", "dung ngoai", "giai ngan", "bat day", "vao hang", "thoat hang",
+    "so huu", "nhan roi", "so du", "trung binh gia", "cat giam", "muc dung", "diem dung", "dang am", "dang loi",
+    "ty trong", "ti trong", "danh muc", "vi the", "tien mat", "ngan sach", "khuyen nghi", "hanh dong", "ky quy",
+    "ki quy", "xuong tien", "om hang", "tat tay", "luot song", "hang ve", "tai khoan", "gia von", "gia binh quan",
+    "giu", "lenh", "trieu",
+    # URLs, host names, IP addresses, ports
+    "ftp://x", "www. site", "localhost", "tailscale", "ngrok", "btc-ai", "btc-be", "btc-fe", "desktop-abc12",
+    "laptop-abc12", "vietstock.vn", "dot com", "dot net", "dot org", "dot vn", "dot io", "dot dev", "dot app",
+    "100.83.92.101", "fe80::1", "1:2:3:4:5:6:7:8", "host:8080", "at :5197", "the port", "the ports",
+    # file paths
+    "a \\ sign", "d:/notes", "(/abc/)", "./abc/", "../abc/", "~/abc/", "/home", "/tmp", "/var", "/etc",
+    "/mnt", "/opt", "/srv", "/root", "/api", "evidence/", "scripts/", "skills/", "backend/", "frontend/",
+    "contracts/", "_.json", "_.md", "_.py", "_.ps1", "_.psm1", "_.cs", "_.csproj", "_.sln", "_.ts", "_.tsx", "_.js",
+    "_.mjs", "_.cjs", "_.txt", "_.log", "_.csv", "_.tsv", "_.xml", "_.htm", "_.html", "_.exe", "_.dll", "_.db",
+    "_.sqlite", "_.sql", "_.env", "_.yml", "_.yaml", "_.ini", "_.cfg", "_.conf", "_.toml", "_.bat", "_.cmd", "_.sh",
+    "_.joblib", "_.pkl", "_.parquet", "_.zip", "_.7z", "_.bak", "_.clixml", "_.pem", "_.crt",
+    "research-sessions", "node_modules", "appdata", "the .ops folder",
+    # e-mail addresses, hex strings and digit runs, internal ids and secrets
+    "at @ sign", "0123456789abcdef", "f0e364fd", "1792315293201", "0xdeadbeef", "contract-definitions-sha-mismatch",
+    "snap/x", "snap:x", "snap_x", "snap-x", "the snapshot", "session/x", "sessions/x", "note id", "note_id",
+    "note-id", "noteid", "note ids", "forecast id", "request id", "x-admin", "admin key", "admin_key", "admin-key",
+    "adminkey", "api key", "api_key", "api-key", "apikey", "api keys", "bearer", "password", "secret", "secrets",
+    "token", "tokens", "credential", "credentials", "eqx_x",
+    # where case decides
+    "3,000 MBB", "3K MBB", "3k MBB", "3 nghìn MBB", "3 ngàn MBB", "a bid", "Bid near the low", "bids",
+    "TP 21,000", "SL 18,500", "TP1 21,000", "keep MBB", "Keep MBB", "keeps MBB", "keeping MBB",
+)
+# Withheld where the sentence starts the thesis (the chart-phrase contexts read what stands before a phrase).
+ALONE_PRIVATE = ("Sell-off on strength near 20,500", "Range position near 18,600, full size",
+                 "The range position near 18,600 is the plan")
+
+# Contract r3 E4: a character the keyword lists cannot read withholds the thesis, even an otherwise technical one.
+E4_UNREADABLE = (
+    "\u202eyub the dip",  # RIGHT-TO-LEFT OVERRIDE: the page shows "buy", the filter would read "yub"
+    "\u202abuy\u202c", "\u202dsell\u202c", "\u2067yub\u2069", "\u2066RSI14 34\u2069",  # bidi
+    "RSI14 34\u200b", "sell\u00adoff", "\ufeffMBB 1d close",  # other format characters (Cf)
+    "\u0441ell near 20500", "b\u0443y the dip",  # Cyrillic look-alikes
+    "\u0392uy the dip", "the \u03bfpen interest",  # Greek look-alikes
+    "ba\u02can", "\u02b0old", "RSI14 34\u2093",  # modifier letters (Lm; U+2093 is named LATIN)
+    "\U0001d41b\U0001d42e\U0001d432", "\uff42\uff55\uff59",  # mathematical and full-width letters
+    "MBB\x07 1d close", "\ue000 private use",  # a control character, a private-use code point
+)
+E4_READABLE = ("MBB 1d close 18,750 \u2014 below SMA50 (\u22123.0%); RSI14 \u2265 30 \u2192 \u201cstretched\u201d, "
+               "not accelerating\u2026 (giá đóng cửa 18.750, Wilder RSI14 34).")
+# Review r3: the characters the lists can read are an allowlist (READABLE). Outside it, even where NFKC would fold the
+# character into a readable one ...
+E4_UNREADABLE_MORE = (
+    "b\xb4uy the dip", "se\xa8ll near 20,500", "b\xafuy the dip", "b\xb8uy the dip",  # NFKC: a space and a mark
+    "\xb5 of RSI14", "RSI14 34\xaa", "RSI14 34\xba",  # micro, ordinal signs
+    "RSI14 ≤ 34 \u21d2 oversold",  # an arrow outside the short list
+    "MBB 1d close\u2009near SMA50", "MBB 1d close\u202fnear SMA50",  # thin and narrow no-break spaces
+    "bu\u030cy the dip",  # a combining caron outside Vietnamese: NFKC makes a u with caron (U+01D4)
+    "s\u0301ell near 20,500", "the 3,000 M\u0301BB lot",  # a readable mark that composes into a letter
+    # outside the allowlist (U+015B, U+1E3E): the page shows "sell" and "MBB"
+    "\xbd of the range",  # NFKC writes the fraction with U+2044
+    "se\u0308ll near 20,500",  # a mark outside the readable set that composes into a readable letter (U+00EB)
+    "\u0130", "\u0131", "\u0138", "\u017f", "\u01c0", "\u0251", "\u0299", "\u1d07", "\u2500", "\u23af", "\u24d1",
+    "\u2043", "\u02d7", "\u2796", "\u2e3a", "\ufe63",
+)
+# ... and every character of the allowlist outside ASCII stays readable in a technical sentence.
+E4_READABLE_MORE = (
+    "Close 18,750\xa0VND • RSI14 ≈ 34 ≠ 30 ≤ 35; ATR 1.6‰ ← ↑ ↓; "
+    "‘band’ at 5′ and 10″; € and ₫; ‐ ‑ ‒ – — ― −.",
+    "Latin-1: " + "".join(chr(c) for c in range(0xa1, 0x100)
+                          if c not in (0xa8, 0xaa, 0xad, 0xaf, 0xb4, 0xb5, 0xb8, 0xba, 0xbc, 0xbd, 0xbe)),
+    "Tiếng Việt: Ă ă Đ đ Ĩ ĩ Ũ ũ Ơ ơ Ư ư " + " ".join(map(chr, range(0x1ea0, 0x1efa))),
+    "gia\u0301 đo\u0301ng cư\u0309a cao nhâ\u0301t, ă\u0300 ê\u0303 ơ\u0323 ă\u0306",
+)
+# Every dash reads as "-" (category Pd: U+2011 becomes U+2010 under NFKC, not "-"), and so does U+2212 MINUS SIGN.
+DASHES = ("\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2212")
 
 
 def _sessions(n: int, start: date) -> list[str]:
@@ -371,7 +801,8 @@ class FakeBackend:
         symbol, kind = parts[3], "/".join(parts[4:])
         queue = self.errors.get((symbol, kind))
         if queue:
-            raise _http(queue.pop(0))
+            error = queue.pop(0)  # a status, or (status, envelope code)
+            raise _http(*error) if isinstance(error, tuple) else _http(error)
         if symbol not in self.bars:
             raise _http(404, "UNKNOWN_SYMBOL")
         if kind == "candles":
@@ -595,7 +1026,7 @@ def test_a_truthful_empty_answer_is_never_replaced_by_the_previous_run(screen_di
     assert mbb["indicators"] is None and mbb["relativeStrength"] == {"20": 0.031, "60": -0.04}
     unavailable = _meta(out)["unavailable"]
     assert {"symbol": "VIC", "part": "technical", "reason": NO_STRENGTH} in unavailable
-    assert {"symbol": "MBB", "part": "technical", "reason": "backend chưa có chỉ báo 1d"} in unavailable
+    assert {"symbol": "MBB", "part": "technical", "reason": NO_INDICATORS} in unavailable
 
 
 def test_notes_are_the_newest_forward_20_session_notes_joined_by_note_id(screen_dir, tmp_path, monkeypatch):
@@ -680,7 +1111,7 @@ def test_a_value_outside_the_contract_makes_the_notes_part_malformed(corruption,
     mbb = _symbol(out, "MBB")
     assert (mbb["notes"], mbb["score"]) == (before["notes"], before["score"])  # kept from the previous run
     reasons = [u["reason"] for u in _meta(out)["unavailable"] if u["symbol"] == "MBB" and u["part"] == "notes"]
-    assert len(reasons) == 1 and reasons[0].startswith("phản hồi sai định dạng (") and reasons[0].endswith(KEPT)
+    assert reasons == [MALFORMED + KEPT]  # no exception name on the public site (r3 E5)
 
     fresh = tmp_path / "fresh"  # no previous run: no notes and no score, never 0/0
     fake = _market(Clock())
@@ -690,7 +1121,15 @@ def test_a_value_outside_the_contract_makes_the_notes_part_malformed(corruption,
     assert _symbol(fresh, "VCB")["score"]["scored"] == 31  # one ticker's payload never touches another
 
 
-@pytest.mark.parametrize("private", COLDCHECK_PRIVATE)
+# The end-to-end check (what the site reads): the cold-check r1 strings and one sentence per r3 rule group.
+END_TO_END_PRIVATE = COLDCHECK_PRIVATE + (
+    "Consider reducing on a close below 18600", "Take\u2011profit at 21000",
+    "Build a small position within the 20-session range", "Of the 3,000 MBB, 1,000 settle on Wednesday",
+    "\u202eyub the dip", "Đợi giá đóng cửa trên 20.100 rồi mới tham gia",
+)
+
+
+@pytest.mark.parametrize("private", END_TO_END_PRIVATE)
 def test_a_thesis_naming_private_or_action_text_is_withheld(private, screen_dir, tmp_path, monkeypatch, capsys):
     fake = _market(Clock())
     _newest(fake)[0]["body"]["thesis"] = f"MBB 1d closed below SMA50, RSI14 34. {private}. View: sideways."
@@ -715,6 +1154,99 @@ def test_private_or_action_text_anywhere_withholds_the_thesis(text):
     assert web.public_thesis(f"MBB 1d closes near SMA50. {text}. View: sideways, for reference only.") == (None, True)
 
 
+@pytest.mark.parametrize("text", R2_LEAKS)
+def test_every_cold_check_r2_leak_sentence_is_withheld(text):
+    assert web.public_thesis(f"MBB 1d closes near SMA50. {text}. View: sideways, for reference only.") == (None, True)
+
+
+@pytest.mark.parametrize("text", REVIEW_LEAKS)
+def test_every_review_r3_probe_sentence_is_withheld_alone_in_a_carrier_and_in_a_real_thesis(text):
+    real = REAL_THESES[0]
+    half = real.find(". ", len(real) // 2) + 2  # a sentence boundary in the middle of a published thesis
+    for thesis in (text, f"MBB 1d closes near SMA50. {text}. View: sideways, for reference only.",
+                   f"{real[:half]}{text}. {real[half:]}"):
+        assert web.public_thesis(thesis) == (None, True), thesis
+
+
+@pytest.mark.parametrize("form", E1_FORMS + E1_VI)
+def test_every_listed_action_word_is_withheld_in_every_form(form):
+    # the bare form too: "near 18,600" alone withholds "long near 18,600" and "order near 18,600" (review r3)
+    for text in (f"MBB 1d closes near SMA50; {form} near 18,600. View: sideways, for reference only.",
+                 f"MBB 1d closes near SMA50; {form}. View: sideways, for reference only."):
+        assert web.public_thesis(text) == (None, True), text
+
+
+@pytest.mark.parametrize("text", ACTION_EXTRAS + E2_PRIVATE + E3_PRIVATE + ONE_RULE)
+def test_each_rule_withholds_a_sentence_of_its_own(text):
+    assert web.public_thesis(f"MBB 1d closes near SMA50. {text}. View: sideways, for reference only.") == (None, True)
+
+
+@pytest.mark.parametrize("text", ALONE_PRIVATE)
+def test_a_private_sentence_that_starts_the_thesis_is_withheld(text):
+    assert web.public_thesis(text) == (None, True)
+
+
+@pytest.mark.parametrize("text", E1_NOT_LISTED + E2_TECHNICAL + E3_TECHNICAL + (E4_READABLE,) + E4_READABLE_MORE)
+def test_chart_language_the_filter_keeps_is_published_unchanged(text):
+    assert web.public_thesis(text) == (text, False)
+
+
+@pytest.mark.parametrize("dash", DASHES)
+def test_every_dash_reads_as_a_hyphen(dash):
+    for private in (f"take{dash}profit at 21,000", f"cut{dash}loss at 18,500", f"the 3,000{dash}share lot"):
+        assert web.public_thesis(f"MBB 1d closes near SMA50. {private}. View: sideways.") == (None, True), private
+    technical = f"Its sell{dash}off on 2.85x volume broke the range; position in the 60{dash}session range 0.26."
+    assert web.public_thesis(technical) == (technical, False)
+
+
+@pytest.mark.parametrize("text", E4_UNREADABLE + E4_UNREADABLE_MORE)
+def test_a_character_the_lists_cannot_read_withholds_the_thesis(text):
+    assert web.public_thesis(f"MBB 1d closes near SMA50. {text}. View: sideways, for reference only.") == (None, True)
+
+
+def test_the_patterns_read_the_lowercased_probe_and_the_cased_rules_keep_their_case():
+    # PRIVATE_TEXT has no IGNORECASE and reads the lowercased probe (sre then skips a branch on its first letter), so
+    # an uppercase letter in one of its patterns could never match; the ticker rules read the probe as written.
+    assert all(p == p.lower() for p in web.PRIVATE_PATTERNS) and not web.PRIVATE_TEXT.flags & re.IGNORECASE
+    assert web.public_thesis("MBB 1d closes near SMA50. POSITION: 30%. View: sideways.") == (None, True)
+    assert web.public_thesis("MBB 1d closes near SMA50. POS\u0130T\u0130ON: 30%. View: sideways.") == (None, True)
+    bid = "BID 1d closes near SMA50; the BID 20 EMA is flat and 2026-11-02 BID volume was 2.1x its average."
+    assert web.public_thesis(bid) == (bid, False)
+
+
+def test_unavailable_reasons_are_plain_vietnamese_and_the_details_go_to_stderr(screen_dir, tmp_path, monkeypatch,
+                                                                               capsys):
+    fake = _market(Clock(), errors={("MBB", "technical"): [(500, "INTERNAL")], ("VCB", "candles"): [(503, "UPSTREAM")]})
+    fake.technical["VCB"]["timeframes"][1]["indicators"] = None  # no 1d indicator row; VIC: VNINDEX stale; ACB: 400
+    _newest(fake, "VCB")[1].update(status="b\u00e1n")  # a malformed notes payload whose detail is not ASCII
+    out = tmp_path / "data"
+    capsys.readouterr()
+    assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
+    captured = capsys.readouterr()
+    meta = _meta(out)
+    assert [(u["symbol"], u["part"], u["reason"]) for u in meta["unavailable"]] == [
+        ("ACB", "technical", UNSUPPORTED), ("ACB", "notes", UNSUPPORTED),
+        ("MBB", "technical", "lỗi HTTP 500" + NOTHING_KEPT), ("VCB", "candles", "lỗi HTTP 503" + NOTHING_KEPT),
+        ("VCB", "technical", NO_INDICATORS), ("VCB", "notes", MALFORMED + NOTHING_KEPT),
+        ("VIC", "technical", NO_STRENGTH)]
+    _assert_public_reasons(meta)
+    assert _stderr_lines(captured) == [  # one line per meta.unavailable entry, in the same order
+        "unavailable ACB technical: HTTP 400 UNSUPPORTED_CAPABILITY",
+        "unavailable ACB notes: HTTP 400 UNSUPPORTED_CAPABILITY",
+        "unavailable MBB technical: HTTP 500 INTERNAL", "unavailable VCB candles: HTTP 503 UPSTREAM",
+        "unavailable VCB technical: no 1d indicator row",
+        "unavailable VCB notes: ValueError: not a contract value: 'b\\xe1n'",
+        "unavailable VIC technical: VNINDEX benchmark status 'stale', reason None"]
+    for p in out.rglob("*.json"):  # no internal code in any public file
+        text = p.read_text(encoding="utf-8")
+        codes = ("UNSUPPORTED_CAPABILITY", "INTERNAL", "UPSTREAM", "Error", "stale")
+        assert not [c for c in codes if c in text], p.name
+    summary = json.loads(captured.out.strip().splitlines()[-1])  # the stdout summary keeps its shape
+    assert list(summary) == ["session", "symbols", "written", "changed", "unavailableByPart", "keptByPart",
+                             "thesesWithheld"]
+    assert summary["unavailableByPart"] == {"technical": 4, "notes": 2, "candles": 1} and summary["keptByPart"] == {}
+
+
 def test_a_long_thesis_is_cut_to_1500_characters_with_a_marker():
     base = "Bollinger middle 18,900 caps the 1d close. "
     exact, longer = (base * 40)[:1500], (base * 40)[:1501]
@@ -725,20 +1257,39 @@ def test_a_long_thesis_is_cut_to_1500_characters_with_a_marker():
     assert web.public_thesis(["not", "text"]) == (None, False)
 
 
-FAILURES = {  # part, run-2 change, reason before the suffix
-    "technical-500": ("technical", {"errors": {("MBB", "technical"): [500]}}, "HTTP 500"),
-    "technical-429-twice": ("technical", {"errors": {("MBB", "technical"): [429, 429]}}, "HTTP 429"),
-    "technical-malformed": ("technical", {"technical": lambda t: t.pop("relativeStrength")},
-                            "phản hồi sai định dạng (KeyError)"),
-    "notes-500": ("notes", {"errors": {("MBB", "research-notes"): [500]}}, "HTTP 500"),
-    "scores-401": ("notes", {"errors": {("MBB", "research-notes/direction-scores"): [401]}}, "HTTP 401"),
-    "notes-without-admin-key": ("notes", {"key": None}, NO_KEY),
+FAILURES = {  # part, run-2 change, public reason before the suffix, the stderr detail
+    "technical-500": ("technical", {"errors": {("MBB", "technical"): [(500, "INTERNAL")]}}, "lỗi HTTP 500",
+                      "HTTP 500 INTERNAL"),
+    "technical-429-twice": ("technical", {"errors": {("MBB", "technical"): [429, 429]}}, "lỗi HTTP 429", "HTTP 429"),
+    "technical-malformed": ("technical", {"technical": lambda t: t.pop("relativeStrength")}, MALFORMED,
+                            "KeyError: 'relativeStrength'"),
+    "notes-500": ("notes", {"errors": {("MBB", "research-notes"): [500]}}, "lỗi HTTP 500", "HTTP 500"),
+    "scores-401": ("notes", {"errors": {("MBB", "research-notes/direction-scores"): [(401, "ADMIN_KEY_INVALID")]}},
+                   "lỗi HTTP 401", "HTTP 401 ADMIN_KEY_INVALID"),
+    "notes-without-admin-key": ("notes", {"key": None}, NO_KEY, "EQX_ADMIN_KEY is not set"),
 }
+
+
+def _stderr_lines(captured) -> list[str]:
+    assert captured.err.isascii()  # a redirected stderr is cp1252
+    return [line for line in captured.err.splitlines() if line.startswith("unavailable ")]
+
+
+def _assert_public_reasons(meta: dict) -> None:
+    """Every meta.unavailable reason is one of the plain sentences of contract r3 E5: no envelope code, no exception
+    name, no benchmark status (the site shows the reason as it is)."""
+    for u in meta["unavailable"]:
+        reason = u["reason"]
+        if reason in (UNSUPPORTED, NO_INDICATORS, NO_STRENGTH):
+            continue
+        head = reason.removesuffix(KEPT).removesuffix(NOTHING_KEPT)
+        assert head != reason and (head in (MALFORMED, NO_KEY) or (
+            head.startswith("lỗi HTTP ") and head[9:].isdigit() and len(head) == 12)), reason
 
 
 @pytest.mark.parametrize("failure", sorted(FAILURES))
 def test_a_failed_part_keeps_the_previous_v2_run(failure, screen_dir, tmp_path, monkeypatch, capsys):
-    part, change, reason = FAILURES[failure]
+    part, change, reason, detail = FAILURES[failure]
     out = tmp_path / "data"
     assert _run(_market(Clock()), Clock(), screen_dir, out, monkeypatch) == 0
     before = _symbol(out, "MBB")
@@ -749,7 +1300,8 @@ def test_a_failed_part_keeps_the_previous_v2_run(failure, screen_dir, tmp_path, 
     fake.bars["MBB"].append(dict(last, openTimeMs=last["openTimeMs"] + 3 * 86_400_000, volume=5))
     capsys.readouterr()
     assert _run(fake, Clock(), screen_dir, out, monkeypatch, key=change.get("key", KEY)) == 0
-    summary = _summary_line(capsys)
+    captured = capsys.readouterr()
+    summary = json.loads(captured.out.strip().splitlines()[-1])
     mbb = _symbol(out, "MBB")
     kept = ("indicators", "relativeStrength") if part == "technical" else ("notes", "score")
     fresh = ("notes", "score") if part == "technical" else ("indicators", "relativeStrength")
@@ -757,6 +1309,8 @@ def test_a_failed_part_keeps_the_previous_v2_run(failure, screen_dir, tmp_path, 
     assert mbb["candles"][-1][0] == web.session_of(fake.bars["MBB"][-1]["openTimeMs"]) != before["candles"][-1][0]
     assert {"symbol": "MBB", "part": part, "reason": reason + KEPT} in _meta(out)["unavailable"]
     assert summary["keptByPart"][part] >= 1 and summary["written"] == len(SYMBOLS)
+    assert f"unavailable MBB {part}: {detail}" in _stderr_lines(captured)  # the detail only on stderr
+    _assert_public_reasons(_meta(out))
 
 
 def test_a_kept_thesis_passes_the_privacy_filter_again(screen_dir, tmp_path, monkeypatch, capsys):
@@ -790,10 +1344,10 @@ def test_without_a_previous_v2_run_a_failed_part_is_written_empty(screen_dir, tm
     assert (mbb["indicators"], mbb["relativeStrength"], mbb["notes"], mbb["score"]) == (None, None, [], None)
     assert vcb["candles"] == [] and vcb["indicators"] is not None and vcb["score"]["scored"] == 31
     unavailable = _meta(fresh)["unavailable"]
-    for u in ({"symbol": "MBB", "part": "technical", "reason": "HTTP 500" + NOTHING_KEPT},
-              {"symbol": "MBB", "part": "notes", "reason": "HTTP 500" + NOTHING_KEPT},
-              {"symbol": "VCB", "part": "candles", "reason": "HTTP 500" + NOTHING_KEPT},
-              {"symbol": "ACB", "part": "technical", "reason": "HTTP 500" + NOTHING_KEPT}):
+    for u in ({"symbol": "MBB", "part": "technical", "reason": "lỗi HTTP 500" + NOTHING_KEPT},
+              {"symbol": "MBB", "part": "notes", "reason": "lỗi HTTP 500" + NOTHING_KEPT},
+              {"symbol": "VCB", "part": "candles", "reason": "lỗi HTTP 500" + NOTHING_KEPT},
+              {"symbol": "ACB", "part": "technical", "reason": "lỗi HTTP 500" + NOTHING_KEPT}):
         assert u in unavailable
 
     v1 = tmp_path / "v1"  # files from a v1 data set (other meaning of notes/score/thesis) are never a source
@@ -823,9 +1377,9 @@ def test_a_previous_part_is_kept_only_when_it_validates_and_was_read(screen_dir,
     assert (mbb["notes"], mbb["score"]) == ([], None) and mbb["indicators"] == before["indicators"]
     assert (acb["indicators"], acb["relativeStrength"]) == (None, None) and acb["score"]["scored"] == 1
     unavailable = _meta(out)["unavailable"]
-    assert {"symbol": "MBB", "part": "notes", "reason": "HTTP 500" + NOTHING_KEPT} in unavailable
-    assert {"symbol": "MBB", "part": "technical", "reason": "HTTP 500" + KEPT} in unavailable
-    assert {"symbol": "ACB", "part": "technical", "reason": "HTTP 500" + NOTHING_KEPT} in unavailable
+    assert {"symbol": "MBB", "part": "notes", "reason": "lỗi HTTP 500" + NOTHING_KEPT} in unavailable
+    assert {"symbol": "MBB", "part": "technical", "reason": "lỗi HTTP 500" + KEPT} in unavailable
+    assert {"symbol": "ACB", "part": "technical", "reason": "lỗi HTTP 500" + NOTHING_KEPT} in unavailable
 
 
 def test_unsupported_capability_is_listed_without_a_suffix_and_never_kept(screen_dir, tmp_path, monkeypatch):
@@ -854,7 +1408,7 @@ def test_technical_calls_are_spaced_15_s_and_a_429_waits_a_minute_and_retries_on
     assert all(b - a >= 15.0 for a, b in zip(times, times[1:]))
     assert all(sum(1 for u in times if t <= u < t + 60) <= 4 for t in times)
     assert _symbol(out, "MBB")["indicators"] is not None and len(_symbol(out, "VIC")["candles"]) == 258
-    assert {"symbol": "VCB", "part": "technical", "reason": "HTTP 429" + NOTHING_KEPT} in _meta(out)["unavailable"]
+    assert {"symbol": "VCB", "part": "technical", "reason": "lỗi HTTP 429" + NOTHING_KEPT} in _meta(out)["unavailable"]
 
 
 def test_without_the_admin_key_notes_are_never_requested(screen_dir, tmp_path, monkeypatch):
@@ -929,18 +1483,18 @@ def test_a_ticker_whose_candles_fail_keeps_its_previous_file(screen_dir, tmp_pat
     assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
     assert (out / "symbols" / "VCB.json").read_bytes() == previous
     assert not any(p.startswith("/api/equities/VCB/") and "/candles" not in p for p, _, _ in fake.calls)
-    assert {"symbol": "VCB", "part": "candles", "reason": "HTTP 500" + KEPT} in _meta(out)["unavailable"]
+    assert {"symbol": "VCB", "part": "candles", "reason": "lỗi HTTP 500" + KEPT} in _meta(out)["unavailable"]
 
     fresh = tmp_path / "fresh"
     assert _run(_market(Clock(), errors={("VCB", "candles"): [500]}), Clock(), screen_dir, fresh, monkeypatch) == 0
     vcb = _symbol(fresh, "VCB")
     assert vcb["candles"] == [] and vcb["indicators"] is not None and vcb["notes"]
-    assert {"symbol": "VCB", "part": "candles", "reason": "HTTP 500" + NOTHING_KEPT} in _meta(fresh)["unavailable"]
+    assert {"symbol": "VCB", "part": "candles", "reason": "lỗi HTTP 500" + NOTHING_KEPT} in _meta(fresh)["unavailable"]
 
     again = _market(Clock(), errors={("VCB", "candles"): [500]})  # the previous file has no candles either: nothing
     assert _run(again, Clock(), screen_dir, fresh, monkeypatch) == 0  # to keep, so the other parts are read again
     assert any(p.startswith("/api/equities/VCB/technical") for p, _, _ in again.calls)
-    assert {"symbol": "VCB", "part": "candles", "reason": "HTTP 500" + NOTHING_KEPT} in _meta(fresh)["unavailable"]
+    assert {"symbol": "VCB", "part": "candles", "reason": "lỗi HTTP 500" + NOTHING_KEPT} in _meta(fresh)["unavailable"]
 
 
 def test_screen_json_follows_the_newest_screen_file(screen_dir, tmp_path, monkeypatch):

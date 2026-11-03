@@ -18,10 +18,24 @@ the notes part malformed. returnPct is direction-score-v1's target close / signa
 over the ticker's whole journal, copied from the direction-scores horizons[] entry with horizonSessions HORIZON
 (resolved, hits, baselinePrior.hits, status), so it does not depend on which notes are exported.
 
-thesis is published verbatim, so it passes a fail-closed filter (PRIVATE_TEXT): anything about positions, holdings,
-cash, budget, cost basis, T+2, stops or trading actions (English or Vietnamese), URLs, host names, IP addresses,
-ports, file paths, e-mail addresses, long hex strings, internal ids or secrets withholds the whole thesis (null). A
-kept thesis longer than THESIS_MAX characters is cut to THESIS_MAX - 1 characters followed by CUT.
+thesis is published verbatim, so it first passes a fail-closed keyword filter that reads the whole text. The filter
+is a denylist (PRIVATE_TEXT): the listed words about positions, holdings, quantities, cost basis, money, settlement
+(T+n), stops, orders, trade set-ups and trading actions, in English in every inflection of each listed word
+(reduce/reduces/reduced/reducing) and with a space or a dash between the words of a listed phrase (stopped out,
+stopped-out), the first person (we, our, my, I'm), and their Vietnamese counterparts with and without diacritics;
+plus patterns for money amounts, "<number> <ticker>", URLs, IP addresses, ports, absolute and dotted file paths,
+e-mail addresses, long hex strings and digit runs, internal ids and secrets. A few chart phrases are blanked first,
+each only in its chart context ("range position 0.45", "selling pressure", "the sell-off", "support holds":
+TECHNICAL_PHRASES, CHART_BEFORE). One match anywhere withholds the whole thesis (null), and so does any character
+outside the short allowlist the lists can read (READABLE, _unreadable: printable ASCII, Latin-1, Vietnamese and a
+little typography; so a format or bidi control, a thin space, a Cyrillic, Greek, IPA or small-capital look-alike, an
+enclosed letter or a box-drawing dash withholds). When in doubt it withholds, so a purely technical thesis can be
+withheld too ("volatility reduced", "price is holding above SMA50"). Being a list of keywords it does not catch every
+way of phrasing advice or a position (advice sentences written without seeing the list still pass now and then:
+evidence/vn30-web-20261103/r3/W-exporter/review-fix/heldout); host names, relative paths without an extension, short
+hex ids and words glued to "_" or a digit ("buy18600") are not guaranteed to be caught, and the writer is told not to
+write them (ai/skills/equity-technical/SKILL.md, Step 4). A published thesis longer than THESIS_MAX characters is cut
+to THESIS_MAX - 1 characters followed by CUT.
 
 Parts: candles, technical (indicators + relativeStrength) and notes (notes + score) are read independently. A part
 that fails (an HTTP error, a 429 after the retry, a malformed payload or, for notes, a missing admin key) keeps the
@@ -29,7 +43,10 @@ previous symbols/<TICKER>.json's values when the previous meta.json has schema S
 candles failure keeps the whole previous file and reads nothing else for that ticker. Otherwise the part is written
 empty (null, [], score null). A truthful empty answer is never replaced: no 1d indicator row, a VNINDEX benchmark that
 is not "ok", or 400 UNSUPPORTED_CAPABILITY (a part the backend does not serve for that ticker). meta.unavailable
-lists every part not read fresh; a failure's reason ends with KEPT or NOTHING_KEPT.
+lists every part not read fresh, with a plain Vietnamese reason that names no internal code (UNSUPPORTED, HTTP_FAILED,
+MALFORMED, NO_INDICATORS, NO_STRENGTH, NO_KEY); a failure's reason ends with KEPT or NOTHING_KEPT. The details (HTTP
+status and envelope code, exception name and message, VNINDEX benchmark status) go to stderr only, one ASCII line per
+meta.unavailable entry: "unavailable <SYMBOL> <part>: <detail>".
 
 /technical shares the backend's "expensive" limit (10 per minute per client, no queue) with the daily analysis run
 that writes the notes: its calls start at least TECH_GAP_S apart (at most 4 per minute), and an HTTP 429 on any call
@@ -76,6 +93,15 @@ TECH_GAP_S = 15.0  # Program.cs "expensive": fixed window of 10 per minute, Queu
 RETRY_AFTER_S = 60.0
 KEPT = "; giữ dữ liệu lượt trước"
 NOTHING_KEPT = "; chưa có dữ liệu lượt trước"
+# meta.unavailable reasons: shown on the public site, so plain Vietnamese and no internal code (details go to stderr)
+UNSUPPORTED = "backend chưa hỗ trợ mã này"  # 400 UNSUPPORTED_CAPABILITY: never kept, so never a suffix
+HTTP_FAILED = "lỗi HTTP {status}"
+MALFORMED = "phản hồi sai định dạng"
+NO_INDICATORS = "backend chưa có chỉ báo 1d"
+# the VNINDEX benchmark is not "ok": "unavailable" (not ingested, too few aligned sessions) or "stale" (VNINDEX or the
+# aligned window ends before the ticker's newest session), EquityContextService.Compare
+NO_STRENGTH = "dữ liệu VNINDEX chưa khớp tới phiên mới nhất của mã"
+NO_KEY = "thiếu quyền đọc nhật ký nhận định"
 BANKS = frozenset({"MBB", "BID", "VCB", "CTG", "ACB", "HDB", "LPB", "SHB", "SSB", "STB", "TCB", "VIB", "VPB"})
 INDICATORS = ("sma50", "sma200", "ema12", "ema26", "ema50", "ema200", "rsi14", "macd", "macdSignal",
               "macdHistogram", "bollingerUpper", "bollingerMiddle", "bollingerLower", "atr14")
@@ -96,51 +122,200 @@ NOTE_FIELDS = ("signalDate", "horizonSessions", "direction", "thesis", "status",
                "returnPct", "hit")
 SCORE_FIELDS = ("scored", "hits", "baselineHits", "sampleStatus")
 
-# Technical phrases blanked before the privacy check, so that a range position or "selling pressure" alone does not
-# withhold a thesis. Every other "position", "selling" or "sell" still does. Whitespace is a single space by then.
+# Chart phrases blanked before the privacy check, each only where the writer's chart language puts it (CHART_BEFORE
+# reads what stands right before the phrase), so that a blanked phrase cannot take a private word along:
+# - frac: a range position as a fraction ("position 0.45"; never a percentage, "position: 30%" is a weight) at the
+#   start of the text or of a clause ("(", ", ", "; ", ": ", ". ", "i.e. "), after "is", "at", "of" or
+#   "<N>-day|session|bar" ("60-day position 0.34"), never after another word ("build a small position 0.5");
+# - rpos: "<range|band|channel> position" with its fraction, in the same places, after "and", "was", "with" or "its",
+#   and after an article that stands in one of these places ("The range position is 0.45", "at a range position of
+#   0.45"; never "open a range position of 0.5");
+# - inrange: "position (with)in [the|its] <N>-session range" (band, channel, window; bar, day) followed by its
+#   fraction ("... range 0.255", "... range is 0.31") or by ")", in the places of frac and after "and", "its",
+#   "price" or "'s" (a trade has no fraction: "stay patient and position in the 20-session range near its low");
+# - press: "<buying|selling> <pressure|climax|volume|flow|wave|momentum|exhaustion>" (never "buying power", "buying
+#   interest" or "buying activity", which can be the writer's own);
+# - selloff: "sell-off" as a noun only: after "a", "the", "its", "this", "that", "(", a date or a percentage, and
+#   before ",", ";", ")", ".", "on", "broke", "of" or the end ("Then sell-off half at 20,500" and "a partial sell-off
+#   near 20,500" withhold);
+# - holds: "<support|resistance|floor|level|low|zone|range> holds".
+# Every other "position", "buying", "selling", "sell" or "holds" still withholds. By then whitespace is a single
+# space and every dash the filter reads is "-".
+_FRACTION = r" ?[:=]? ?0?\.\d+(?!\d|[.,]\d)"
+_LINK = r"(?: (?:is|was|of|at|near|around))?"
 TECHNICAL_PHRASES = re.compile(
-    r"\bposition ?[:=]? ?(?:0?\.\d+|\d{1,3}(?:\.\d+)? ?%)(?!\d|[.,]\d)"
-    r"|\b(?:range|band|channel) position\b"
-    r"|\bposition (?:with)?in (?:the|its|a) (?:[\w%-]{1,30} ){0,3}?(?:range|band|channel|window)\b"
-    r"|\b(?:buying|selling) (?:pressure|interest|climax|volume|activity|flows?|waves?|power|momentum|exhaustion)\b"
-    r"|\bsell-?offs?\b",
+    r"(?P<frac>\bposition" + _FRACTION + ")"
+    r"|(?P<rpos>\b(?:range|band|channel) position" + _LINK + _FRACTION + ")"
+    r"|(?P<inrange>\bposition (?:with)?in (?:(?:the|its) )?\d{1,3}-(?:session|bar|day) (?:range|band|channel|window)"
+    r"(?:" + _LINK + _FRACTION + r"|(?=\))))"
+    r"|(?P<press>\b(?:buying|selling) (?:pressure|climax|volume|flows?|waves?|momentum|exhaustion)\b)"
+    r"|(?P<selloff>\bsell-?offs?(?=[,;)]|\.(?!\d)| ?\Z| (?:on|broke|of)\b))"
+    r"|(?P<holds>\b(?:support|resistance|floor|level|low|zone|range) holds\b)",
     re.IGNORECASE)
-# Fail-closed: one match anywhere withholds the whole thesis. When in doubt a word is listed here, so a normal
-# technical sentence can lose its thesis ("support may hold"), never the other way round. Every repetition is
-# bounded or delimited, so a 4000-character thesis is scanned in linear time.
-PRIVATE_TEXT = re.compile("|".join((
-    # positions, holdings, money and settlement
-    r"\bpositions?\b", r"\bholding", r"holders?\b", r"\bhold\b", r"\bportfolios?\b", r"\bexposure\b",
+_START = r"\A|\(|[(,;:.] "  # the start of the text or of a clause
+CHART_BEFORE = {  # what may stand right before each phrase; a phrase found anywhere else is kept (and withholds)
+    "frac": re.compile(r"(?:" + _START + r"|\b(?:is|at|of) |\d-(?:day|session|bar) )\Z", re.IGNORECASE),
+    "rpos": re.compile(r"(?:" + _START + r"|\b(?:is|was|at|of|with|and|its) |\d-(?:day|session|bar) "
+                       r"|(?:" + _START + r"|\b(?:is|was|at|of|with|and) )(?:a|an|the) )\Z", re.IGNORECASE),
+    "inrange": re.compile(r"(?:" + _START + r"|\b(?:is|at|of|and|its|price) |['’]s )\Z", re.IGNORECASE),
+    "selloff": re.compile(r"(?:\(|\b(?:a|the|its|this|that) |\b\d{4}-\d{2}-\d{2} |\d% )\Z", re.IGNORECASE),
+}
+
+
+def _chart_phrase(m: re.Match) -> str:
+    """A space for a chart phrase in its chart context (TECHNICAL_PHRASES, CHART_BEFORE), else the phrase unchanged."""
+    before = CHART_BEFORE.get(m.lastgroup)
+    if before is None or before.search(m.string, max(0, m.start() - 40), m.start()):
+        return " "
+    return m.group(0)
+
+
+# Fail-closed denylist: one match anywhere withholds the whole thesis. A listed word matches in every inflection
+# (add/adds/added/adding) and the words of a listed phrase with a space or a dash between them (stopped out,
+# stopped-out), so a purely technical sentence can lose its thesis too ("MBB added 1.2%", "the stock sold off");
+# "held" is deliberately not listed ("support held" is everyday chart language), nor a bare "stopped" or
+# "accumulation". It does not catch every phrasing of advice or of a position (see the module docstring). The
+# patterns are lowercase: they read the lowercased probe (_private). Every repetition is bounded or delimited, so a
+# 4000-character thesis is scanned in linear time.
+PRIVATE_PATTERNS = (
+    # positions, holdings, quantities, cost basis, money and settlement
+    r"\bpositions?\b", r"\bholding", r"holders?\b", r"\bholds?\b", r"\bportfolios?\b", r"\bexposure\b",
     r"\ballocat", r"\b(?:over|under)weight\b", r"\bcash\b", r"\bbudget", r"\bcapital\b", r"\bcosts?\b",
     r"\bmargin (?:loans?|calls?|accounts?|debt|trading|ratio|requirements?)\b", r"\bon margin\b",
-    r"\bavg\.? ?price\b", r"\bbreak-?even\b", r"\bp ?[&/] ?l\b", r"\bpnl\b", r"\bunreali[sz]ed\b",
-    r"\d[\d,.]{0,20} ?(?:k|m|mn|million)? ?(?:shares?|cp|cổ phiếu)\b", r"\bt ?\+ ?\d", r"\bsellable\b",
-    r"\bsettlement\b", r"\bbrokers?\b", r"\busers?\b", r"\byou(?:rs?)?\b",
-    # stops and trading actions
-    r"\bstop(?:s|-?loss(?:es)?)?\b", r"\btake[- ]?profits?\b", r"\bcut(?:ting)? (?:the |your )?loss",
-    r"\bbuys?\b", r"\bbuying\b", r"\bbought\b", r"\bsells?\b", r"\bselling\b", r"\bsold\b", r"\breduce\b",
-    r"\badd\b", r"\baccumulate\b", r"\btrim\b", r"\bexits?\b", r"\benter\b", r"\bentr(?:y|ies)\b", r"\bwait\b",
-    r"\bgo(?:ing)? (?:long|short)\b", r"\bshorting\b", r"\bshort[- ]?sell", r"\brecommend",
-    # the same in Vietnamese: mua/bán/giữ/cắt lỗ, chờ, danh mục, vị thế, tiền mặt, ngân sách, giá vốn...
-    r"\b(?:mua|bán|giữ|gom|chờ|nên|lệnh|lãi|lỗ|vốn)\b", r"\bchốt (?:lời|lãi)\b", r"\bgiải ngân\b",
+    # a cost basis: purchase, entry, cost and buy are listed words of their own ("average purchase price"), and the
+    # volume-weighted average price is a chart line
+    r"\b(?:avg\.?|(?<!volume[- ]weighted )average|acquisition) ?(?:share |fill |execution |unit )?price\b",
+    r"\bat an average (?:price )?of\b",
+    r"\bbreak-?even\b", r"\bp ?[&/] ?l\b", r"\bpnl\b", r"\bunreali[sz]ed\b", r"\bunder-?water\b",
+    r"\bpa(?:y|ys|ying|id)\b", r"\bown(?:s|ed|ing)\b", r"\bon (?:the|its|their) books\b", r"\bnav\b",
+    r"\bnet asset value\b", r"\bstakes?\b", r"\bbasis (?:is |was |of |at |near )?\d",
+    r"\b(?:full|half|normal|starter|initial|partial|double|quarter|planned|usual|max|maximum|trade|lot)"
+    r"[- ]size[sd]?\b",
+    r"\b(?:hundreds?|thousands?|millions?|billions?) (?:of )?(?:shares?|units?|lots?)\b",
+    # a number read from its first digit (not after a digit, a comma or "<digit>."), then a share count or an amount
+    r"\d(?<![\d,]\d)(?<!\d\.\d)[\d,.]{0,40}(?: ?(?:k|m|nghìn|ngàn)?[ -]?(?:shares?|units?|lots?|cp|cổ)\b"
+    r"| ?(?:million|mil|mio|mn|billion|bn|triệu|tỷ|tỉ|củ|tr)\b| ?(?:k|m) ?(?:vnd|vnđ|đồng|₫))",
+    r"\d{1,3}(?:[,.]\d{3}){2,6} ?(?:vnd|vnđ|đ|₫)",  # "đ" also starts "đồng"
+    r"(?:\bvnd|\bvnđ|₫) ?\d[\d,.]{0,20} ?[km]\b",  # "VND 120m" (million, bn... after a number withhold anyway)
+    r"(?:\bvnd|\bvnđ|₫) ?\d{1,3}(?:[,.]\d{3}){2,6}", r"\$ ?\d", r"\d ?(?:usd|dollars?)\b",
+    r"\bt ?\+ ?\d", r"\bsellable\b", r"\bsettlement\b", r"\bbrokers?\b", r"\busers?\b", r"\byou(?:rs?)?\b",
+    # the writer's own: a thesis about the chart has no first person
+    r"\b(?:we|our|ours|my|mine)\b", r"\bi(?:['’](?:m|ve|d|ll)| (?:am|have|had|own|would|will))\b",
+    # stops and trading actions, every inflection, a space or a dash between the words of a phrase
+    r"\bstop(?:s|-?loss(?:es)?)?\b", r"\bstop(?:ped|ping)[- ]out\b",
+    r"\b(?:take|takes|taking|took|taken)(?:[- ][a-z]+){0,2}[- ]?profits?\b",
+    r"\bprofits? (?:were |was |are |is |being |got )?(?:taken|booked|locked)\b",
+    r"\bprofit[- ]?taking\b", r"\bcut(?:s|ting)?[- ]?(?:the |some )?loss", r"\bloss[- ]?cut",
+    r"\bbuys?\b", r"\bbuying\b", r"\bbought\b", r"\bsells?\b", r"\bselling\b", r"\bsold\b",
+    r"\bre-?(?:entr(?:y|ies)|enter(?:s|ed|ing)?|buy(?:s|ing)?|bought|sold|sell(?:s|ing)?|purchas(?:e[ds]?|ing))\b",
+    r"\breduc(?:e[ds]?|ing)\b", r"\badd(?:s|ed|ing)?\b", r"\baccumulat(?:e[ds]?|ing)\b", r"\btrim(?:s|med|ming)?\b",
+    r"\benter(?:s|ed|ing)?\b", r"\bentr(?:y|ies)\b", r"\bexit(?:s|ed|ing)?\b", r"\bwait(?:s|ed|ing)?\b",
+    r"\b(?:stand|stands|standing|stood)[- ]aside\b", r"\bside-?line[sd]?\b", r"\b(?:new|fresh)[- ](?:money|funds?)\b",
+    r"\b(?:limit|market)[- ]?orders?\b",
+    r"\b(?:place[sd]?|placing|put|puts|putting|set|sets|setting|an?|the)(?: [a-z]+)? orders?\b",
+    r"\b(?:orders?|offers?) (?:at|near|above|below|around) \d",
+    r"\bscal(?:e[sd]?|ing)[- ](?:in|into|out)\b", r"\baverag(?:e[sd]?|ing)[- ]down\b", r"\bdoubl(?:e[sd]?|ing)[- ]down\b",
+    r"\b(?:go|goes|going|went|gone)[- ](?:long|short)(?!-)\b", r"\bgo[- ]flat\b", r"\bshort(?:ed|ing)\b",
+    r"\bshortsell", r"\b(?:longs|shorts)\b",  # "short sell", "short-sell": sell is a listed word
+    r"\b(?:long|short)s? (?:above|below|over|under|near|at|into|toward|towards) \d",
+    r"\bshorts? (?:the|this|it|them|into|strength)\b",
+    r"\bfad(?:e|es|ed|ing) (?:the |any |every |a |this )?(?:rall(?:y|ies)|bounces?|strength|rips?|pops?|breakouts?)\b",
+    r"\brecommend",
+    # more of the same kind
+    r"\bawait(?:s|ed|ing)?\b", r"\bpurchas(?:e[ds]?|ing)\b", r"\bhedg(?:e[ds]?|ing)\b", r"\bliquidat(?:e[ds]?|ing)\b",
+    r"\bacquir(?:e[ds]?|ing)\b", r"\binvest(?:s|ed|ing)?\b", r"\bdump(?:s|ed|ing)?\b",
+    r"\b(?:get|gets|getting|got|gotten)[- ](?:long|short|in|out)(?!-)\b",
+    r"\blighten(?:s|ed|ing)?[- ]up\b", r"\bload(?:s|ed|ing)?[- ]up\b", r"\bbail(?:s|ed|ing)?[- ]out\b",
+    r"\bbottom[- ]?fish", r"\bfalling[- ]knife\b", r"\block(?:s|ed|ing)?[- ]in (?:[a-z]+ ){0,3}?(?:gains?|profits?)\b",
+    r"\bbook(?:s|ed|ing)? (?:[a-z]+ ){0,2}?(?:gains?|profits?|losses?)\b", r"\boff the table\b",
+    r"\bstep(?:s|ped|ping)?[- ]aside\b", r"\bstay(?:s|ed|ing)?[- ]away\b(?! from)", r"\bset(?:s|ting)?[- ]aside\b",
+    r"\bfill(?<!\bgap fill)(?<!\bgap was fill)(?:s|ed)? (?:at|near|around)\b",
+    r"\bpick(?:s|ed|ing)?[- ]up (?:(?:some|more|the|a few|cheap) )?(?:shares?|stock)\b",
+    r"\b(?:clos|open|manag)(?:e|es|ed|ing|s)? (?:the|this|that|a|any|each|new) trades?\b",
+    r"\bkeep(?:s|ing)? the (?:stock|shares|name)\b",
+    r"\b(?:a|new) (?:long|short)s? (?:at|near|above|below)\b",
+    r"\b(?:long|short) (?:from|since)\b", r"\bexisting (?:longs?|shorts?|investors?|owners?)\b",
+    r"\balready (?:(?:long|short)(?!-)|in the (?:stock|name|trade))\b",
+    r"\bstay(?:s|ed|ing)?[- ](?:(?:long|short)(?!-)|out|aside|flat)\b", r"\b(?:target price|price target)s?\b",
+    # a trade set-up and its costs (from the held-out measurement, review-fix/heldout)
+    r"\br ?[:/] ?r\b", r"\brisk[ /-]?(?:to[ -])?reward\b", r"\breward[ /-]?(?:to[ -])?risk\b",
+    r"\b(?:fees?|commissions?|slippage)\b", r"\bquantit(?:y|ies)\b", r"\baffordab", r"\borders\b",
+    r"\bmục tiêu\b", r"\bnhắm\b", r"\bgiá vào\b(?! vùng)", r"\bchi phí\b", r"\bphí giao dịch\b",
+    # the same in Vietnamese, and typed without diacritics
+    r"\b(?:mua|bán|giữ|gom|chờ|nên|lệnh|lãi|lời|lỗ|vốn)\b", r"\bđợi\b", r"\bxả\b", r"\bnắm\b", r"\bnhặt\b",
+    r"\bchốt\b(?! (?:phiên|tuần|tháng|quý|năm|ngày))", r"\bcắt\b(?! (?:lên|xuống|qua|ngang))", r"\bthoát\b(?! khỏi)",
+    r"\bcầm (?:tiếp|hàng|cổ|chắc)\b", r"\bgiải ngân\b", r"\bxuống tiền\b", r"\bôm hàng\b", r"\btất tay\b",
+    r"\blướt sóng\b", r"\bhàng về\b", r"\btài khoản\b", r"\bgiá (?:mua )?bình quân\b", r"\bbình quân giá\b",
+    r"\bbắt đáy\b", r"\bvào hàng\b", r"\btham gia\b", r"\bsở hữu\b", r"\bnhàn rỗi\b", r"\bsố dư\b",
+    r"\btrung bình giá\b", r"\bgia tăng (?:quanh|tại|thêm)\b", r"\b(?:mức|điểm) dừng\b", r"\bđang âm\b",
     r"\bt[ỷỉ] trọng\b", r"\bdanh mục\b", r"\bvị thế\b", r"\btiền mặt\b", r"\bngân sách\b",
-    r"\bkhuy(?:ên|ến)\b", r"\bhành động\b", r"\bđứng ngoài\b", r"\bk[ýí] quỹ\b",
-    # URLs, host names (label.tld), IP addresses, ports
-    r"[a-z][a-z0-9+.-]{0,30}://", r"\bwww\.", r"\blocalhost\b", r"\b(?:tailscale|ngrok)\b", r"\bbtc-(?:ai|be|fe)\b",
-    r"[a-z0-9-]\.[a-z]{2,24}\b", r"\b\d{1,3}(?:\.\d{1,3}){3}\b", r"::",
-    r"\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}\b", r"\b[a-z][a-z0-9.-]{0,62}:\d{2,5}\b", r"\bports?\b",
+    r"\bkhuy(?:ên|ến)\b", r"\bhành động\b", r"\bđứng ngoài\b", r"\bk[ýí] quỹ\b", r"\b(?:tôi|chúng ta|mình|bạn)\b",
+    r"\b(?:ban (?:ra|bot|het)|cat lo|chot (?:loi|lai|mot phan|bot|het)|nen (?:ban|cho)|dung ngoai"
+    r"|giai ngan|bat day|vao hang|thoat hang|so huu|nhan roi|so du|trung binh gia|cat giam|muc dung"
+    r"|diem dung|dang am|dang loi|t[yi] trong|danh muc|vi the|tien mat|ngan sach|khuyen nghi|hanh dong|k[yi] quy"
+    r"|xuong tien|om hang|tat tay|luot song|hang ve|tai khoan|gia von|gia binh quan|giu|lenh|trieu)\b",
+    # URLs, host names (label.tld, a Windows default name), IP addresses, ports
+    r"[a-z][a-z0-9+.-]{0,30}://", r"\bwww\.", r"\blocalhost\b", r"\bloopback\b", r"\b(?:tailscale|ngrok)\b",
+    r"\bbtc-(?:ai|be|fe)\b", r"\b(?:desktop|laptop)-[a-z0-9]{5,15}\b",
+    r"[a-z0-9-]\.[a-z]{2,24}\b", r"\bdot (?:com|net|org|vn|io|dev|app)\b", r"\d(?<!\w\d)\d{0,2}(?:\.\d{1,3}){3}\b",
+    r"::", r"\b(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}\b", r"\b[a-z][a-z0-9.-]{0,62}:\d{2,5}\b", r":(?<![\w:]:)\d{4,5}\b",
+    r"\bports?\b",
     # file paths
     r"\\", r"\b[a-z]:/", r"(?<![\w)\]~./])[~.]{0,2}/[\w.-]+/",
-    r"(?<![\w)\]~./])/(?:users|home|tmp|var|etc|mnt|opt|srv|root|api)\b",
+    r"/(?<![\w)\]~./]/)(?:home|tmp|var|etc|mnt|opt|srv|root|api)\b",  # "/users": a listed word
+    r"\b(?:evidence|scripts|skills|backend|frontend|contracts)/",
     r"\w\.(?:json|md|py|ps1|psm1|cs|csproj|sln|tsx?|m?js|cjs|txt|log|csv|tsv|xml|html?|exe|dll|db|sqlite|sql|env"
-    r"|ya?ml|ini|cfg|conf|toml|bat|cmd|sh|joblib|pkl|parquet|zip|7z|bak|dump|clixml|pem|crt)\b",
+    r"|ya?ml|ini|cfg|conf|toml|bat|cmd|sh|joblib|pkl|parquet|zip|7z|bak|clixml|pem|crt)\b",  # ".dump": a listed word
     r"\b(?:research-sessions|node_modules|appdata)\b", r"\.ops\b",
-    # e-mail addresses, long hex strings, tokens, internal ids and secrets
-    r"@", r"\b[0-9a-f]{16,}\b", r"\b0x[0-9a-f]{8,}", r"\b[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\b",
-    r"[a-z0-9+/=_-]{32,}", r"\bsnap[/:_-]", r"\bsnapshot", r"\bsessions?/",
-    r"\b(?:note|forecast|request|snapshot)[ _-]?ids?\b", r"\bx-admin", r"\badmin[ _-]?key", r"\bapi[ _-]?keys?\b",
+    # e-mail addresses, hex strings and digit runs, tokens, internal ids and secrets
+    r"@", r"[0-9a-f](?<!\w[0-9a-f])[0-9a-f]{15,}\b", r"\b(?=[0-9a-f]{8,15}\b)(?=[0-9a-f]*[a-f])[0-9a-f]*\d",
+    r"\d(?<!\w\d)\d{11,}\b", r"\b0x[0-9a-f]{8,}",
+    r"[a-z0-9+/=_-]{32,}",  # also every uuid (36 characters of hex digits and dashes)
+    r"\bsnap[/:_-]", r"\bsnapshot", r"\bsessions?/",
+    r"\b(?:note|forecast|request)[ _-]?ids?\b", r"\bx-admin", r"\badmin[ _-]?key", r"\bapi[ _-]?keys?\b",
     r"\bbearer\b", r"\bpassw", r"\bsecrets?\b", r"\btokens?\b", r"\bcredentials?\b", r"\beqx_",
-)), re.IGNORECASE)
+)
+# The same, where case decides: read on the probe as written
+_NOT_TICKER = r"(?!SMA|EMA|RSI|ATR|OBV|POC|VAL|VAH|VND)"  # the writer's indicator abbreviations, the currency
+CASED_PATTERNS = (
+    # "<number> <ticker>" (3,000 MBB, 3K MBB, 3 nghìn MBB), but not an indicator abbreviation (20 EMA, 18,750 VND)
+    r"\d(?<![\w.,/:-]\d)[\d,.]{0,20} ?(?:[kK]|nghìn|ngàn)? ?" + _NOT_TICKER + r"[A-Z]{3}\b",
+    r"\b[Bb]ids?\b",  # an order; the ticker BID is written in capitals
+    r"\b(?:TP|SL)\d?\b",  # take-profit and stop-loss levels ("TP 21,000, SL 18,500")
+    r"\b[Kk]eep(?:s|ing)? " + _NOT_TICKER + r"[A-Z]{3}\b",  # "Keep MBB while ..."
+)
+
+
+def _alternation(patterns: tuple[str, ...]) -> str:
+    r"""One regex for the alternatives, laid out for speed: every alternative that starts with \b and a word goes under
+    a single \b(?:...), so that sre skips each branch whose first literal does not match the character at hand
+    without entering it (with one top-level alternative each, every one of them re-checks \b at every position)."""
+    def word(p: str) -> bool:
+        return p.startswith(r"\b") and (p[2:3].isalnum() or p[2:5] == "(?:")
+    return r"\b(?:" + "|".join(p[2:] for p in patterns if word(p)) + ")|" + "|".join(p for p in patterns if not word(p))
+
+
+PRIVATE_TEXT = re.compile(_alternation(PRIVATE_PATTERNS))
+CASED_TEXT = re.compile("|".join(CASED_PATTERNS))
+# The characters the keyword lists can read (an allowlist: any other character, in the text as written or after NFKC,
+# withholds the thesis, _unreadable): printable ASCII with tab and newline; the Latin-1 letters and signs, but not the
+# soft hyphen, the ordinal and micro signs, the spacing accents that NFKC turns into a space and a combining mark
+# (U+00A8, U+00AF, U+00B4, U+00B8) or the fractions that NFKC writes with U+2044 (U+00BC-U+00BE); the Vietnamese
+# letters (U+0102, U+0103, U+0110, U+0111, U+0128, U+0129, U+0168, U+0169, U+01A0, U+01A1, U+01AF, U+01B0 and
+# U+1EA0-U+1EF9) and the combining marks of decomposed Vietnamese; and a short list of typography: the dashes
+# U+2010-U+2015, curly quotes, bullet, ellipsis, per mille, primes, the arrows U+2190-U+2193, U+2248, U+2260, U+2264,
+# U+2265, the minus sign U+2212, U+20AB (dong) and U+20AC (euro).
+READABLE = frozenset(
+    "\t\n\r" + "".join(map(chr, range(0x20, 0x7f)))
+    + "".join(chr(c) for c in range(0xa0, 0x100)
+              if c not in (0xa8, 0xaa, 0xad, 0xaf, 0xb4, 0xb5, 0xb8, 0xba, 0xbc, 0xbd, 0xbe))
+    + "\u0102\u0103\u0110\u0111\u0128\u0129\u0168\u0169\u01a0\u01a1\u01af\u01b0"
+    + "".join(map(chr, range(0x1ea0, 0x1efa)))
+    + "\u0300\u0301\u0302\u0303\u0306\u0309\u031b\u0323"
+    + "\u2010\u2011\u2012\u2013\u2014\u2015\u2018\u2019\u201c\u201d\u2022\u2026\u2030\u2032\u2033"
+    + "\u2190\u2191\u2192\u2193\u2248\u2260\u2264\u2265\u2212\u20ab\u20ac")
+# The dashes _probe reads as "-": category Pd (of READABLE: U+2010-U+2015) and U+2212 MINUS SIGN
+DASHES = frozenset("\u2212")
 
 Fetch = Callable[[str, dict], Any]
 
@@ -249,27 +424,35 @@ def _get(fetch: Fetch, path: str, headers: dict, sleep: Callable[[float], None],
         sleep(RETRY_AFTER_S)
 
 
-def _reason(e: urllib.error.HTTPError) -> tuple[str, bool]:
-    """(Vietnamese reason, whether it is 400 UNSUPPORTED_CAPABILITY: a part the backend does not serve)."""
+def _reason(e: urllib.error.HTTPError) -> tuple[str, bool, str]:
+    """(public Vietnamese reason, whether it is 400 UNSUPPORTED_CAPABILITY: a part the backend does not serve, detail
+    for stderr: the status and the envelope's code)."""
     try:
         code = json.loads(e.read().decode("utf-8")).get("code")
     except Exception:  # an error body that is not the JSON envelope
         code = None
+    detail = f"HTTP {e.code}" + (f" {code}" if isinstance(code, str) and re.fullmatch(r"[A-Z_]{1,40}", code) else "")
     if e.code == 400 and code == "UNSUPPORTED_CAPABILITY":
-        return "backend chưa hỗ trợ mã này (UNSUPPORTED_CAPABILITY)", True
-    return f"HTTP {e.code}" + (f" {code}" if isinstance(code, str) and re.fullmatch(r"[A-Z_]{1,40}", code) else ""), False
+        return UNSUPPORTED, True, detail
+    return HTTP_FAILED.format(status=e.code), False, detail
 
 
-def _part(read: Callable[[], Any]) -> tuple[Any, str | None, bool]:
-    """(value, None, False), or (None, reason, keep) for an HTTP error or a malformed payload, where keep says the
-    previous run's values may stand in (not for UNSUPPORTED_CAPABILITY); an unreachable backend still raises."""
+def _part(read: Callable[[], Any]) -> tuple[Any, str | None, bool, str]:
+    """(value, None, False, ""), or (None, reason, keep, detail) for an HTTP error or a malformed payload, where keep
+    says the previous run's values may stand in (not for UNSUPPORTED_CAPABILITY) and detail is for stderr only; an
+    unreachable backend still raises."""
     try:
-        return read(), None, False
+        return read(), None, False, ""
     except urllib.error.HTTPError as e:
-        reason, unsupported = _reason(e)
-        return None, reason, not unsupported
+        reason, unsupported, detail = _reason(e)
+        return None, reason, not unsupported, detail
     except (KeyError, TypeError, ValueError, AttributeError) as e:
-        return None, f"phản hồi sai định dạng ({type(e).__name__})", True
+        return None, MALFORMED, True, f"{type(e).__name__}: {e}"
+
+
+def _detail(text: str) -> str:
+    """One short ASCII line for stderr: a redirected stderr is cp1252, and a payload value may be anything."""
+    return " ".join(str(text).split())[:300].encode("ascii", "backslashreplace").decode("ascii")
 
 
 def candle_rows(payload: list) -> list[list]:
@@ -278,8 +461,9 @@ def candle_rows(payload: list) -> list[list]:
     return [r for r in rows if r[5] > 0][-CANDLE_LIMIT:]
 
 
-def technical_parts(payload: dict) -> tuple[dict | None, dict | None]:
-    """(latest 1d indicators, excess vs VNINDEX over 20/60 sessions); either may be None."""
+def technical_parts(payload: dict) -> tuple[dict | None, dict | None, str]:
+    """(latest 1d indicators, excess vs VNINDEX over 20/60 sessions, why that excess is None, for stderr); either
+    value may be None."""
     day = next((t for t in payload["timeframes"] if t["timeframe"] == "1d"), None)
     indicators = None
     if day is not None and day["indicators"] is not None:
@@ -288,26 +472,52 @@ def technical_parts(payload: dict) -> tuple[dict | None, dict | None]:
         indicators = {"date": session_of(i["openTimeMs"]), "close": _num(close),
                       **{f: _num(i.get(f)) for f in INDICATORS}}
     bench = next((b for b in payload["relativeStrength"]["benchmarks"] if b["symbol"] == "VNINDEX"), None)
-    strength = None
-    if bench is not None and bench["status"] == "ok":  # "stale" keeps an old window, not the latest session
-        strength = {w: _num((bench["returns"].get(w) or {}).get("excess")) for w in RS_WINDOWS}
-    return indicators, strength
+    strength, why = None, "no VNINDEX benchmark"
+    if bench is not None:
+        why = f"VNINDEX benchmark status {bench['status']!r}, reason {bench.get('reason')!r}"
+        if bench["status"] == "ok":  # "stale" keeps an old window, not the latest session
+            strength, why = {w: _num((bench["returns"].get(w) or {}).get("excess")) for w in RS_WINDOWS}, ""
+    return indicators, strength, why
 
 
 def _probe(text: str) -> str:
-    """What the privacy filter reads: NFKC (full-width and compatibility forms folded, Vietnamese composed), format
-    and control characters and stray combining marks removed (a zero-width space cannot split a word), whitespace
-    runs as one space, technical phrases blanked."""
-    folded = "".join(c for c in unicodedata.normalize("NFKC", text)
-                     if c in "\t\n\r" or unicodedata.category(c) not in ("Cc", "Cf", "Mn", "Me"))
-    return TECHNICAL_PHRASES.sub(" ", re.sub(r"\s+", " ", folded))
+    """What the privacy filter reads, of a text of READABLE characters: NFKC (Vietnamese composed), every dash
+    (category Pd: U+2010 that NFKC makes of U+2011, en and em dash..., and DASHES) as "-", control characters and
+    stray combining marks removed, whitespace runs as one space, chart phrases in their place blanked (_chart_phrase)."""
+    text = unicodedata.normalize("NFKC", text)
+    table: dict[int, str | None] = {}  # built over the distinct characters only
+    for c in set(text):
+        category = unicodedata.category(c)
+        if c not in "\t\n\r" and category in ("Cc", "Cf", "Mn", "Me"):
+            table[ord(c)] = None
+        elif category == "Pd" or c in DASHES:
+            table[ord(c)] = "-"
+    return TECHNICAL_PHRASES.sub(_chart_phrase, re.sub(r"\s+", " ", text.translate(table)))
+
+
+def _unreadable(text: str) -> bool:
+    """A character of the text as written outside READABLE, which the keyword lists cannot read: a format or bidi
+    control (U+200B, U+202A-U+202E, U+2066-U+2069: the page would show what the filter does not read), any other
+    control or space character (a thin space inside "b uy"), a letter outside Latin-1 and Vietnamese (a Cyrillic,
+    Greek or IPA look-alike, a small capital, a dotless i, a mathematical, full-width, enclosed or modifier letter), a
+    dash look-alike (a box-drawing line) or any other symbol; or a readable mark that composes with its letter into
+    one outside READABLE ("s" + U+0301 is U+015B, which the page shows as an s). A word glued to "_" or a digit
+    ("buy18600") is readable but not a word, so it passes: the writer does not write that (left out on purpose)."""
+    return not (READABLE.issuperset(text) and READABLE.issuperset(unicodedata.normalize("NFKC", text)))
+
+
+def _private(text: str) -> bool:
+    """A denylist match: PRIVATE_TEXT on the lowercased probe, CASED_TEXT on the probe as written. (No character of
+    READABLE lowers to a combining mark; U+0130, which lowers to "i" and U+0307, is not readable.)"""
+    probe = _probe(text)
+    return PRIVATE_TEXT.search(probe.lower()) is not None or CASED_TEXT.search(probe) is not None
 
 
 def public_thesis(raw: Any) -> tuple[str | None, bool]:
     """(the thesis to publish or None, whether the privacy filter withheld it). The filter reads the whole text."""
     if not isinstance(raw, str) or not raw.strip():
         return None, False
-    if PRIVATE_TEXT.search(_probe(raw)):
+    if _unreadable(raw) or _private(raw):
         return None, True
     return (raw if len(raw) <= THESIS_MAX else raw[:THESIS_MAX - 1] + CUT), False
 
@@ -504,43 +714,44 @@ def build(fetch: Fetch, screen: dict, admin_key: str | None, out_dir: Path,
     admin = {"X-Admin-Key": admin_key} if admin_key else None
     docs, unavailable, withheld = {}, [], 0
     for s in sorted(r["symbol"] for r in screen["rows"]):
-        def miss(part: str, reason: str, keep: bool = False, kept: bool = False) -> None:
+        def miss(part: str, reason: str, detail: str, keep: bool = False, kept: bool = False) -> None:
             suffix = "" if not keep else KEPT if kept else NOTHING_KEPT  # never kept: UNSUPPORTED_CAPABILITY
             unavailable.append({"symbol": s, "part": part, "reason": reason + suffix})
+            print(f"unavailable {s} {part}: {_detail(detail)}", file=sys.stderr)
 
-        candles, why, keep = _part(lambda: candle_rows(
+        candles, why, keep, detail = _part(lambda: candle_rows(
             _get(fetch, f"/api/equities/{s}/candles?timeframe=1d&limit={CANDLE_LIMIT}", {}, sleep)))
         if why is not None:
             whole = previous.kept_whole(s) if keep else None
-            miss("candles", why, keep, whole is not None)
+            miss("candles", why, detail, keep, whole is not None)
             if whole is not None:
                 docs[s] = whole[0]
                 withheld += whole[1]
                 continue
             candles = []
 
-        technical, why, keep = _part(lambda: technical_parts(
+        technical, why, keep, detail = _part(lambda: technical_parts(
             _get(fetch, f"/api/equities/{s}/technical?bars=1", {}, sleep, pace)))
         if why is None:
-            indicators, strength = technical
+            indicators, strength, no_strength = technical
             if indicators is None:
-                miss("technical", "backend chưa có chỉ báo 1d")
+                miss("technical", NO_INDICATORS, "no 1d indicator row")
             if strength is None:
-                miss("technical", "chưa có sức mạnh tương đối so VNINDEX ở phiên mới nhất")
+                miss("technical", NO_STRENGTH, no_strength)
         else:
             kept = previous.kept_technical(s) if keep else None
-            miss("technical", why, keep, kept is not None)
+            miss("technical", why, detail, keep, kept is not None)
             indicators, strength = kept or (None, None)
 
         if admin is None:
-            part, why, keep = None, "thiếu quyền đọc nhật ký nhận định", True
+            part, why, keep, detail = None, NO_KEY, True, "EQX_ADMIN_KEY is not set"
         else:
-            part, why, keep = _part(lambda: note_rows(
+            part, why, keep, detail = _part(lambda: note_rows(
                 _get(fetch, f"/api/equities/{s}/research-notes?take={NOTES_TAKE}", admin, sleep),
                 _get(fetch, f"/api/equities/{s}/research-notes/direction-scores?take={SCORES_TAKE}", admin, sleep)))
         if why is not None:
             kept = previous.kept_notes(s) if keep else None
-            miss("notes", why, keep, kept is not None)
+            miss("notes", why, detail, keep, kept is not None)
             part = kept or ([], None, 0)
         notes, score, hidden = part
         withheld += hidden
