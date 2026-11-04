@@ -35,8 +35,11 @@ asset value, average price and off the table are listed; and the docstring and d
 examples, each pinned to what the filter does (DOC_WITHHELD, DOC_PUBLISHED; data-contract.md is read only in the btc
 workspace).
 
-Round r4b (evidence/vn30-web-20261103/r4b/contract.md, findings of cold-check r4): what r3 withheld in the two families
-r4 relaxed is withheld again, and what r4 opened on purpose stays published (X2_LISTS). B1: "break-even" and
+Round r4b (evidence/vn30-web-20261103/r4b/contract.md, findings of cold-check r4): the regressions cold-check r4 found
+in the two families r4 relaxed are withheld again (COLDCHECK_R4_LEAKS), and what r4 opened on purpose stays published
+(X2_LISTS). That is not all r3 withheld there: a count after a connector word _COUNT_AFTER_TICKER does not list
+("BID 900, MBB just over 3,100": just over, under, up to, exactly, another, ...) is still published, and so is a
+count written first and followed by a word (cold-check r4b). B1: "break-even" and
 "breakeven" (the noun) withhold before lower, higher, further, more and deeper too; only the verb written with a space
 ("broke even lower") is chart prose (BREAK_EVEN_NOUN, BREAK_EVEN_PROSE). B2: a list of counts written after the
 tickers withholds in any of the connectors of _COUNT_AFTER_TICKER (a space, ":", ";", ",", "(", "[", "~", "×", "=",
