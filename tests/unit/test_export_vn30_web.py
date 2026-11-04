@@ -61,7 +61,26 @@ that ends the text ends the clause, and a count in double quotation marks withho
 (test_an_unsigned_count_written_first_withholds_at_the_end_of_the_text_too); the docstring and data-contract.md also
 pin the skill's default and where the theses exported before r4 came from, and name what the chart exception of the
 spaced "broke even" lets through (DOC_PUBLISHED). The reviewer's sentences are pinned verbatim like the cold-check ones
-(REVIEW_R4B_LEAKS)."""
+(REVIEW_R4B_LEAKS).
+
+Round r5 (evidence/vn30-web-20261103/r5/contract.md, user decision of 2026-11-04: "Bỏ hẳn khỏi trang"): a forward
+H=20 note that fails the action check of X1 is dropped whole, like a superseded note, instead of keeping its row with
+the thesis withheld (D1): no row, no slot of NOTE_LIMIT (the list fills with notes that pass and are not superseded,
+and its first note is the newest such note), not a withheld thesis, counted in the stdout summary's notesDropped and
+in no public file. When that note held its bar's slot, the daily note written later on the bar is superseded, so the
+bar has no exported note. score stays the backend's whole-journal summary and counts a dropped note once it is scored
+(D2); a kept notes part cannot be filtered again (D3); the docstring and data-contract.md say so (D5). Every pair of
+the backend's actionView/actionBasis enums, every missing or odd value, is tested (D4); the fixtures carry producer
+values: wait / market-only for the daily task, hold / market-only for the stored note of a session that knew the
+holding, and the pairs the investment-research skill writes for a holder (BLOCKED_ACTIONS).
+
+Review of round r5 (evidence/vn30-web-20261103/r5/review-W-exporter): the no-view case is a note as the backend serves
+it, direction no-view on the note and on its item (the backend gives status no-view only to a note whose direction is
+not up, down or sideways), and every status case is dropped under each pair of BLOCKED_ACTIONS (STATUS_CASES); the
+end-to-end test also drops the fixture's own no-view note and a note past the 60th note that passes (never read, so
+not counted in notesDropped); a blocked note whose body the backend could not parse (served as null) is dropped too;
+the other r5 statements of the docstring and data-contract.md are pinned in the wording of each text (R5_CLAIMS,
+NEVER_EXPORTED_R5), and the three that said more than the code does must not come back (R5_OVERCLAIMS)."""
 import io
 import json
 import os
@@ -637,16 +656,22 @@ E4_READABLE_MORE = (
 DASHES = ("\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\u2015", "\u2212")
 
 # Round r4 X1: the backend's enums (EquityResearchNoteService.cs, ActionViews and ActionBases) and the pairs whose
-# thesis may be published. The daily task writes market-only with wait, or insufficient-input with none for a no-view
-# without data (SKILL.md Step 3); a hold (the user said they hold the stock), reduce, sell or buy-more view, or a
-# position-aware basis, can carry the user's holding. ("insufficient-input", "wait") is refused by the backend
-# (insufficient-input requires none), so it is never served; the contract allows it as a pair of the two sets.
+# notes may be exported (from r5, D1, any other pair drops the whole note). The daily task writes market-only with
+# wait, or insufficient-input with none for a no-view without data (SKILL.md Step 3); a hold (the user said they hold
+# the stock), reduce, sell or buy-more view, or a position-aware basis, can carry the user's holding.
+# ("insufficient-input", "wait") is refused by the backend (insufficient-input requires none), so it is never served;
+# the contract allows it as a pair of the two sets.
 ACTION_VIEWS = ("buy-more", "hold", "reduce", "sell", "wait", "none")
 ACTION_BASES = ("position-aware", "market-only", "insufficient-input")
 PUBLIC_ACTIONS = {("market-only", "wait"), ("market-only", "none"), ("insufficient-input", "wait"),
                   ("insufficient-input", "none")}
-# Fail-closed: a missing field, a value that is not a string or one outside the enums withholds the thesis, and the
-# row is still exported (never a malformed notes part).
+# Round r5: pairs a real producer can write that fail the check. equity-technical SKILL.md Step 3 allows hold /
+# market-only, and investment-research SKILL.md Step 7 allows reduce or sell with market-only, and position-aware
+# with any action (wait, buy-more).
+BLOCKED_ACTIONS = (("hold", "market-only"), ("reduce", "market-only"), ("sell", "market-only"),
+                   ("wait", "position-aware"), ("buy-more", "position-aware"))
+# Fail-closed: a missing field, a value that is not a string or one outside the enums drops the whole note (never a
+# malformed notes part).
 ODD_ACTIONS = {
     "actionView missing": lambda n: n.pop("actionView"),
     "actionBasis missing": lambda n: n.pop("actionBasis"),
@@ -1608,6 +1633,59 @@ def _says_the_limit_of_the_action_check(text: str) -> None:
     assert "r4 on, a kept thesis passed this check when it was first exported" in flat
 
 
+# Round r5 D5 (and D2, D3): what the docstring and data-contract.md must say about a note that fails the check, and
+# the r4 wording they must no longer say (a negative pin: the old claim must not come back by a later edit).
+DROPPED_WHOLE = (
+    "drops the whole note, like a superseded one: it has no row, takes no slot of",
+    # review of r5 (NIT 2): a superseded note that passes is not listed either, and a bar left without a note makes
+    # the newest exported note an earlier bar's only when it is the newest bar
+    "the list goes on to the next note that passes and is not superseded, so the newest note listed is the newest "
+    "such note",
+    "is not counted as a withheld thesis",
+    "counts it in notesDropped",
+    "When the dropped note was the first one on its bar, the daily note written later on that bar is superseded, so "
+    "that bar has no exported note at all (when it is the newest bar, the newest exported note is from an earlier bar)",
+    "the notes list can be shorter than the set of notes the backend scores",
+    "r5 on, a kept note passed this check when it was first exported",
+    "r4 to r4c exported the row of a note that failed it, with its thesis withheld",
+)
+R4_ROW_WORDING = ("row is still exported", "exported as usual", "keeps its row", "withholds the thesis; the note")
+# Review of r5 (NIT 3): the other r5 statements, in the wording of each text (the docstring names NOTE_LIMIT and
+# market_only, data-contract.md says 60 and the action check): what the score counts, what notesDropped leaves out
+# (a superseded note, one past the notes taken, a kept part) and that no public file carries a dropped note or a count.
+R5_CLAIMS = {
+    "docstring": (
+        "it counts a note that market_only drops once the backend has scored it",
+        "notesDropped: a note dropped as superseded, or one past the NOTE_LIMIT notes taken, is not counted, and a "
+        "kept notes part counts none",
+        "The nightly wrapper writes this line to its local log only; no public file carries either count",
+    ),
+    "contract": (
+        "it counts every scored note of the journal, including a note the action check drops once the backend has "
+        "scored it",
+        "notesDropped (a note dropped as superseded, or one past the 60 notes taken, is not counted, and a kept notes "
+        "part counts none), and no public file carries that count",
+        "No row, thesis or count of a dropped note reaches a public file; only the backend's score includes it once it "
+        "is scored",
+    ),
+}
+# ... and under "Never exported" in data-contract.md (the section itself, not a sentence elsewhere)
+NEVER_EXPORTED_R5 = ("any part of a note that fails the action check (since r5; score still counts it once the backend "
+                     "has scored it)", "and the counts of the exporter's stdout summary line (thesesWithheld, "
+                                       "notesDropped)")
+# Review of r5 (NIT 2): the wordings that said more than the code does (a negative pin, like R4_ROW_WORDING)
+R5_OVERCLAIMS = ("no exported note at all and the newest exported note is from an earlier bar",
+                 "the newest note listed is the newest note that passes)", "nothing about a dropped note reaches")
+
+
+def _says_a_failing_note_is_dropped_whole(text: str, which: str) -> None:
+    flat = _flat(text)
+    for claim in DROPPED_WHOLE + R5_CLAIMS[which]:
+        assert claim in flat, claim
+    for old in R4_ROW_WORDING + R5_OVERCLAIMS:  # in any case: a reworded sentence may start with it
+        assert old.lower() not in flat.lower(), old
+
+
 # Review of r4 (MINOR 1 and NIT 5): the examples the docstring and data-contract.md give for amounts and for
 # "<number> <ticker>": each example is in both texts, and the filter withholds or publishes it as the text says.
 DOC_WITHHELD = ("63 million", "a 63-million reserve", "50k VND", "120m dong", "a 900k-dong buffer", "63,000,000.00 VND",
@@ -1675,6 +1753,16 @@ def test_the_docstring_names_the_connectors_of_a_count_and_the_limit_of_the_acti
     assert "the theses exported before r4 all came from wait/market-only notes" in _flat(web.__doc__)
 
 
+def test_the_docstring_says_a_failing_note_is_dropped_whole_and_the_score_stays_the_backends():
+    # r5 D5/D2/D3: undoing D1 in the text, or bringing back the r4 row wording, turns this red (the data-contract test
+    # below checks the same claims in data-contract.md); review of r5: so does reversing what the score or notesDropped
+    # counts (R5_CLAIMS) or bringing back an overclaim (R5_OVERCLAIMS)
+    _says_a_failing_note_is_dropped_whole(web.__doc__, "docstring")
+    note_rows_doc = _flat(web.note_rows.__doc__)
+    assert all(claim in note_rows_doc for claim in ("no row, no slot of NOTE_LIMIT", "still counts", "unless it is "
+                                                    "superseded or past the NOTE_LIMIT notes taken"))
+
+
 def test_the_data_contract_says_what_the_docstring_says():
     contract = AI_ROOT.parent / "evidence" / "vn30-web-20261103" / "data-contract.md"
     if not contract.is_file():
@@ -1684,11 +1772,21 @@ def test_the_data_contract_says_what_the_docstring_says():
     _says_the_examples(text)
     _says_the_count_connectors(text)
     _says_the_limit_of_the_action_check(text)
-    # round r4b B5: "Kept parts" says the action check holds for a kept thesis from r4 on, not before
+    _says_a_failing_note_is_dropped_whole(text, "contract")
+    never = _flat(text.split("## Never exported", 1)[1].split("\n## ", 1)[0])
+    assert all(claim in never for claim in NEVER_EXPORTED_R5), never
+    # round r4b B5: "Kept parts" says the action check holds for a kept thesis from r4 on, not before; r5 D3: for a
+    # kept note from r5 on, and the files cannot be filtered again
     kept = _flat(text.split("## Kept parts", 1)[1].split("\n## ", 1)[0])
     assert "From r4 on, a kept thesis is one that check let through when it was first exported" in kept
+    assert "From r5 on, a kept note is one that check let through when it was first exported" in kept
+    assert "so the files cannot be filtered again" in kept
     # review of r4b (NIT 5): where the theses exported before r4 came from
     assert "all come from forward notes stored with actionView wait and actionBasis market-only" in _flat(text)
+    # r5 D1/D5: the action check now decides the note, under notes, and the schema and fields stay
+    notes = _flat(text.split("- `notes`:", 1)[1].split("\n- `score`:", 1)[0])
+    assert "Notes that fail the action check below are dropped too" in notes
+    assert "Round r5 (2026-11-04, same schema and fields" in _flat(text)
 
 
 @pytest.mark.parametrize("text", BREAK_EVEN_PROSE)
@@ -1713,38 +1811,103 @@ def test_a_vnd_amount_starts_at_seven_digits(text):
     assert web.public_thesis(thesis) == ((None, True) if VND_EDGE[text] else (thesis, False))
 
 
-def _one_note(change=None, thesis: str = REAL_THESES[0]) -> tuple[list[dict], dict, int]:
-    """note_rows on a journal of one forward H=20 note with the daily task's actionView/actionBasis, after `change`."""
+def _one_note(change=None, thesis: str = REAL_THESES[0], status: dict | None = None
+              ) -> tuple[list[dict], dict, int, int]:
+    """note_rows on a journal of one forward H=20 note with the daily task's actionView/actionBasis, after `change`
+    (and its direction-score item updated with `status`): (rows, score, theses withheld, notes dropped)."""
     note, item = _entry("MBB", "2026-11-02", 1, thesis=thesis, pending="immature", target=_target("2026-11-02"))
     if change is not None:
         change(note)
+    item.update(status or {})
     return web.note_rows({"items": [note]}, {"horizons": [_summary(20, [item])], "items": [item]})
 
 
 @pytest.mark.parametrize("basis", ACTION_BASES)
 @pytest.mark.parametrize("view", ACTION_VIEWS)
-def test_a_thesis_is_published_only_for_a_market_only_note_with_wait_or_none(view, basis):
-    published, score, _ = _one_note()
-    assert published[0]["thesis"] == REAL_THESES[0]
-    rows, same_score, withheld = _one_note(lambda n: n.update(actionView=view, actionBasis=basis))
-    assert same_score == score
+def test_a_note_is_exported_only_when_market_only_with_wait_or_none(view, basis):
+    # r5 D1: any other pair drops the whole note (no row); it is not a withheld thesis and counts once as dropped
+    published, score, withheld, dropped = _one_note()
+    assert (published[0]["thesis"], withheld, dropped) == (REAL_THESES[0], 0, 0)
+    rows, same_score, withheld, dropped = _one_note(lambda n: n.update(actionView=view, actionBasis=basis))
+    assert same_score == score  # the backend's summary either way
     if (basis, view) in PUBLIC_ACTIONS:
-        assert (rows, withheld) == (published, 0)
-    else:  # the row stays (direction, status, dates); only the thesis is withheld, and it counts
-        assert (rows, withheld) == ([dict(published[0], thesis=None)], 1)
+        assert (rows, withheld, dropped) == (published, 0, 0)
+    else:
+        assert (rows, withheld, dropped) == ([], 0, 1)
 
 
 @pytest.mark.parametrize("odd", sorted(ODD_ACTIONS))
-def test_a_missing_or_odd_action_withholds_the_thesis_and_keeps_the_row(odd):
-    published, _, _ = _one_note()
-    rows, _, withheld = _one_note(ODD_ACTIONS[odd])  # never a malformed notes part
-    assert (rows, withheld) == ([dict(published[0], thesis=None)], 1)
+def test_a_missing_or_odd_action_drops_the_whole_note(odd):
+    rows, _, withheld, dropped = _one_note(ODD_ACTIONS[odd])  # never a malformed notes part
+    assert (rows, withheld, dropped) == ([], 0, 1)
 
 
-def test_a_note_without_a_thesis_counts_nothing_whatever_its_action():
+# Review of r5 (MINOR): each case is a note and its direction-score item as the backend serves them
+# (EquityDirectionScoringService): a resolved up note that hit (+6 % >= +5 %); a no-view note, direction no-view on the
+# note and on its item (EvaluateSlot gives status no-view only to such a note, and still sets its pendingReason and
+# target); an out-of-window note, never evaluated (no pendingReason, no target). Each case: the note change, the item
+# change, and the row's direction and status when the note passes.
+STATUS_CASES = {
+    "resolved": ({}, {"status": "resolved", "pendingReason": None, "returnPct": 0.06, "hit": True}, ("up", "scored")),
+    "no-view": ({"direction": "no-view"}, {"direction": "no-view", "status": "no-view"}, ("no-view", "no-view")),
+    "out-of-window": ({}, {"status": "out-of-window-not-scored", "pendingReason": None, "targetBarOpenTimeMs": None},
+                      ("up", "out-of-window-not-scored")),
+}
+
+
+@pytest.mark.parametrize("case", sorted(STATUS_CASES))
+def test_a_note_of_any_status_is_dropped_by_its_action(case):
+    # D1 reads the action fields, not the direction or the status: a scored, a no-view and an out-of-window note go the
+    # same way under each pair a real producer writes (a no-view note too: equity-technical SKILL.md Step 3 writes hold
+    # whenever the user says they hold the stock, investment-research Step 7 position-aware with any action)
+    note_change, item_change, (direction, status) = STATUS_CASES[case]
+    rows, _, withheld, dropped = _one_note(lambda n: n.update(note_change), status=item_change)
+    assert [(r["direction"], r["status"], r["thesis"]) for r in rows] == [(direction, status, REAL_THESES[0])]
+    assert (withheld, dropped) == (0, 0)
+    for view, basis in BLOCKED_ACTIONS:
+        rows, _, withheld, dropped = _one_note(lambda n: n.update(note_change, actionView=view, actionBasis=basis),
+                                               status=item_change)
+        assert (rows, withheld, dropped) == ([], 0, 1), (view, basis)
+
+
+def test_a_dropped_note_is_not_a_withheld_thesis_whatever_its_thesis():
+    # D1: neither a private thesis nor an empty one makes a dropped note count as withheld; on an exported note the
+    # filter still withholds the private one, and that counts
+    for view, basis in BLOCKED_ACTIONS:
+        for thesis in (PLANTED_THESIS, REAL_THESES[0], "", "  \n "):
+            rows, _, withheld, dropped = _one_note(lambda n: n.update(actionView=view, actionBasis=basis), thesis)
+            assert (rows, withheld, dropped) == ([], 0, 1), (view, basis, thesis[:20])
+    rows, _, withheld, dropped = _one_note(thesis=PLANTED_THESIS)
+    assert (rows[0]["thesis"], withheld, dropped) == (None, 1, 0)
     for thesis in ("", "  \n "):
-        rows, _, withheld = _one_note(lambda n: n.update(actionView="hold", actionBasis="position-aware"), thesis)
-        assert (rows[0]["thesis"], withheld) == (None, 0)
+        rows, _, withheld, dropped = _one_note(thesis=thesis)
+        assert (rows[0]["thesis"], withheld, dropped) == (None, 0, 0)
+    # review of r5 (NIT 4): a body the backend could not parse is served as null (EquityResearchNoteService.ToDto); a
+    # blocked note with it is dropped all the same, and a note that passes keeps its row with no thesis
+    for view, basis in BLOCKED_ACTIONS:
+        rows, _, withheld, dropped = _one_note(lambda n: n.update(actionView=view, actionBasis=basis, body=None))
+        assert (rows, withheld, dropped) == ([], 0, 1), (view, basis)
+    rows, _, withheld, dropped = _one_note(lambda n: n.update(body=None))
+    assert (rows[0]["thesis"], withheld, dropped) == (None, 0, 0)
+
+
+def test_a_dropped_note_still_needs_its_matching_score_item():
+    # like a superseded note, a dropped one is joined with its score first: a missing or mismatched item fails the part
+    note, item = _entry("MBB", "2026-11-02", 1, thesis=REAL_THESES[0], pending="immature", target=_target("2026-11-02"),
+                        view="hold")
+    horizons = [_summary(20, [item])]
+    with pytest.raises(KeyError):
+        web.note_rows({"items": [note]}, {"horizons": horizons, "items": []})
+    with pytest.raises(ValueError):
+        web.note_rows({"items": [note]}, {"horizons": horizons, "items": [dict(item, direction="down")]})
+    assert web.note_rows({"items": [note]}, {"horizons": horizons, "items": [item]})[::3] == ([], 1)
+    # ... and read no further, like a superseded one: its other values never reach a file (docstring, data-contract)
+    for odd in ({"status": "reduce"}, {"pendingReason": "soon"}, {"status": "resolved", "hit": "yes"},
+                {"returnPct": "high"}):
+        assert web.note_rows({"items": [note]}, {"horizons": horizons, "items": [dict(item, **odd)]})[::3] == ([], 1)
+        with pytest.raises((ValueError, TypeError)):  # the same values on a note that passes fail the part
+            web.note_rows({"items": [dict(note, actionView="wait")]},
+                          {"horizons": horizons, "items": [dict(item, **odd)]})
 
 
 def test_unavailable_reasons_are_plain_vietnamese_and_the_details_go_to_stderr(screen_dir, tmp_path, monkeypatch,
@@ -1774,9 +1937,9 @@ def test_unavailable_reasons_are_plain_vietnamese_and_the_details_go_to_stderr(s
         text = p.read_text(encoding="utf-8")
         codes = ("UNSUPPORTED_CAPABILITY", "INTERNAL", "UPSTREAM", "Error", "stale")
         assert not [c for c in codes if c in text], p.name
-    summary = json.loads(captured.out.strip().splitlines()[-1])  # the stdout summary keeps its shape
+    summary = json.loads(captured.out.strip().splitlines()[-1])  # the summary keeps its shape (r5 adds notesDropped)
     assert list(summary) == ["session", "symbols", "written", "changed", "unavailableByPart", "keptByPart",
-                             "thesesWithheld"]
+                             "thesesWithheld", "notesDropped"]
     assert summary["unavailableByPart"] == {"technical": 4, "notes": 2, "candles": 1} and summary["keptByPart"] == {}
 
 
@@ -1871,10 +2034,14 @@ def _forward_pairs(fake: FakeBackend, symbol: str = "MBB") -> dict[str, tuple[di
             if n["mode"] == "forward" and n["horizonSessions"] == 20 and i["status"] != "superseded-not-scored"}
 
 
-def test_a_note_that_may_know_the_users_holding_keeps_its_row_but_never_its_thesis(screen_dir, tmp_path, monkeypatch,
-                                                                                   capsys):
-    # X1, end to end: a clean technical thesis (one the filter publishes) under hold (SKILL.md Step 3: the user said
-    # they hold the stock) or under position-aware/reduce reaches no public file; the rows and the score stay.
+def _public_values(out: Path) -> list[str]:
+    return [v for p in out.rglob("*.json") for v in _strings(json.loads(p.read_text(encoding="utf-8")))]
+
+
+def test_a_note_that_may_know_the_users_holding_is_not_exported_at_all(screen_dir, tmp_path, monkeypatch, capsys):
+    # r5 D1, end to end: a clean technical thesis (one the filter publishes) under hold (the stored note of
+    # BLOCKED_ACTIONS; SKILL.md Step 3: the user said they hold the stock) or under position-aware/reduce reaches no
+    # public file, and neither does the note's row: the next notes take the list, and the score stays the backend's.
     fake = _market(Clock())
     days, pairs = _mbb_days(), _forward_pairs(fake)
     pairs[days[0]][0].update(actionView="hold")
@@ -1886,34 +2053,124 @@ def test_a_note_that_may_know_the_users_holding_keeps_its_row_but_never_its_thes
     assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
     summary = _summary_line(capsys)
     mbb = _symbol(out, "MBB")
-    assert [(n["signalDate"], n["direction"], n["status"], n["thesis"]) for n in mbb["notes"][:4]] == [
-        (days[0], "up", "pending", None), (days[1], "down", "pending", None), (days[2], "sideways", "pending", None),
-        (days[3], "up", "pending", "first note on the bar")]
-    assert len(mbb["notes"]) == 60 and mbb["score"]["scored"] == 80
-    assert summary["thesesWithheld"] == 3  # these two and the fixture's planted one (days[2])
-    for p in out.rglob("*.json"):
-        values = list(_strings(json.loads(p.read_text(encoding="utf-8"))))
-        assert not any(t[:100] in v for t in R4_THESES[:2] for v in values), p.name
+    assert [n["signalDate"] for n in mbb["notes"]] == days[2:62]  # 60 notes: the two dropped take no slot
+    assert [(n["signalDate"], n["direction"], n["status"], n["thesis"]) for n in mbb["notes"][:2]] == [
+        (days[2], "sideways", "pending", None), (days[3], "up", "pending", "first note on the bar")]
+    assert mbb["score"] == {"scored": 80, "hits": 53, "baselineHits": 20, "sampleStatus": "insufficient-sample"}
+    assert (summary["thesesWithheld"], summary["notesDropped"]) == (1, 2)  # the fixture's planted thesis (days[2])
+    assert not any(t[:100] in v for t in R4_THESES[:2] for v in _public_values(out))
 
 
-def test_a_thesis_withheld_for_its_action_stays_withheld_when_the_notes_part_is_kept(screen_dir, tmp_path, monkeypatch,
-                                                                                    capsys):
-    # X1 on the kept path: the files carry no actionView/actionBasis, so a kept thesis is the one the check let
-    # through when it was first exported; a thesis it withheld is null in the file and stays null.
+def test_dropped_notes_take_no_slot_and_nothing_new_reaches_a_public_file(screen_dir, tmp_path, monkeypatch, capsys):
+    # r5 D1/D4: five MBB notes (two of them scored) and one VCB note carry the pairs of BLOCKED_ACTIONS; the superseded
+    # second note of MBB's days[3] is made a hold too, and a superseded note is never counted as dropped. Review of r5:
+    # MBB's days[5], the fixture's no-view note (direction and status no-view, as the backend serves it), is a hold too
+    # (MINOR), and so is days[70], past the 60th note that passes: the list never reads it, so it is not counted
+    # (NIT 4). The list still holds NOTE_LIMIT notes that pass, its first note is the newest note that passes and is
+    # not superseded, the summary line counts the dropped notes over every ticker, and the public files differ from an
+    # untouched run only in the notes listed.
+    plain_out, out = tmp_path / "plain", tmp_path / "data"
+    assert _run(_market(Clock()), Clock(), screen_dir, plain_out, monkeypatch) == 0
+    plain = _summary_line(capsys)
+    fake = _market(Clock())
+    days, pairs = _mbb_days(), _forward_pairs(fake)
+    blocked = dict(zip((0, 1, 4, 30, 59), BLOCKED_ACTIONS))
+    blocked.update({5: ("hold", "market-only"), 70: ("wait", "position-aware")})
+    assert (pairs[days[5]][0]["direction"], pairs[days[5]][1]["direction"], pairs[days[5]][1]["status"]) == \
+        ("no-view", "no-view", "no-view")
+    for i, (view, basis) in blocked.items():
+        pairs[days[i]][0].update(actionView=view, actionBasis=basis)
+    next(n for n, i in fake.journals["MBB"] if i["status"] == "superseded-not-scored").update(actionView="hold")
+    _newest(fake, "VCB")[0].update(actionView="hold")
+    assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
+    summary = _summary_line(capsys)
+    assert (plain["notesDropped"], summary["notesDropped"], summary["thesesWithheld"]) == (0, 7, 1)  # 6 MBB, 1 VCB
+    assert list(summary) == ["session", "symbols", "written", "changed", "unavailableByPart", "keptByPart",
+                             "thesesWithheld", "notesDropped"]
+    mbb, vcb = _symbol(out, "MBB"), _symbol(out, "VCB")
+    passing = [d for i, d in enumerate(days) if i not in blocked]
+    assert [n["signalDate"] for n in mbb["notes"]] == passing[:60] and mbb["notes"][-1]["signalDate"] == days[65]
+    assert mbb["notes"][0]["signalDate"] == days[2] and "no-view" not in {n["direction"] for n in mbb["notes"]}
+    scored = [n for n in mbb["notes"] if n["status"] == "scored"]
+    assert (len(scored), sum(n["hit"] for n in scored)) == (44, 30)  # days[20..65] but 30 and 59
+    assert not any(_thesis("MBB", i) in v for i in blocked for v in _public_values(out))
+    plain_mbb, plain_vcb = _symbol(plain_out, "MBB"), _symbol(plain_out, "VCB")
+    assert mbb["score"] == plain_mbb["score"] and vcb["score"] == plain_vcb["score"]  # never computed here
+    assert [n["signalDate"] for n in vcb["notes"]] == [n["signalDate"] for n in plain_vcb["notes"]][1:]
+    # nothing new in any public file: the same files, keys and values, but for the notes the action check dropped
+    # (and those it let into the 60)
+    assert sorted(p.relative_to(out).as_posix() for p in out.rglob("*")) == \
+        sorted(p.relative_to(plain_out).as_posix() for p in plain_out.rglob("*"))
+    assert dict(_meta(out), generatedAtUtc=None) == dict(_meta(plain_out), generatedAtUtc=None)
+    assert (out / "screen.json").read_bytes() == (plain_out / "screen.json").read_bytes()
+    for s in ("ACB", "VIC"):
+        assert (out / "symbols" / f"{s}.json").read_bytes() == (plain_out / "symbols" / f"{s}.json").read_bytes()
+    plain_rows = {n["signalDate"]: n for n in plain_mbb["notes"]}
+    assert dict(mbb, notes=None) == dict(plain_mbb, notes=None) and dict(vcb, notes=None) == dict(plain_vcb, notes=None)
+    assert all(list(n) == NOTE_KEYS for n in mbb["notes"] + vcb["notes"])
+    assert all(n == plain_rows[n["signalDate"]] for n in mbb["notes"] if n["signalDate"] in plain_rows)
+    assert all(n in plain_vcb["notes"] for n in vcb["notes"])
+    assert not any("ropped" in v or "actionView" in v for v in _public_values(out))
+
+
+def test_a_dropped_note_that_holds_its_bar_leaves_the_bar_without_a_note(screen_dir, tmp_path, monkeypatch, capsys):
+    # r5 D4: the note of a session that knew the holding was the first on the newest bar, so the backend gave it the
+    # bar's slot, and the daily task's wait/market-only note written later on that bar is superseded-not-scored (the
+    # earliest note per bar and H holds the slot whatever it says, EquityDirectionScoringService). Neither is
+    # exported: that bar has no note, and the newest note on the site is the one of the bar before.
+    fake = _market(Clock())
+    days = _mbb_days()
+    first = _newest(fake)  # days[0], available at +5 s
+    first[0].update(actionView="hold")
+    first[0]["body"]["thesis"] = R4_THESES[0]
+    fake.journals["MBB"].append(_entry("MBB", days[0], 700, direction="sideways", thesis=R4_THESES[1],
+                                       available=9_000, status="superseded-not-scored"))
+    out = tmp_path / "data"
+    assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
+    summary = _summary_line(capsys)
+    notes = _symbol(out, "MBB")["notes"]
+    assert days[0] not in {n["signalDate"] for n in notes} and [n["signalDate"] for n in notes] == days[1:61]
+    assert notes[0] == {"signalDate": days[1], "horizonSessions": 20, "direction": "down", "thesis": _thesis("MBB", 1),
+                        "status": "pending", "pendingReason": "immature", "targetDate": _target(days[1]),
+                        "returnPct": None, "hit": None}
+    assert (summary["notesDropped"], summary["thesesWithheld"]) == (1, 1)  # the superseded daily note is not counted
+    assert not any(t[:100] in v for t in R4_THESES[:2] for v in _public_values(out))
+
+
+def test_the_score_stays_the_backends_and_counts_a_dropped_note_once_scored(screen_dir, tmp_path, monkeypatch, capsys):
+    # r5 D2: days[20] is MBB's newest scored note (a hit); dropped, it leaves the list, but the whole-journal score the
+    # backend sends still counts it: the list holds fewer scored notes than the score, and nothing is computed here
+    fake = _market(Clock())
+    _resolved(fake)[0].update(actionView="hold")
+    out = tmp_path / "data"
+    assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
+    assert _summary_line(capsys)["notesDropped"] == 1
+    mbb, days = _symbol(out, "MBB"), _mbb_days()
+    assert mbb["score"] == {"scored": 80, "hits": 53, "baselineHits": 20, "sampleStatus": "insufficient-sample"}
+    assert [n["signalDate"] for n in mbb["notes"]] == days[:20] + days[21:61]
+    scored = [n for n in mbb["notes"] if n["status"] == "scored"]
+    assert (len(scored), sum(n["hit"] for n in scored)) == (40, 26)  # 27 hits among days[20..59] before
+
+
+def test_a_dropped_note_stays_out_when_the_notes_part_is_kept(screen_dir, tmp_path, monkeypatch, capsys):
+    # r5 D3: the files carry no actionView/actionBasis, so a kept notes part is the list as it was first exported:
+    # the dropped note is absent from it and stays absent, and a kept part drops nothing (it is not read again)
     fake = _market(Clock())
     _newest(fake)[0].update(actionView="hold")
     _newest(fake)[0]["body"]["thesis"] = R4_THESES[0]
     out = tmp_path / "data"
     assert _run(fake, Clock(), screen_dir, out, monkeypatch) == 0
+    assert _summary_line(capsys)["notesDropped"] == 1
     first = _symbol(out, "MBB")
-    assert first["notes"][0]["thesis"] is None and first["notes"][1]["thesis"] == _thesis("MBB", 1)
-    capsys.readouterr()
-    assert _run(_market(Clock(), errors={("MBB", "research-notes"): [500]}), Clock(), screen_dir, out, monkeypatch) == 0
+    assert [n["signalDate"] for n in first["notes"]] == _mbb_days()[1:61]
+    again = _market(Clock(), errors={("MBB", "research-notes"): [500]})
+    _newest(again)[0].update(actionView="hold")  # not read: the part fails before it
+    assert _run(again, Clock(), screen_dir, out, monkeypatch) == 0
     summary = _summary_line(capsys)
     kept = _symbol(out, "MBB")
     assert summary["keptByPart"] == {"notes": 1} and (kept["notes"], kept["score"]) == (first["notes"], first["score"])
-    assert not any(R4_THESES[0][:100] in v for p in out.rglob("*.json")
-                   for v in _strings(json.loads(p.read_text(encoding="utf-8"))))
+    assert summary["notesDropped"] == 0
+    assert not any(R4_THESES[0][:100] in v for v in _public_values(out))
 
 
 def _errors() -> dict:

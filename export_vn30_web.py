@@ -11,25 +11,36 @@ object is copied whole: notes carry actionView/actionBasis/probability/scenarios
 
 Units: every return is a fraction (0.05 = +5 %). relativeStrength["20"/"60"] is the `excess` of the VNINDEX
 benchmark (instrument minus VNINDEX close-to-close return over 20/60 aligned 1d sessions), exported only while that
-benchmark's status is "ok". notes are the newest forward notes with horizonSessions HORIZON (at most NOTE_LIMIT; a
-superseded note, a later one on a bar already taken, is dropped), joined with their direction scores by note id. The
-backend status "resolved" is exported as "scored"; a direction, status or pendingReason outside the contract makes
-the notes part malformed. returnPct is direction-score-v1's target close / signal close - 1. score is the H=20 total
-over the ticker's whole journal, copied from the direction-scores horizons[] entry with horizonSessions HORIZON
-(resolved, hits, baselinePrior.hits, status), so it does not depend on which notes are exported.
+benchmark's status is "ok". notes are the newest forward notes with horizonSessions HORIZON that pass market_only
+(below), at most NOTE_LIMIT of them, joined with their direction scores by note id; a superseded note (a later one on
+a bar already taken) is dropped. The backend status "resolved" is exported as "scored"; a direction, status or
+pendingReason outside the contract makes the notes part malformed (a dropped note is read only as far as its join:
+its direction-score item must exist and match it). returnPct is direction-score-v1's target close / signal close - 1.
+score is the H=20 total over the ticker's whole journal, copied from the direction-scores horizons[] entry with
+horizonSessions HORIZON (resolved, hits, baselinePrior.hits, status) and never computed here, so it does not depend
+on which notes are exported: it counts a note that market_only drops once the backend has scored it, and the notes
+list can be shorter than the set of notes the backend scores (NOTE_LIMIT cuts it too).
 
-thesis is published verbatim, and only for a note whose actionBasis is market-only or insufficient-input and whose
-actionView is wait or none (market_only: PUBLIC_BASES, PUBLIC_VIEWS). Any other value, a missing field or a value that
-is not a string withholds the thesis and the note's row is still exported: a note written in a session that knew the
-user's holding (hold, reduce, sell, buy-more; position-aware) can carry it in its thesis. The check reads only these
-two fields, so a note recorded with wait and market-only in a session that knew the holding passes it and only the
-keyword filter below reads its thesis (the skill writes hold only when the user says they hold the stock; wait with
-market-only is its default). The previous run's files do not carry actionView/actionBasis: from VN30-WEB r4 on, a kept
-thesis passed this check when it was first exported (Parts), and the theses exported before r4 all came from
-wait/market-only notes.
+A note is exported only when its actionBasis is market-only or insufficient-input and its actionView is wait or none
+(market_only: PUBLIC_BASES, PUBLIC_VIEWS). Any other value, a missing field or a value that is not a string drops the
+whole note, like a superseded one: it has no row, takes no slot of NOTE_LIMIT (the list goes on to the next note that
+passes and is not superseded, so the newest note listed is the newest such note) and is not counted as a withheld
+thesis; the summary line counts it in notesDropped. A note written in a session that knew the user's holding (hold,
+reduce, sell, buy-more; position-aware) can carry it in its thesis, and both repos are public, so even its row with
+the thesis hidden could tell a reader that the ticker had a call tied to a position (user decision of 2026-11-04,
+VN30-WEB r5; r4 exported that row with its thesis withheld). When the dropped note was the first one on its bar, the
+daily note written later on that bar is superseded, so that bar has no exported note at all (when it is the newest
+bar, the newest exported note is from an earlier bar). The check reads only these two fields, so a
+note recorded with wait and market-only in a session that knew the holding passes it and only the keyword filter
+below reads its thesis (the skill writes hold only when the user says they hold the stock; wait with market-only is
+its default). The previous run's files do not carry actionView/actionBasis, so they cannot be filtered again: from
+VN30-WEB r5 on, a kept note passed this check when it was first exported (Parts); r4 to r4c exported the row of a note
+that failed it, with its thesis withheld, so from r4 on, a kept thesis passed this check when it was first exported,
+and the theses exported before r4 all came from wait/market-only notes.
 
-A thesis that may be published first passes a fail-closed keyword filter that reads the whole text. The filter is a
-denylist (PRIVATE_TEXT): the listed words about positions, holdings, quantities, cost basis, money, settlement (T+n),
+The thesis of an exported note is published verbatim once it passes a fail-closed keyword filter that reads the
+whole text. The filter is a denylist (PRIVATE_TEXT): the listed words about positions, holdings, quantities, cost
+basis, money, settlement (T+n),
 stops, orders, trade set-ups and trading actions, the first person (we, our, my, I'm) and their Vietnamese
 counterparts with and without diacritics. An English word matches in the forms its pattern lists (reduce, reduces,
 reduced, reducing), which are not all the forms of every word ("stopping", "sidelining", "positioned", "going flat"
@@ -114,7 +125,10 @@ that writes the notes: its calls start at least TECH_GAP_S apart (at most 4 per 
 waits RETRY_AFTER_S and retries once. A file is rewritten only when its bytes change, and meta.json keeps its
 generatedAtUtc when nothing else changed. Exit 1 when the backend is unreachable (nothing is written), 2 when the
 screen file is missing or invalid. The summary line on stdout (ASCII) counts the unavailable parts, the parts kept
-from the previous run and the withheld theses (by market_only or by the filter, each thesis once).
+from the previous run, the theses the filter withheld from exported notes (thesesWithheld) and the notes market_only
+dropped (notesDropped: a note dropped as superseded, or one past the NOTE_LIMIT notes taken, is not counted, and a kept
+notes part counts none). The nightly wrapper writes this line to its local log only; no public file carries either
+count.
 
 Usage (from ai/, venv python):
   python export_vn30_web.py [--out-dir DIR] [--screen-dir DIR] [--backend URL]
@@ -176,10 +190,11 @@ STATUS_OUT = {"resolved": "scored", "pending": "pending", "no-view": "no-view",
               "window-undetermined-not-scored": "window-undetermined-not-scored"}
 NOTE_STATUSES = frozenset(STATUS_OUT.values())
 PENDING_REASONS = frozenset({"immature", "target-bar-missing", "calendar-coverage-expired", "signal-bar-missing"})
-# The only actionBasis and actionView values of a note whose thesis may be published (contract r4 X1). The backend
-# accepts actionBasis position-aware, market-only, insufficient-input and actionView buy-more, hold, reduce, sell,
-# wait, none (EquityResearchNoteService.cs ActionBases, ActionViews). A note written in a session that knew the user's
-# holding (hold, reduce, sell, buy-more; position-aware) can carry it in its thesis, so that thesis never leaves.
+# The only actionBasis and actionView values of a note that may be exported at all (contract r4 X1; from r5, D1, a
+# note with any other value is dropped whole, row and thesis). The backend accepts actionBasis position-aware,
+# market-only, insufficient-input and actionView buy-more, hold, reduce, sell, wait, none (EquityResearchNoteService.cs
+# ActionBases, ActionViews). A note written in a session that knew the user's holding (hold, reduce, sell, buy-more;
+# position-aware) can carry it in its thesis, and even its row would hint at a holding, so no part of it leaves.
 PUBLIC_BASES = frozenset({"market-only", "insufficient-input"})
 PUBLIC_VIEWS = frozenset({"wait", "none"})
 SAMPLE_STATUSES = frozenset({"no-data", "insufficient-sample", "ok"})
@@ -644,20 +659,24 @@ def score_of(horizons: list) -> dict:
 
 
 def market_only(note: dict) -> bool:
-    """Whether a note's thesis may be published at all (contract r4 X1): actionBasis in PUBLIC_BASES and actionView in
-    PUBLIC_VIEWS. Any other value, a missing field or a value that is not a string says no (fail-closed)."""
+    """Whether a note may be exported at all (contract r4 X1; from r5, D1, a note that fails is dropped whole):
+    actionBasis in PUBLIC_BASES and actionView in PUBLIC_VIEWS. Any other value, a missing field or a value that is not
+    a string says no (fail-closed)."""
     basis, view = note.get("actionBasis"), note.get("actionView")
     return isinstance(basis, str) and basis in PUBLIC_BASES and isinstance(view, str) and view in PUBLIC_VIEWS
 
 
-def note_rows(notes: dict, scores: dict) -> tuple[list[dict], dict, int]:
-    """(newest forward H=20 notes, whole-journal H=20 score, theses withheld); a malformed payload raises. A note that
-    is not market_only keeps its row (direction, status, score) and loses its thesis, which counts as withheld."""
+def note_rows(notes: dict, scores: dict) -> tuple[list[dict], dict, int, int]:
+    """(the newest forward H=20 notes that are market_only and not superseded, at most NOTE_LIMIT; the whole-journal
+    H=20 score; theses withheld; notes dropped); a malformed payload raises. A note that is not market_only is dropped
+    like a superseded one (no row, no slot of NOTE_LIMIT, not a withheld thesis) and counts in the last number unless
+    it is superseded or past the NOTE_LIMIT notes taken. The score is the backend's and still counts that note once it
+    is scored, so the list can hold fewer scored notes than the score counts."""
     score = score_of(scores["horizons"])
     by_id = {i["noteId"]: i for i in scores["items"]}
     forward = sorted((n for n in notes["items"] if n["mode"] == "forward" and n["horizonSessions"] == HORIZON),
                      key=lambda n: (n["signalBarOpenTimeMs"], n["availableTimeMs"]), reverse=True)
-    out, withheld = [], 0
+    out, withheld, dropped = [], 0, 0
     for n in forward:
         if len(out) == NOTE_LIMIT:
             break
@@ -667,6 +686,9 @@ def note_rows(notes: dict, scores: dict) -> tuple[list[dict], dict, int]:
             raise ValueError("a direction score does not match its note")
         if s["status"] == SUPERSEDED:  # a later note on a bar already taken: never scored, would pose as the latest call
             continue
+        if not market_only(n):  # the writer may have known the user's holding: neither the row nor the thesis leaves
+            dropped += 1
+            continue
         status = STATUS_OUT[_enum(s["status"], STATUS_OUT)]
         hit = s["hit"] if status == "scored" else None
         if status == "scored" and not isinstance(hit, bool):
@@ -674,20 +696,19 @@ def note_rows(notes: dict, scores: dict) -> tuple[list[dict], dict, int]:
         target, reason = s["targetBarOpenTimeMs"], s["pendingReason"]
         body = n.get("body")
         thesis, hidden = public_thesis(body.get("thesis") if isinstance(body, dict) else None)
-        if thesis is not None and not market_only(n):  # the writer may have known the user's holding
-            thesis, hidden = None, True
         withheld += hidden
         out.append({"signalDate": session_of(_num(n["signalBarOpenTimeMs"])), "horizonSessions": HORIZON,
                     "direction": _enum(n["direction"], DIRECTIONS), "thesis": thesis, "status": status,
                     "pendingReason": None if reason is None else _enum(reason, PENDING_REASONS),
                     "targetDate": None if target is None else session_of(_num(target)),
                     "returnPct": _num(s["returnPct"]), "hit": hit})
-    return out, score, withheld
+    return out, score, withheld, dropped
 
 
 # --- the previous run's parts: our own earlier output, validated again (and theses filtered again) before reuse ---
-# market_only is not checked again: the files do not carry actionView/actionBasis, so a kept thesis passed it when it
-# was first exported (from VN30-WEB r4; every thesis exported before came from a wait/market-only note).
+# market_only cannot be checked again: the files do not carry actionView/actionBasis, so a kept note passed it when it
+# was first exported (from VN30-WEB r5; r4 to r4c exported the row of a note that failed it with its thesis withheld,
+# so from r4 a kept thesis passed it, and every thesis exported before r4 came from a wait/market-only note).
 
 def _fields(x: Any, names: tuple[str, ...]) -> dict:
     if not isinstance(x, dict) or set(x) != set(names):
@@ -822,9 +843,11 @@ class PreviousRun:
 
 
 def build(fetch: Fetch, screen: dict, admin_key: str | None, out_dir: Path,
-          sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic
-          ) -> tuple[dict[str, dict], list[dict], int]:
-    """(symbol -> document, meta.unavailable, theses withheld). A document kept whole is in the result too."""
+          sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
+          counts: dict[str, int] | None = None) -> tuple[dict[str, dict], list[dict], int]:
+    """(symbol -> document, meta.unavailable, theses withheld). A document kept whole is in the result too. When
+    counts is given, counts["notesDropped"] is set to the notes market_only dropped from the fresh notes parts (a kept
+    part drops none): for the summary line only, never written to a file."""
     try:
         labels = {i["symbol"]: i["label"] for i in _get(fetch, "/api/equities", {}, sleep)["items"]}
     except (KeyError, TypeError, AttributeError) as e:
@@ -832,7 +855,7 @@ def build(fetch: Fetch, screen: dict, admin_key: str | None, out_dir: Path,
     previous = PreviousRun(out_dir)
     pace = Pacer(TECH_GAP_S, sleep, clock)
     admin = {"X-Admin-Key": admin_key} if admin_key else None
-    docs, unavailable, withheld = {}, [], 0
+    docs, unavailable, withheld, dropped = {}, [], 0, 0
     for s in sorted(r["symbol"] for r in screen["rows"]):
         def miss(part: str, reason: str, detail: str, keep: bool = False, kept: bool = False) -> None:
             suffix = "" if not keep else KEPT if kept else NOTHING_KEPT  # never kept: UNSUPPORTED_CAPABILITY
@@ -872,14 +895,17 @@ def build(fetch: Fetch, screen: dict, admin_key: str | None, out_dir: Path,
         if why is not None:
             kept = previous.kept_notes(s) if keep else None
             miss("notes", why, detail, keep, kept is not None)
-            part = kept or ([], None, 0)
-        notes, score, hidden = part
+            part = ([], None, 0, 0) if kept is None else (*kept, 0)  # a kept file holds exported notes only
+        notes, score, hidden, drops = part
         withheld += hidden
+        dropped += drops
 
         label = labels.get(s)
         docs[s] = {"symbol": s, "label": label if isinstance(label, str) else s, "isBank": s in BANKS,
                    "candles": candles, "indicators": indicators, "relativeStrength": strength, "notes": notes,
                    "score": score}
+    if counts is not None:
+        counts["notesDropped"] = dropped
     return docs, unavailable, withheld
 
 
@@ -932,9 +958,10 @@ def main(argv: list[str] | None = None, fetch: Fetch | None = None,
     except ScreenError as e:
         print(f"screen error: {e}", file=sys.stderr)
         return 2
+    counts: dict[str, int] = {}
     try:
         docs, unavailable, withheld = build(fetch or http_fetch(args.backend), screen,
-                                            os.getenv("EQX_ADMIN_KEY") or None, args.out_dir, sleep, clock)
+                                            os.getenv("EQX_ADMIN_KEY") or None, args.out_dir, sleep, clock, counts)
     except (urllib.error.URLError, http.client.HTTPException, OSError, BackendError, ValueError) as e:
         print(f"backend error: {type(e).__name__}: {e}", file=sys.stderr)
         return 1
@@ -947,8 +974,8 @@ def main(argv: list[str] | None = None, fetch: Fetch | None = None,
             kept[u["part"]] = kept.get(u["part"], 0) + 1
     print(json.dumps({"session": screen["session"], "symbols": len(screen["rows"]),
                       "written": len(docs) - kept.get("candles", 0), "changed": changed,
-                      "unavailableByPart": parts, "keptByPart": kept,
-                      "thesesWithheld": withheld}))  # ASCII: a redirected stdout is cp1252
+                      "unavailableByPart": parts, "keptByPart": kept, "thesesWithheld": withheld,
+                      "notesDropped": counts["notesDropped"]}))  # ASCII: a redirected stdout is cp1252; local log only
     return 0
 
 
