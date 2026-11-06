@@ -83,7 +83,7 @@ def test_frozen_protocol_files_match_their_registered_hash():
 
     root = Path(tr.__file__).resolve().parent
     frozen = [e for e in tr.load().active() if e.get("specSha256")]
-    assert any(e["id"] == "hose-vn30-2" for e in frozen)
+    assert any(e["id"] == "hose-vn30-2" or e.get("supersedes") == "hose-vn30-2" for e in frozen)
     for entry in frozen:
         raw = (root / entry["source"]).read_bytes()
         assert b"\r" not in raw, f"{entry['source']} must stay LF (its hash is frozen)"

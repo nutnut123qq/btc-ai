@@ -1,0 +1,57 @@
+{
+  "schema": "research-protocol/v1",
+  "id": "overlay-1",
+  "title": "OVERLAY-1: regime (VN30 index MA200) and volatility-target (15%) exposure overlays on VN30 portfolios, development window only",
+  "frozenAt": "2026-11-06",
+  "frozenBeforeResults": true,
+  "supersedes": null,
+  "relatedTrials": ["hose-vn30-2", "hose-stops-1"],
+  "roadmapItem": "3.2 regime / volatility overlay, registered as its own trial (not part of the frozen vn30-2 protocol)",
+  "question": "Does scaling the gross exposure of the equal-weight VN30 portfolio and of the B-composite top-10 portfolio, either by a VN30-index 200-session moving-average regime filter (all cash below it) or by a 15% annualized volatility target, improve net CAGR, Sharpe and max drawdown versus the same portfolios without an overlay, after HOSE costs?",
+  "basis": "VN30-2 run 20261106T121249Z (registry hose-vn30-2-run-20261106T121249Z) found no development winner (M-ridge and M-lgbm failed the development gate), so the ranked portfolio is B-composite, as roadmap 3.2 prescribes when there is no winner",
+  "data": {
+    "snapshot": "20261106-9afb8020ec16",
+    "snapshotSha256": "9afb8020ec16a1c26669b046b5621453012e3cd09a5dc24b70da754648acc94e",
+    "prices": "adjusted daily OHLCV (VCI) from the snapshot as vn30_2_run.market_from_snapshot reads it: roles member and leaver-at-first-period, zero-volume bars dropped, excludeBefore honored; the VNINDEX session calendar",
+    "regimeIndex": "VN30 index closes from the snapshot (VN30.csv, bars with volume > 0), price index",
+    "truncation": "every bar (members and index) dated after 2023-12-31 is removed before the simulation starts"
+  },
+  "window": {
+    "from": "2018-01-22",
+    "to": "2023-12-31",
+    "firstDecision": "vn30-2 decisionSchedule.firstDecision (first session with >= 260 prior sessions for >= 20 members)",
+    "end": "last session <= 2023-12-31; positions still held are marked at that close",
+    "holdout": "the vn30-2 holdout (2024-01-01 onward) is not read"
+  },
+  "portfolios": {
+    "engine": "vn_portfolio_backtest.run_backtest with PortfolioRules.from_protocol(vn30-2.json, cash_settlement_sessions=0); defaults kept: decisions every 20 sessions, entry at the open of d+1, shares sellable from the open of T+2, limit-lock proxy 1.065 / 0.935, 1 tick slippage, fee 0.15% per side, sell tax 0.1%, lot 100, unfilled weight and cash at 0%, initial cash 10,000,000,000 VND",
+    "list": [
+      {"id": "P-ew", "rule": "B-ew: equal weight of every VN30 member in force with >= 260 bars (top_k None)"},
+      {"id": "P-composite", "rule": "B-composite: rank by the mean of the 8 vn30-2 features (vn30_2_run.raw_features), each rank-normalized to [-0.5, 0.5] across the eligible members at the decision close (missing = 0); top 10, keep while rank <= 15"}
+    ]
+  },
+  "variants": {
+    "list": [
+      {"id": "none", "rule": "exposure 1 at every decision (control; the same configurations as hose-vn30-2 B-ew and B-composite, counted there)"},
+      {"id": "ma200-cash", "rule": "exposure 1 when the VN30 index close of the decision session d is >= the mean of its last 200 closes dated <= d (d included), else 0; exposure 1 while fewer than 200 closes exist"},
+      {"id": "vol-target-15", "rule": "exposure = min(1, 0.15 / sigma); sigma = sample standard deviation (ddof 1) of the last 60 daily returns (sessions d-59..d of the calendar) of the equal-weight basket of the decision's target names, x sqrt(252); a name's return on session t = its last close dated <= t / its last close dated <= t-1 - 1 (0 when it did not trade); basket return = mean over the target names; exposure 1 when sigma cannot be computed or is 0"}
+    ],
+    "application": "the exposure is fixed at the close of each decision session (run_backtest exposure hook) and multiplies the rebalance budget at the next open: target value per name = exposure x (NAV at the open - estimated exit costs) / k (k = 10 for P-composite, the number of targets for P-ew); the rest stays in cash at 0%; a name is traded only when it differs from its target by >= 1 lot (backtester rule); selection (ranks, hysteresis) is unchanged by the overlay",
+    "timing": "decision sessions only (every 20 sessions): no intra-period exit, no leverage (exposure <= 1)"
+  },
+  "trials": "4 new configurations (ma200-cash and vol-target-15 on each of P-ew and P-composite); the 2 controls are hose-vn30-2 baselines",
+  "metrics": {
+    "perSeries": ["net CAGR from daily NAV", "annualized Sharpe of daily net returns (mean / sd x sqrt(252), rf 0)", "max drawdown of daily NAV", "annual two-sided turnover (backtester summary)", "mean exposure over decisions and share of decisions with exposure 0"],
+    "comparisons": "each overlay minus its control (same portfolio) and each series minus P-ew/none (B-ew) in net CAGR, Sharpe and max drawdown",
+    "dsr": "vn30_panel_eval.deflated_sharpe on daily returns with N = HOSE trial count (statuses run + planned) from trial_registry at evaluation time; (a) each of the 6 daily net return series with V[SR] = vn30_panel_eval.sr_variance over the 6; (b) each overlay's daily excess over its own control (variant - none, same portfolio) with V[SR] over the 4 excess series; (c) for information, each of the 5 other series' daily excess over P-ew/none with V[SR] over those 5"
+  },
+  "decisionRule": "an overlay is 'supported' for a portfolio only if, versus its control, net CAGR is higher, Sharpe is higher, max drawdown is shallower AND the DSR (b) of its daily excess is >= 0.95; otherwise 'not supported'. A shallower drawdown alone is reported but does not make an overlay supported",
+  "outputs": "btc-ai/docs/research/evidence/vn30-2/overlay-1-<UTC stamp>/result.json (gitignored), with the snapshot sha256, this file's sha256 and the registry head",
+  "knownLimitations": [
+    "one development window, about 30 names and 6 years with two deep drawdowns (2018, 2022): low power; a null result is the expected outcome",
+    "cash earns 0% (vn30-2 portfolio.cash), which penalizes overlays that hold cash; a deposit rate would narrow any CAGR gap",
+    "the regime is checked only at decision sessions, so an exit can lag a break of the MA200 by up to 20 sessions",
+    "adjusted prices; same-session buying power after sales (cashSettlementSessions 0) is the backtester default",
+    "the control numbers of these portfolios were already reported (VN30-2 dev, STOPS-1); the overlay results were not seen before registration"
+  ]
+}
