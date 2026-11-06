@@ -1,7 +1,11 @@
-"""Equity quant base-rates (EQX P1) — protocol ``equity-base-rates-protocol-v1``.
+"""Equity quant base-rates (EQX P1) — protocol ``equity-base-rates-protocol-v2``.
 
 Implements the protocol frozen on 2026-10-16 in
-``backend/docs/plans/equity-expansion/spec.md`` §5, before any result was seen.
+``backend/docs/plans/equity-expansion/spec.md`` §5, before any result was seen,
+with the v2 amendment of 2026-11-06 (§5.1): a barrier can only exit from the
+first session the bought shares are sellable (HOSE T+2), never on the entry
+session or the session after it.  v1 let a label stop out or take profit on the
+day of purchase, which T+2 forbids.
 Nothing here is tuned on outcomes; every constant below is a declared protocol
 value.  Interpretations of points the spec leaves open are listed in
 ``PROTOCOL_INTERPRETATIONS`` and stamped into the artifact.
@@ -11,8 +15,10 @@ Pipeline (per symbol, never pooled, only that symbol's own adjusted 1d OHLCV):
 1. Bars: finalized ``InstrumentCandles`` 1d rows (adjusted basis), off-session
    anomaly bars excluded (same calendar predicate as ``run_mbb_replay``).
 2. Labels: signal at the close of bar t, simulated entry at the open of the next
-   stored session t+1; triple barrier from the entry price over sessions
-   entry..entry+H-1 (gap-through-stop exits at the open, gap-through-target exits
+   stored session t+1; triple barrier from the entry price over the sellable
+   sessions entry+S..entry+H-1, S = T+2 settlement in sessions (touches on the
+   entry session and the next one cannot be acted on and are ignored;
+   gap-through-stop exits at the open, gap-through-target exits
    at the target, same-bar double touch = stop-first, timeout exits at the last
    close, not enough bars = immature).  Label availability = close of the
    resolving bar.
@@ -59,8 +65,10 @@ from vn_execution_model import PRICE_BASIS, VnEquityCostSpec
 
 SCHEMA_VERSION = "equity-base-rates-artifact-v1"
 REPORT_SCHEMA_VERSION = "equity-base-rates-report-v1"
-PROTOCOL_VERSION = "equity-base-rates-protocol-v1"
+PROTOCOL_VERSION = "equity-base-rates-protocol-v2"
 PROTOCOL_FROZEN_AT = "2026-10-16"
+# v2 amendment (spec §5.1): the only change from v1 is the T+2 sellability rule in label_barriers.
+PROTOCOL_AMENDED_AT = "2026-11-06"
 METHOD_NAME = "knn-euclidean-standardized"
 METHOD_VERSION = "equity-knn-v1"
 TIMEFRAME = "1d"
@@ -107,6 +115,11 @@ CONFIGS: tuple[BarrierConfig, ...] = (
 PROTOCOL_INTERPRETATIONS: tuple[str, ...] = (
     "entry = open of the next STORED session bar after the signal bar (index t+1), "
     "consistent with the journal resolver rule 'first 1d bar open >= AvailableTimeMs'.",
+    "v2 (T+2): shares bought at the entry open are sellable from the stored session entry+S, S = "
+    "vn_execution_model settlement_trading_days (2); barriers are checked only on bars entry+S.."
+    "entry+H-1, so a touch on the entry session or the next one is ignored and a price already "
+    "through a barrier at the open of entry+S exits at that open (gap rule). Daily bars cannot show "
+    "that the shares arrive at midday of entry+S; that session is treated as fully sellable.",
     "a label is matured once a barrier is touched inside the available bars, even if fewer "
     "than H bars follow; immature = window runs past the last stored bar without a touch.",
     "neighbor/prior/scaler eligibility at forecast bar t = samples whose resolving bar index "
@@ -322,11 +335,14 @@ class Costs:
     buy_fee: float
     sell_fee: float
     sell_tax: float
+    # T+2: first stored session (counted from the entry session = 0) on which the shares can be sold.
+    settlement_sessions: int = 2
 
     @classmethod
     def from_execution_model(cls, spec: VnEquityCostSpec | None = None) -> "Costs":
         spec = spec or VnEquityCostSpec()
-        return cls(spec.broker_fee_fraction, spec.broker_fee_fraction, spec.sell_tax_fraction)
+        return cls(spec.broker_fee_fraction, spec.broker_fee_fraction, spec.sell_tax_fraction,
+                   spec.settlement_trading_days)
 
     def net_return(self, entry_price: float, exit_price: float) -> float:
         """Net long return: exit proceeds after sell fee+tax over entry cost incl. buy fee."""
@@ -338,6 +354,7 @@ class Costs:
             "buyFeeFraction": self.buy_fee,
             "sellFeeFraction": self.sell_fee,
             "sellTaxFraction": self.sell_tax,
+            "settlementTradingSessions": self.settlement_sessions,
             "netReturnFormula": "exit*(1-sellFee-sellTax)/(entry*(1+buyFee)) - 1",
         }
 
@@ -355,6 +372,10 @@ class Labels:
 
 
 def label_barriers(bars: Bars, cfg: BarrierConfig, costs: Costs) -> Labels:
+    settle = costs.settlement_sessions
+    if settle < 0 or cfg.horizon_sessions <= settle:
+        raise BaseRatesError(
+            f"{cfg.config_id}: horizon {cfg.horizon_sessions} must exceed T+{settle} settlement")
     n = len(bars)
     label = np.full(n, -1, dtype=np.int64)
     resolve = np.full(n, -1, dtype=np.int64)
@@ -369,7 +390,8 @@ def label_barriers(bars: Bars, cfg: BarrierConfig, costs: Costs) -> Labels:
         target = entry * (1.0 + cfg.target_pct)
         stop = entry * (1.0 - cfg.stop_pct)
         last = e + cfg.horizon_sessions - 1
-        for j in range(e, min(last, n - 1) + 1):
+        # T+2: nothing can be sold before bar e + settle; earlier touches are not actionable.
+        for j in range(e + settle, min(last, n - 1) + 1):
             o, h, lo = bars.open[j], bars.high[j], bars.low[j]
             exit_price = None
             if o <= stop:
@@ -957,7 +979,9 @@ def build_artifact(
         "protocol": {
             "version": PROTOCOL_VERSION,
             "frozenAt": PROTOCOL_FROZEN_AT,
+            "amendedAt": PROTOCOL_AMENDED_AT,
             "entry": "next-session-open (simulated, not a matched order)",
+            "earliestExit": f"entry + {costs.settlement_sessions} sessions (T+2 sellable)",
             "labelAvailability": "close of the resolving bar",
             "doubleTouch": "stop-first (flagged doubleTouch)",
             "gap": {"throughStop": "exit at open", "throughTarget": "exit at target"},
@@ -1078,7 +1102,7 @@ def _load_fixture(path: str) -> list[dict[str, Any]]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Equity quant base rates (equity-base-rates-protocol-v1).")
+    parser = argparse.ArgumentParser(description=f"Equity quant base rates ({PROTOCOL_VERSION}).")
     parser.add_argument("--symbol", required=True)
     parser.add_argument("--candles-json", default=None, help="InstrumentCandles-shaped JSON fixture; bypasses the DB.")
     parser.add_argument("--out-root", "--out", dest="out_root", default=str(DEFAULT_EVIDENCE_ROOT),

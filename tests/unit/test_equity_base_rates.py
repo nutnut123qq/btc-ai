@@ -1,4 +1,4 @@
-"""equity_base_rates (EQX P1, protocol equity-base-rates-protocol-v1).
+"""equity_base_rates (EQX P1, protocol equity-base-rates-protocol-v2).
 
 Fixture candles only — never touches the DB or the network.
 """
@@ -65,68 +65,102 @@ def _net(entry: float, exit_: float) -> float:
     return exit_ * (1 - FEE - TAX) / (entry * (1 + FEE)) - 1
 
 
-CFG = ebr.BarrierConfig("test-p5-s4-h3", 0.05, 0.04, 3)
+CFG = ebr.BarrierConfig("test-p5-s4-h4", 0.05, 0.04, 4)
 FLAT = (100.0, 100.5, 99.5, 100.0)
+ENTRY = (100.0, 101.0, 99.0, 100.0)
 
 
-# --- barrier labelling --------------------------------------------------------
+# --- barrier labelling (v2: T+2, first exit on bar entry+2) ---------------------
+# Signal bar 0 -> entry bar 1 (bought at its open) -> sellable from bar 3 -> last horizon bar 4.
 
 
 def _label_first(ohlc):
     labels = ebr.label_barriers(_bars(ohlc), CFG, COSTS)
-    return labels, 0  # signal bar 0 -> entry bar 1
+    return labels, 0
 
 
 def test_target_intrabar_exits_at_target():
-    labels, t = _label_first([FLAT, (100, 101, 99, 100), (100.5, 106, 99.5, 104), FLAT, FLAT])
+    labels, t = _label_first([FLAT, ENTRY, FLAT, (100.5, 106, 99.5, 104), FLAT])
     assert labels.label[t] == ebr.TARGET
-    assert labels.resolve_idx[t] == 2
+    assert labels.resolve_idx[t] == 3  # entry + 2: first sellable session
     assert labels.net_return[t] == pytest.approx(_net(100, 105))
     assert not labels.gap_exit[t] and not labels.double_touch[t]
 
 
 def test_stop_intrabar_exits_at_stop():
-    labels, t = _label_first([FLAT, (100, 101, 95.5, 97), FLAT, FLAT, FLAT])
+    labels, t = _label_first([FLAT, ENTRY, FLAT, (100, 101, 95.5, 97), FLAT])
     assert labels.label[t] == ebr.STOP
-    assert labels.resolve_idx[t] == 1  # entry bar itself
+    assert labels.resolve_idx[t] == 3
     assert labels.net_return[t] == pytest.approx(_net(100, 96))
 
 
+def test_t_plus_2_stop_touch_on_entry_session_is_ignored():
+    # v1 stopped out on the purchase day itself (resolve 1); T+2 forbids selling then.
+    labels, t = _label_first([FLAT, (100, 101, 95.5, 97), (97, 99, 96.5, 98), (98, 99, 97, 98.5), (98.5, 99, 98, 98.6)])
+    assert labels.label[t] == ebr.TIMEOUT
+    assert labels.resolve_idx[t] == 4
+    assert labels.net_return[t] == pytest.approx(_net(100, 98.6))
+
+
+def test_t_plus_2_target_touch_on_next_session_is_ignored():
+    labels, t = _label_first([FLAT, ENTRY, (100, 106, 99.5, 101), FLAT, FLAT])
+    assert labels.label[t] == ebr.TIMEOUT
+    assert labels.resolve_idx[t] == 4
+    assert labels.net_return[t] == pytest.approx(_net(100, 100))
+
+
+def test_t_plus_2_price_already_through_stop_exits_at_first_sellable_open():
+    labels, t = _label_first([FLAT, (100, 101, 94, 95), (95, 96, 94, 95), (94, 95, 93, 94), FLAT])
+    assert labels.label[t] == ebr.STOP and labels.gap_exit[t]
+    assert labels.resolve_idx[t] == 3
+    assert labels.net_return[t] == pytest.approx(_net(100, 94))
+
+
 def test_gap_down_through_stop_exits_at_open():
-    labels, t = _label_first([FLAT, (100, 101, 99, 100), (93, 99, 92, 98), FLAT, FLAT])
+    labels, t = _label_first([FLAT, ENTRY, FLAT, (93, 99, 92, 98), FLAT])
     assert labels.label[t] == ebr.STOP and labels.gap_exit[t]
     assert labels.net_return[t] == pytest.approx(_net(100, 93))
     assert labels.net_return[t] < _net(100, 96)  # worse than the nominal stop
 
 
 def test_gap_up_through_target_exits_at_target_not_open():
-    labels, t = _label_first([FLAT, (100, 101, 99, 100), (107, 108, 106, 107), FLAT, FLAT])
+    labels, t = _label_first([FLAT, ENTRY, FLAT, (107, 108, 106, 107), FLAT])
     assert labels.label[t] == ebr.TARGET and labels.gap_exit[t]
     assert labels.net_return[t] == pytest.approx(_net(100, 105))
 
 
 def test_same_bar_double_touch_is_stop_first_and_flagged():
-    labels, t = _label_first([FLAT, (100, 106, 95, 101), FLAT, FLAT, FLAT])
+    labels, t = _label_first([FLAT, ENTRY, FLAT, (100, 106, 95, 101), FLAT])
     assert labels.label[t] == ebr.STOP and labels.double_touch[t]
     assert labels.net_return[t] == pytest.approx(_net(100, 96))
 
 
 def test_timeout_exits_at_last_horizon_close():
-    labels, t = _label_first([FLAT, (100, 101, 99, 100), (100, 102, 98, 101), (101, 103, 99, 102.5), FLAT])
+    labels, t = _label_first([FLAT, ENTRY, (100, 102, 98, 101), (101, 103, 99, 102), (102, 103, 100, 102.5)])
     assert labels.label[t] == ebr.TIMEOUT
-    assert labels.resolve_idx[t] == 3  # entry 1 + H - 1
+    assert labels.resolve_idx[t] == 4  # entry 1 + H - 1
     assert labels.net_return[t] == pytest.approx(_net(100, 102.5))
 
 
 def test_immature_when_window_runs_past_data_without_touch():
-    labels = ebr.label_barriers(_bars([FLAT, (100, 101, 99, 100), (100, 102, 98, 101)]), CFG, COSTS)
+    labels = ebr.label_barriers(_bars([FLAT, ENTRY, (100, 102, 98, 101), (101, 103, 99, 102)]), CFG, COSTS)
     assert labels.label[0] == -1 and labels.resolve_idx[0] == -1 and np.isnan(labels.net_return[0])
-    assert labels.label[2] == -1 and labels.entry_idx[2] == -1  # last bar: no entry bar
+    assert labels.label[3] == -1 and labels.entry_idx[3] == -1  # last bar: no entry bar
 
 
 def test_early_touch_matures_before_full_horizon():
-    labels = ebr.label_barriers(_bars([FLAT, (100, 106, 99.5, 105)]), CFG, COSTS)
-    assert labels.label[0] == ebr.TARGET and labels.resolve_idx[0] == 1
+    labels = ebr.label_barriers(_bars([FLAT, ENTRY, FLAT, (100, 106, 99.5, 105)]), CFG, COSTS)
+    assert labels.label[0] == ebr.TARGET and labels.resolve_idx[0] == 3
+
+
+def test_touch_before_shares_are_sellable_stays_immature():
+    labels = ebr.label_barriers(_bars([FLAT, (100, 106, 99.5, 105), FLAT]), CFG, COSTS)
+    assert labels.label[0] == -1 and labels.resolve_idx[0] == -1
+
+
+def test_horizon_must_exceed_settlement():
+    with pytest.raises(ebr.BaseRatesError):
+        ebr.label_barriers(_bars([FLAT, ENTRY, FLAT, FLAT]), ebr.BarrierConfig("bad-h2", 0.05, 0.04, 2), COSTS)
 
 
 def test_costs_come_from_vn_execution_model():
@@ -134,6 +168,7 @@ def test_costs_come_from_vn_execution_model():
     assert (costs.buy_fee, costs.sell_fee, costs.sell_tax) == (0.0015, 0.0015, 0.001)
     # Round trip at an unchanged price loses fees + tax.
     assert costs.net_return(100.0, 100.0) == pytest.approx(0.9975 / 1.0015 - 1)
+    assert costs.settlement_sessions == 2  # T+2 from vn_execution_model
 
 
 def test_ev_is_probability_weighted_class_returns():
@@ -353,7 +388,7 @@ def test_artifact_scope_and_schema(built, walk_rows):
     assert artifact["method"]["version"] == "equity-knn-v1"
     assert artifact["method"]["features"] == list(ebr.FEATURES)
     assert artifact["method"]["kGrid"] == [20, 50, 100]
-    assert artifact["protocol"]["version"] == "equity-base-rates-protocol-v1"
+    assert artifact["protocol"]["version"] == "equity-base-rates-protocol-v2"
     assert artifact["protocol"]["frozenAt"] == "2026-10-16"
     assert [c["configId"] for c in artifact["configs"]] == ["tb-p5-s4-h20", "tb-p10-s6-h60"]
     for c in artifact["configs"]:
