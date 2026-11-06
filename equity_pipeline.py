@@ -105,7 +105,7 @@ def iso(dt: datetime | None) -> str | None:
 
 def default_root() -> Path:
     return Path(os.environ.get("EQUITY_DOCUMENTS_ROOT") or os.environ.get("EQX_DOCUMENTS_ROOT")
-                or r"D:\code\btc\data\equity-documents")
+                or ed.WORKSPACE_DOCUMENTS_ROOT)
 
 
 def period_kind(reporting_period: str) -> str:

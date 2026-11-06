@@ -3,7 +3,7 @@
 Coverage target per symbol: the 4 most recent consolidated quarterly financial statements plus the
 latest audited consolidated annual financial statements, taken only from the issuer's own investor
 relations listing. Every document is stored as untrusted data under
-``{root}/{SYMBOL}/{sha256}.{ext}`` (root = ``EQX_DOCUMENTS_ROOT`` or ``D:\\code\\btc\\data\\equity-documents``),
+``{root}/{SYMBOL}/{sha256}.{ext}`` (root = ``EQX_DOCUMENTS_ROOT`` or ``<workspace>/data/equity-documents``),
 deduplicated by sha256, never executed. Text is read with the pure-Python ``pypdf`` reader only.
 
 Commands (run with ``python -I`` because ``extract`` reads downloaded files)::
@@ -45,7 +45,9 @@ for _stream in (sys.stdout, sys.stderr):
 
 COLLECTOR_VERSION = "equity-documents-v1"
 EXTRACTOR_VERSION = "equity-documents-extract-v1"
-DEFAULT_ROOT = Path(os.environ.get("EQX_DOCUMENTS_ROOT", r"D:\code\btc\data\equity-documents"))
+# <workspace>/data/equity-documents, the workspace being the folder that holds this repo (same as start.ps1).
+WORKSPACE_DOCUMENTS_ROOT = Path(__file__).resolve().parent.parent / "data" / "equity-documents"
+DEFAULT_ROOT = Path(os.environ.get("EQX_DOCUMENTS_ROOT") or WORKSPACE_DOCUMENTS_ROOT)
 DEFAULT_BUDGET = 40
 DEFAULT_DELAY_S = 1.5
 MAX_DOCUMENT_BYTES = 80 * 1024 * 1024

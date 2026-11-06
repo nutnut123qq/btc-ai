@@ -12,7 +12,8 @@
   Windows PowerShell 5.1 or PowerShell 7. Keep this file ASCII (5.1 reads BOM-less files as ANSI).
 
 .EXAMPLE
-  powershell -NoProfile -ExecutionPolicy Bypass -File D:\code\btc\ai\scripts\link_skills.ps1
+  powershell -NoProfile -ExecutionPolicy Bypass -File <workspace>\ai\scripts\link_skills.ps1
+  (sibling-repo layout: <workspace>\btc-ai\scripts\link_skills.ps1; <workspace> is the folder holding the repos)
 #>
 param([string]$Root = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)))
 
