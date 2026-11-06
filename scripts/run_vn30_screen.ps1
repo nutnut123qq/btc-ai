@@ -14,9 +14,19 @@ $LogPath = Join-Path $LogDirectory ("vn30-screen_" + (Get-Date -Format "yyyyMMdd
 $proc = Start-Process -FilePath $Python -WorkingDirectory $AiRoot -NoNewWindow -Wait -PassThru `
     -ArgumentList @("vn30_screen.py") -RedirectStandardOutput $LogPath -RedirectStandardError "$LogPath.stderr"
 "exit=$($proc.ExitCode) finished=$((Get-Date).ToString('o'))" | Out-File -LiteralPath $LogPath -Encoding utf8 -Append
+$exitCode = $proc.ExitCode
+
+# Roadmap 0.7: append this session's top 10 to the immutable forward ledger (<workspace>/data/forward), only after a
+# successful screen. A ledger failure exits 7 so the task shows it; the screen output itself is already written.
+if ($exitCode -eq 0) {
+    $fwd = Start-Process -FilePath $Python -WorkingDirectory $AiRoot -NoNewWindow -Wait -PassThru `
+        -ArgumentList @("vn30_screen_forward.py", "record") -RedirectStandardOutput "$LogPath.forward" -RedirectStandardError "$LogPath.forward.stderr"
+    "forward-record exit=$($fwd.ExitCode)" | Out-File -LiteralPath $LogPath -Encoding utf8 -Append
+    if ($fwd.ExitCode -ne 0) { $exitCode = 7 }
+}
 
 Get-ChildItem -LiteralPath $LogDirectory -Filter "vn30-screen_*.log" | Sort-Object Name -Descending |
     Select-Object -Skip $LogRetentionCount | ForEach-Object {
-        Remove-Item -LiteralPath $_.FullName, "$($_.FullName).stderr" -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $_.FullName, "$($_.FullName).stderr", "$($_.FullName).forward", "$($_.FullName).forward.stderr" -Force -ErrorAction SilentlyContinue
     }
-exit $proc.ExitCode
+exit $exitCode

@@ -1,0 +1,92 @@
+{
+  "schema": "research-protocol/v1",
+  "id": "vn30-2",
+  "title": "VN30-2: point-in-time cross-sectional 20-session ranking of VN30 members, long-only top-k after costs",
+  "frozenAt": "2026-11-06",
+  "frozenBeforeResults": true,
+  "supersedes": null,
+  "relatedTrials": ["hose-vn30-1-rotation", "hose-knn-base-rates-v1", "hose-llm-direction-calls"],
+  "question": "Does any declared ranking of the VN30 members in force predict their next-20-session return relative to the equal-weight basket well enough that a long-only top-k portfolio beats equal-weight VN30 and the VN30 index after costs?",
+  "universe": {
+    "evaluation": "VN30 members in force on the decision date (contracts/vn30-membership.json, point in time, leavers kept until they leave)",
+    "training": "same as evaluation; a wider HOSE training universe is a NEW registered trial, not a change of this protocol",
+    "history": "decision dates from the first VN30 period in the membership file (2018-01-22) onward; bars before that only as feature warm-up",
+    "minimumHistorySessions": 260
+  },
+  "data": {
+    "prices": "adjusted daily OHLCV (VCI), finalized bars only, HOSE calendar sessions",
+    "limitFillProxy": "a buy is not filled when open >= 1.065 x previous close, a sell is not filled when open <= 0.935 x previous close (adjusted-series proxy for limit-locked opens until raw prices and band data exist; the miss is carried to the next session)",
+    "snapshot": "every run reads one frozen candle snapshot whose sha256 is recorded with the result"
+  },
+  "decisionSchedule": {
+    "rebalanceEverySessions": 20,
+    "signal": "close of decision session d",
+    "entry": "open of session d+1",
+    "exit": "open of session d+21 (satisfies T+2)",
+    "firstDecision": "first session with >= 260 prior sessions for >= 20 members"
+  },
+  "target": "excess return of member i from open(d+1) to open(d+21) over the equal-weight mean of all members in force at d (same window)",
+  "features": {
+    "note": "computed from data up to the close of d only; cross-sectionally rank-normalized to [-0.5, 0.5] per date; missing = 0",
+    "list": {
+      "mom_12_1": "return over sessions d-252..d-21",
+      "mom_6": "return over sessions d-126..d",
+      "mom_3": "return over sessions d-63..d",
+      "rev_1": "minus the return over sessions d-21..d",
+      "vol_60": "minus the std of daily log returns over the last 60 sessions",
+      "liq_20": "log of the median of close x volume over the last 20 sessions",
+      "dist_52w_high": "close / max(high over last 252 sessions) - 1",
+      "trend_ma200": "close / SMA200 - 1"
+    }
+  },
+  "models": {
+    "note": "finite, fixed list; no hyperparameter search; every model below is one registered trial",
+    "list": [
+      {"id": "B-ew", "kind": "baseline", "rule": "equal weight all members (benchmark, not ranked)"},
+      {"id": "B-mom_12_1", "kind": "baseline", "rule": "rank by mom_12_1"},
+      {"id": "B-mom_6", "kind": "baseline", "rule": "rank by mom_6 (VN30-1 family)"},
+      {"id": "B-rev_1", "kind": "baseline", "rule": "rank by rev_1"},
+      {"id": "B-lowvol", "kind": "baseline", "rule": "rank by vol_60"},
+      {"id": "B-composite", "kind": "baseline", "rule": "rank by the mean of the 8 rank-normalized features with signs as declared"},
+      {"id": "M-ridge", "kind": "model", "rule": "ridge regression of target on the 8 features, alpha = 1.0, pooled over members and dates"},
+      {"id": "M-lgbm", "kind": "model", "rule": "LightGBM regressor on the 8 features: num_leaves 15, n_estimators 200, learning_rate 0.05, min_data_in_leaf 50, feature_fraction 0.8, bagging off, seed 20261106"}
+    ]
+  },
+  "portfolio": {
+    "construction": "long-only, equal weight top 10 by score; hysteresis: a holding is kept while its rank <= 15",
+    "lotSize": 100,
+    "costs": {"buyFee": 0.0015, "sellFee": 0.0015, "sellTax": 0.001, "slippageTicks": 1, "tickRule": "HOSE tick size of the adjusted price band (10/50/100 VND)"},
+    "cash": "unfilled weight stays in cash at 0%"
+  },
+  "benchmarks": ["equal-weight VN30 members in force (B-ew, same costs on rebalance)", "VN30 index (price) when the series is available; E1VFVN30 when its series is available"],
+  "validation": {
+    "scheme": "expanding walk-forward, refit at every calendar-year start",
+    "purgeSessions": 21,
+    "embargoSessions": 20,
+    "developmentWindow": {"from": "2018-01-22", "to": "2023-12-31"},
+    "holdout": {
+      "from": "2024-01-01",
+      "to": "2026-09-18",
+      "status": "semi-sealed: the momentum family (B-mom_6, B-mom_12_1) was already seen there by VN30-1; holdout numbers for those two are reported but cannot confirm",
+      "readOnce": true
+    },
+    "forward": "from 2026-11-09: one immutable record per decision date and model (paper only); the post-FTSE-upgrade regime (2026-09-21 onward) is judged on forward data only"
+  },
+  "metrics": {
+    "primary": "mean cross-sectional Spearman rank IC between score and target over non-overlapping decision dates, with its t statistic",
+    "secondary": ["top-10 net excess return vs B-ew, annualized", "net excess vs VN30 index when available", "Sharpe and Sortino of net returns", "max drawdown", "annual turnover", "hit rate of top-10 vs B-ew per period"],
+    "multipleTesting": "DSR of the best model's net excess series uses the HOSE trial count from trial_registry.py at evaluation time (statuses run + planned); PBO by CSCV over the 7 ranked models with 16 blocks"
+  },
+  "gates": {
+    "development": "M-ridge or M-lgbm passes only if its dev mean rank IC > B-composite's and > 0 with t >= 2",
+    "holdout": "the dev winner must show holdout mean rank IC > 0, top-10 net excess vs B-ew > 0, DSR >= 0.95 and PBO < 0.3",
+    "forward": ">= 6 months of forward paper with live mean rank IC >= half of the dev IC and net excess vs B-ew not clearly negative",
+    "noGo": "if no model passes, conclude that these price-only features carry no exploitable ranking edge on VN30 and keep B-ew / the index as the reference"
+  },
+  "outputs": "docs/research/evidence/vn30-2/<run>/ (results, snapshot sha256, model list, registry head)",
+  "knownLimitations": [
+    "30 names give low power: rank IC must be about >= 0.035 for t = 2 over the dev window; a null result is the expected outcome",
+    "adjusted prices only: the limit-fill proxy is approximate and tick sizes follow adjusted, not traded, prices",
+    "membership history starts 2018-01-22; leavers need their own candles"
+  ]
+}

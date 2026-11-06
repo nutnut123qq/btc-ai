@@ -13,7 +13,9 @@ from pathlib import Path
 
 import joblib
 import numpy as np
-import psycopg2
+import psycopg2  # noqa: F401  (kept for callers that catch psycopg2 errors)
+
+import db_config
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.utils.class_weight import compute_sample_weight
@@ -21,13 +23,7 @@ import xgboost as xgb
 
 warnings.filterwarnings("ignore")
 
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 5432,
-    'database': 'bitcoin_analyst',
-    'user': 'postgres',
-    'password': '123456'
-}
+# Connection parameters come from the environment (DB_PASS etc.), never from source.
 
 MODELS_DIR = Path(__file__).parent / "models"
 MODELS_DIR.mkdir(exist_ok=True)
@@ -58,7 +54,7 @@ def ms(iso_str):
     return int(datetime.fromisoformat(iso_str).replace(tzinfo=timezone.utc).timestamp() * 1000)
 
 def extract_dataset(symbol: str, timeframe: str = "4h", ws: int = 5, tf_ms: int = 14400000, threshold_pct: float = 0.003):
-    conn = psycopg2.connect(**DB_CONFIG)
+    conn = db_config.get_db_connection()
     cur = conn.cursor()
 
     cols = ", ".join(f'"{c}"' for c in FEATURE_COLS)
